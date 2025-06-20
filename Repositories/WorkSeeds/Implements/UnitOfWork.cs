@@ -12,6 +12,7 @@ namespace Repositories.WorkSeeds.Implements
         private readonly IRepositoryFactory _repositoryFactory;
         private IDbContextTransaction? _transaction;
 
+
         // Specific repositories
         private IUserRepository? _userRepository;
 

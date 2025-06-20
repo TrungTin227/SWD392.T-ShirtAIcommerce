@@ -15,7 +15,7 @@ namespace WebAPI.Controllers
         private readonly IExternalAuthService _externalAuthService;
         private readonly SignInManager<ApplicationUser> _signInManager;
 
-        public AuthController(IUserService userService, IExternalAuthService externalAuthService,  SignInManager<ApplicationUser> signInManager)
+        public AuthController(IUserService userService, IExternalAuthService externalAuthService, SignInManager<ApplicationUser> signInManager)
         {
             _userService = userService;
             _externalAuthService = externalAuthService;
@@ -26,6 +26,9 @@ namespace WebAPI.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> Register([FromBody] UserRegisterRequest request)
         {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid data");
+
             var result = await _userService.RegisterAsync(request);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
@@ -38,26 +41,47 @@ namespace WebAPI.Controllers
                 return BadRequest("Invalid parameters");
 
             var result = await _userService.ConfirmEmailAsync(userId, token);
-
-            if (result.IsSuccess)
-                return Ok(new { success = true, message = result.Message });
-            else
-                return BadRequest(new { success = false, message = result.Message });
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost("resend-confirmation")]
         [AllowAnonymous]
         public async Task<IActionResult> ResendConfirmation([FromBody] ResendEmailRequestDTO dto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid email");
+
             var result = await _userService.ResendConfirmationEmailAsync(dto.Email);
-            return Ok(result.Message);
+            return Ok(result);
         }
 
         [HttpPost("login")]
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] UserLoginRequest request)
         {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid data");
+
             var result = await _userService.LoginAsync(request);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout([FromBody] LogoutRequest request)
+        {
+            var result = await _userService.LogoutAsync(request);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("validate-token")]
+        [Authorize]
+        public async Task<IActionResult> ValidateToken([FromBody] ValidateTokenRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid token");
+
+            var result = await _userService.ValidateTokenAsync(request.Token);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
@@ -66,9 +90,10 @@ namespace WebAPI.Controllers
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDTO req)
         {
             if (!ModelState.IsValid)
-                return BadRequest("Dữ liệu không hợp lệ.");
+                return BadRequest("Invalid email");
+
             var result = await _userService.InitiatePasswordResetAsync(req);
-            return Ok(result.Message);
+            return Ok(result);
         }
 
         [HttpPost("reset-password")]
@@ -76,9 +101,10 @@ namespace WebAPI.Controllers
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDTO req)
         {
             if (!ModelState.IsValid)
-                return BadRequest("Dữ liệu không hợp lệ.");
+                return BadRequest("Invalid data");
+
             var result = await _userService.ResetPasswordAsync(req);
-            return result.IsSuccess ? Ok(result.Message) : BadRequest(result.Message);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost("send-2fa-code")]
@@ -86,15 +112,29 @@ namespace WebAPI.Controllers
         public async Task<IActionResult> Send2FACode()
         {
             var result = await _userService.Send2FACodeAsync();
-            return result.IsSuccess ? Ok(result.Message) : BadRequest(result.Message);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("verify-2fa")]
+        [Authorize]
+        public async Task<IActionResult> Verify2FA([FromBody] Verify2FARequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid 2FA code");
+
+            var result = await _userService.Verify2FAAsync(request);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost("change-password")]
         [Authorize]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
         {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid data");
+
             var result = await _userService.ChangePasswordAsync(request);
-            return result.IsSuccess ? Ok(result.Message) : BadRequest(result.Message);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost("refresh-token")]
@@ -137,6 +177,7 @@ namespace WebAPI.Controllers
             var result = await _externalAuthService.ProcessGoogleLoginAsync();
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
+
         [HttpPost("google-login-token")]
         [AllowAnonymous]
         public async Task<IActionResult> GoogleLoginToken([FromBody] GoogleLoginRequest request)

@@ -16,6 +16,8 @@ using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
 using UserDTOs.DTOs.Response;
 using DTOs.UserDTOs.Identities;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace Services.Implementations
 {
@@ -92,7 +94,6 @@ namespace Services.Implementations
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
 
-            // Không cần encode token ở đây, để UserEmailService xử lý
             await Task.WhenAll(
                 _userEmailService.SendWelcomeEmailAsync(email),
                 _userEmailService.SendEmailConfirmationAsync(email, user.Id, token, _confirmEmailUri)
@@ -144,7 +145,6 @@ namespace Services.Implementations
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
 
-            // Truyền token nguyên bản, để UserEmailService xử lý việc encode
             await _userEmailService.SendEmailConfirmationAsync(email, user.Id, token, _confirmEmailUri);
             return ApiResult<string>.Success("Confirmation email resent");
         }
@@ -154,7 +154,7 @@ namespace Services.Implementations
             if (request == null || string.IsNullOrWhiteSpace(request.Email))
                 return ApiResult<string>.Failure("Invalid email");
 
-            var genericResponse = ApiResult<string>.Success("If the email is valid, you’ll receive password reset instructions");
+            var genericResponse = ApiResult<string>.Success("If the email is valid, you'll receive password reset instructions");
             var user = await _userManager.FindByEmailAsync(request.Email);
             if (user == null || !await _userManager.IsEmailConfirmedAsync(user))
                 return genericResponse;
@@ -278,7 +278,7 @@ namespace Services.Implementations
             if (uid == null)
                 return ApiResult<CurrentUserResponse>.Failure("User not found");
 
-            var user = await _userManager.FindByIdAsync(uid.ToString());     
+            var user = await _userManager.FindByIdAsync(uid.ToString());
             if (user == null)
                 return ApiResult<CurrentUserResponse>.Failure("User not found");
 
@@ -479,6 +479,92 @@ namespace Services.Implementations
 
             var list = await _userRepository.GetUserDetailsAsync(page, size);
             return ApiResult<PagedList<UserDetailsDTO>>.Success(list);
+        }
+
+        // ================ THÊM CÁC METHOD MỚI ================
+
+        // Logout method
+        public async Task<ApiResult<string>> LogoutAsync(LogoutRequest request)
+        {
+            if (request?.RefreshToken != null)
+            {
+                var revokeRequest = new RefreshTokenRequest { RefreshToken = request.RefreshToken };
+                await RevokeRefreshTokenAsync(revokeRequest);
+            }
+            return ApiResult<string>.Success("Logout successful");
+        }
+
+        // Validate token method
+        public async Task<ApiResult<ValidateTokenResponse>> ValidateTokenAsync(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return ApiResult<ValidateTokenResponse>.Failure("Token is required");
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+
+            if (!tokenHandler.CanReadToken(token))
+                return ApiResult<ValidateTokenResponse>.Failure("Invalid token format");
+
+            var jwtToken = tokenHandler.ReadJwtToken(token);
+
+            if (jwtToken.ValidTo < DateTime.UtcNow)
+            {
+                return ApiResult<ValidateTokenResponse>.Success(new ValidateTokenResponse
+                {
+                    IsValid = false
+                });
+            }
+
+            var userIdClaim = jwtToken.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier);
+            var emailClaim = jwtToken.Claims.FirstOrDefault(x => x.Type == ClaimTypes.Email);
+            var roleClaims = jwtToken.Claims.Where(x => x.Type == ClaimTypes.Role).Select(x => x.Value).ToList();
+
+            // Kiểm tra user vẫn tồn tại và active
+            if (userIdClaim != null)
+            {
+                var user = await _userManager.FindByIdAsync(userIdClaim.Value);
+                if (user == null || await _userManager.IsLockedOutAsync(user))
+                {
+                    return ApiResult<ValidateTokenResponse>.Success(new ValidateTokenResponse
+                    {
+                        IsValid = false
+                    });
+                }
+            }
+
+            return ApiResult<ValidateTokenResponse>.Success(new ValidateTokenResponse
+            {
+                IsValid = true,
+                UserId = userIdClaim?.Value,
+                Email = emailClaim?.Value,
+                Roles = roleClaims,
+                ExpiresAt = jwtToken.ValidTo
+            });
+        }
+
+        // Verify 2FA method
+        public async Task<ApiResult<string>> Verify2FAAsync(Verify2FARequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Code))
+                return ApiResult<string>.Failure("2FA code is required");
+
+            var userId = _currentUserService.GetUserId();
+            if (userId == null)
+                return ApiResult<string>.Failure("User not found");
+
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+                return ApiResult<string>.Failure("User not found");
+
+            var isValid = await _userManager.VerifyTwoFactorTokenAsync(
+                user,
+                TokenOptions.DefaultEmailProvider,
+                request.Code);
+
+            if (!isValid)
+                return ApiResult<string>.Failure("Invalid 2FA code");
+
+            return ApiResult<string>.Success("2FA verification successful");
         }
     }
 }

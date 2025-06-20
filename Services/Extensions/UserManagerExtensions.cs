@@ -25,11 +25,11 @@ namespace Services.Extensions
 
         public static Task AddDefaultRoleAsync(
             this UserManager<ApplicationUser> mgr, ApplicationUser user)
-            => mgr.AddToRoleAsync(user, "USER");
+            => mgr.AddToRoleAsync(user, "Customer");
 
         public static Task AddRolesAsync(
             this UserManager<ApplicationUser> mgr, ApplicationUser user, IEnumerable<string> roles)
-            => mgr.AddToRolesAsync(user, roles ?? new[] { "USER" });
+            => mgr.AddToRolesAsync(user, roles ?? new[] { "Customer" });
 
         public static Task SetRefreshTokenAsync(
             this UserManager<ApplicationUser> mgr, ApplicationUser user, string token)
@@ -75,7 +75,7 @@ namespace Services.Extensions
         {
             var oldRoles = await mgr.GetRolesAsync(user);
             await mgr.RemoveFromRolesAsync(user, oldRoles);
-            await mgr.AddToRolesAsync(user, roles ?? new[] { "USER" });
+            await mgr.AddToRolesAsync(user, roles ?? new[] { "Customer" });
         }
     }
 }

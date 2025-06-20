@@ -8,11 +8,12 @@ using Repositories.Implementations;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
+using Services.Commons.Gmail.Implementations;
 using Services.Implementations;
 using Services.Interfaces;
+using Services.Interfaces.Services.Commons.User;
 using System.Security.Claims;
 using System.Text;
-using Services.Commons.Gmail.Implementations;
 
 namespace WebAPI.Extensions
 {
@@ -100,14 +101,14 @@ namespace WebAPI.Extensions
             // 4. Repositories & Domain Services
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
-            services.AddScoped<IUserRepository, UserRepository>();
-            services.AddScoped<ICurrentTime, CurrentTime>();
             services.AddScoped<IRepositoryFactory, RepositoryFactory>();
+            services.AddScoped<IUserRepository, UserRepository>();
 
-            // Business Services - đặt sau khi đã có HttpContextAccessor
             services.AddScoped<ICurrentUserService, CurrentUserService>();
+            services.AddScoped<IExternalAuthService, ExternalAuthService>();
             services.AddScoped<ITokenService, TokenService>();
-            //services.AddScoped<IUserService, UserService>();
+            services.AddScoped<IUserService, UserService>();
+            services.AddScoped<IUserEmailService, UserEmailService>();
 
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
