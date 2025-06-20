@@ -30,18 +30,50 @@ namespace WebAPI.Middlewares
         private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
             context.Response.ContentType = "application/json";
-            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-            // Tạo response object đơn giản, không serialize Exception object
+            // Determine status code based on exception type
+            var statusCode = exception switch
+            {
+                ArgumentNullException => HttpStatusCode.BadRequest,
+                ArgumentException => HttpStatusCode.BadRequest,
+                UnauthorizedAccessException => HttpStatusCode.Unauthorized,
+                InvalidOperationException => HttpStatusCode.BadRequest,
+                _ => HttpStatusCode.InternalServerError
+            };
+
+            context.Response.StatusCode = (int)statusCode;
+
+            // Create a safe response object that won't cause serialization issues
             var response = new
             {
                 IsSuccess = false,
-                Message = "An error occurred while processing your request",
-                Details = exception.Message
+                Message = GetUserFriendlyMessage(exception, statusCode),
+                Details = exception.Message,
+                ErrorType = exception.GetType().Name,
+                // Don't include the full exception object - it causes serialization issues
+                Timestamp = DateTime.UtcNow
             };
 
-            var jsonResponse = JsonSerializer.Serialize(response);
+            // Use JsonSerializer with safe options
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true
+            };
+
+            var jsonResponse = JsonSerializer.Serialize(response, options);
             await context.Response.WriteAsync(jsonResponse);
+        }
+
+        private static string GetUserFriendlyMessage(Exception exception, HttpStatusCode statusCode)
+        {
+            return statusCode switch
+            {
+                HttpStatusCode.BadRequest => "Invalid request. Please check your input and try again.",
+                HttpStatusCode.Unauthorized => "You are not authorized to perform this action.",
+                HttpStatusCode.InternalServerError => "An internal server error occurred. Please try again later.",
+                _ => "An error occurred while processing your request."
+            };
         }
     }
 
@@ -52,4 +84,4 @@ namespace WebAPI.Middlewares
             return builder.UseMiddleware<GlobalExceptionHandlingMiddleware>();
         }
     }
-}
+}   

@@ -10,6 +10,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace Services.Implementations
 {
@@ -19,8 +20,12 @@ namespace Services.Implementations
         private readonly SymmetricSecurityKey _secretKey;
         private readonly JwtSettings _jwtSettings;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ILogger<TokenService> _logger;
 
-        public TokenService(IOptions<JwtSettings> jwtOptions, UserManager<ApplicationUser> userManager)
+        public TokenService(
+            IOptions<JwtSettings> jwtOptions,
+            UserManager<ApplicationUser> userManager,
+            ILogger<TokenService> logger)
         {
             _jwtSettings = jwtOptions?.Value ?? throw new ArgumentNullException(nameof(jwtOptions));
             if (string.IsNullOrEmpty(_jwtSettings.Key))
@@ -28,6 +33,7 @@ namespace Services.Implementations
 
             _secretKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));
             _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public RefreshTokenInfo GenerateRefreshToken()
@@ -75,9 +81,9 @@ namespace Services.Implementations
 
         public async Task<ApiResult<string>> GenerateToken(ApplicationUser user)
         {
-            // Kiểm tra tham số đầu vào: nếu user bằng null, trả về Error với thông báo rõ ràng
             if (user == null)
             {
+                _logger.LogError("Cannot generate token: user is null");
                 return ApiResult<string>.Error(
                     data: null,
                     exception: new ArgumentNullException(nameof(user), "User is null.")
@@ -86,19 +92,22 @@ namespace Services.Implementations
 
             try
             {
-                // Tạo SigningCredentials từ secret key và thuật toán HmacSha256
+                _logger.LogInformation("Generating token for user: {UserId}", user.Id);
+
+                // Create SigningCredentials using HMAC SHA256 algorithm
                 var signingCredentials = new SigningCredentials(_secretKey, SecurityAlgorithms.HmacSha256);
 
-                // Lấy danh sách claims của user (bao gồm username, email, roles, v.v.)
+                // Get user claims
                 var claims = await GetClaimsAsync(user).ConfigureAwait(false);
 
-                // Sinh JwtSecurityToken dựa trên signingCredentials và danh sách claims
+                // Generate JWT token
                 var tokenOptions = GenerateTokenOptions(signingCredentials, claims);
 
-                // Chuyển JwtSecurityToken thành chuỗi JWT
+                // Convert to string
                 var token = _tokenHandler.WriteToken(tokenOptions);
 
-                // Trả về kết quả thành công: bao gồm token và thông báo
+                _logger.LogInformation("Token generated successfully for user: {UserId}", user.Id);
+
                 return ApiResult<string>.Success(
                     data: token,
                     message: "Token generated successfully."
@@ -106,10 +115,9 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
-                // Nếu xảy ra ngoại lệ trong quá trình tạo token, trả về Failure kèm exception
+                _logger.LogError(ex, "Error generating token for user: {UserId}", user.Id);
                 return ApiResult<string>.Failure(ex);
             }
         }
-
     }
 }
