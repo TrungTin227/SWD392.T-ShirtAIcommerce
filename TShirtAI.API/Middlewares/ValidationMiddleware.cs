@@ -34,9 +34,11 @@ namespace WebAPI.Middlewares
                         kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
                     );
 
-                var response = ApiResult<Dictionary<string, string[]>>.Success(errors, "Validation failed");
-
-
+                var response = new
+                {
+                    message = "Validation failed",
+                    errors = errors
+                };
 
                 context.Result = new BadRequestObjectResult(response);
             }

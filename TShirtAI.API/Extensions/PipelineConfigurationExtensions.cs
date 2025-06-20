@@ -10,13 +10,13 @@ namespace WebAPI.Extensions
     {
         public static async Task<IApplicationBuilder> UseApplicationPipeline(this IApplicationBuilder app)
         {
+            var env = app.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
             app.UseGlobalExceptionHandling();
 
             // 1. Database Migration and Seeding with improved error handling
             var scopeFactory = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>();
             using (var scope = scopeFactory.CreateScope())
             {
-                var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
                 var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
                 var db = scope.ServiceProvider.GetRequiredService<T_ShirtAIcommerceContext>();
                 var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();

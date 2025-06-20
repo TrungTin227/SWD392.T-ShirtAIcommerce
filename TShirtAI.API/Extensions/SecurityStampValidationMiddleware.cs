@@ -2,39 +2,32 @@
 using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
 
-namespace WebAPI.Extensions
+namespace WebAPI.Middlewares
 {
     public class SecurityStampValidationMiddleware
     {
         private readonly RequestDelegate _next;
+        private readonly ILogger<SecurityStampValidationMiddleware> _logger;
 
-        public SecurityStampValidationMiddleware(RequestDelegate next)
+        public SecurityStampValidationMiddleware(RequestDelegate next, ILogger<SecurityStampValidationMiddleware> logger)
         {
             _next = next;
+            _logger = logger;
         }
 
         public async Task InvokeAsync(HttpContext context, UserManager<ApplicationUser> userManager)
         {
-            if (context.User.Identity.IsAuthenticated)
+            if (context.User.Identity?.IsAuthenticated == true)
             {
-                var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                var tokenStamp = context.User.FindFirst("securityStamp")?.Value;
-
-                if (!string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(tokenStamp))
+                var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!string.IsNullOrEmpty(userId) && Guid.TryParse(userId, out var userGuid))
                 {
-                    var user = await userManager.FindByIdAsync(userId);
-                    if (user == null || await userManager.IsLockedOutAsync(user))
+                    var user = await userManager.FindByIdAsync(userGuid.ToString());
+                    if (user == null)
                     {
-                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                        await context.Response.WriteAsync("User account is invalid or locked.");
-                        return;
-                    }
-
-                    var currentStamp = await userManager.GetSecurityStampAsync(user);
-                    if (tokenStamp != currentStamp)
-                    {
-                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                        await context.Response.WriteAsync("Token không hợp lệ do thông tin bảo mật đã thay đổi.");
+                        // User not found, clear authentication
+                        context.Response.StatusCode = 401;
+                        await context.Response.WriteAsync("User not found");
                         return;
                     }
                 }

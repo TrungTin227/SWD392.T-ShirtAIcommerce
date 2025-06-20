@@ -9,7 +9,6 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons.Gmail.Implementations;
-using Services.Commons.Gmail.Interfaces;
 using Services.Implementations;
 using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
@@ -33,8 +32,8 @@ namespace WebAPI.Extensions
                     sql => sql.MigrationsAssembly("Repositories")
                         .CommandTimeout(30) // Add command timeout
                         .EnableRetryOnFailure(
-                            maxRetryCount: 3,
-                            maxRetryDelay: TimeSpan.FromSeconds(5),
+                            maxRetryCount: 3, 
+                            maxRetryDelay: TimeSpan.FromSeconds(5), 
                             errorNumbersToAdd: null)),
                 poolSize: 128); // Use connection pooling for better performance
 
@@ -117,7 +116,7 @@ namespace WebAPI.Extensions
                 googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
             });
 
-            // 4. Repository & Service Registration
+            // 4. Repositories & Domain Services
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
             services.AddScoped<IRepositoryFactory, RepositoryFactory>();
@@ -128,6 +127,12 @@ namespace WebAPI.Extensions
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IUserEmailService, UserEmailService>();
+
+            // 5. Email + Quartz
+            services.AddEmailServices(configuration.GetSection("EmailSettings"));
+
+            // 6. Controllers
+            services.AddControllers();
 
             return services;
         }
