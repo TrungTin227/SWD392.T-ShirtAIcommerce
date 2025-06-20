@@ -3,7 +3,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BusinessObjects.Products
 {
-    // CÓ THỂ kế thừa BaseEntity - có created_at và có thể cần tracking
     public class Category : BaseEntity
     {
         [Key]

@@ -96,6 +96,22 @@ namespace WebAPI.Extensions
                         return ctx.Response.WriteAsync(res);
                     }
                 };
+            }).AddGoogle(googleOptions =>
+            {
+                googleOptions.ClientId = configuration["Authentication:Google:ClientId"];
+                googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
+                googleOptions.SaveTokens = true;
+
+                // Scope cần thiết cho Google Sign-In
+                googleOptions.Scope.Add("email");
+                googleOptions.Scope.Add("profile");
+
+                // Events để debug
+                googleOptions.Events.OnCreatingTicket = context =>
+                {
+                    Console.WriteLine($"Google login successful for: {context.Principal.FindFirst(ClaimTypes.Email)?.Value}");
+                    return Task.CompletedTask;
+                };
             });
 
             // 4. Repositories & Domain Services
