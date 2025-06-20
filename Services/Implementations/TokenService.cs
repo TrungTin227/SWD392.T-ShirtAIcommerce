@@ -4,6 +4,7 @@ using DTOs.UserDTOs.Identities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Repositories.Commons;
 using Services.Interfaces;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -79,7 +80,7 @@ namespace Services.Implementations
             {
                 return ApiResult<string>.Error(
                     data: null,
-                    error: new ArgumentNullException(nameof(user), "User is null.")
+                    exception: new ArgumentNullException(nameof(user), "User is null.")
                 );
             }
 

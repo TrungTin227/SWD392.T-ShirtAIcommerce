@@ -1,6 +1,7 @@
 ﻿using BusinessObjects.Common;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Repositories.Commons;
 
 namespace WebAPI.Middlewares
 {
@@ -33,12 +34,9 @@ namespace WebAPI.Middlewares
                         kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
                     );
 
-                var response = new ApiResult<object>
-                {
-                    IsSuccess = false,
-                    Message = "Validation failed",
-                    Data = errors
-                };
+                var response = ApiResult<Dictionary<string, string[]>>.Success(errors, "Validation failed");
+
+
 
                 context.Result = new BadRequestObjectResult(response);
             }

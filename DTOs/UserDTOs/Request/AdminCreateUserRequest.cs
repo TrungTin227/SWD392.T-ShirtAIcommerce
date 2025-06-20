@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using BusinessObjects.Common;
 
 namespace DTOs.UserDTOs.Request
 {

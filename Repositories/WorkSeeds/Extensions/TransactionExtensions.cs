@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Common;
-using Microsoft.EntityFrameworkCore.Storage;
+﻿using Microsoft.EntityFrameworkCore.Storage;
+using Repositories.Commons;
 using Repositories.WorkSeeds.Interfaces;
 using System.Data;
 

@@ -28,7 +28,7 @@ namespace WebAPI.Controllers
 
         [HttpPost("register")]
         [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<IActionResult> Register([FromBody] UserRegisterRequestDTO request)
+        public async Task<IActionResult> Register([FromBody] UserRegisterRequest request)
         {
             var user = new ApplicationUser
             {

@@ -1,6 +1,6 @@
-﻿using BusinessObjects.Common;
-using BusinessObjects.Identity;
+﻿using BusinessObjects.Identity;
 using DTOs.UserDTOs.Identities;
+using Repositories.Commons;
 
 namespace Services.Interfaces
 {

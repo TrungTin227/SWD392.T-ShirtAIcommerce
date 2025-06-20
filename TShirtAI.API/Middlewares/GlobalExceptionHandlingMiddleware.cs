@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Common;
+﻿using Repositories.Commons;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Text.Json;
@@ -33,40 +33,20 @@ namespace WebAPI.Middlewares
         {
             context.Response.ContentType = "application/json";
 
-            var response = new ApiResult<object>
+            // Decide status code and error message based on exception
+            var (statusCode, errorMessage) = exception switch
             {
-                IsSuccess = false,
-                Message = GetErrorMessage(exception),
-                Data = null
+                ValidationException validationEx => ((int)HttpStatusCode.BadRequest, validationEx.Message),
+                UnauthorizedAccessException => ((int)HttpStatusCode.Unauthorized, "Unauthorized access"),
+                KeyNotFoundException => ((int)HttpStatusCode.NotFound, "Resource not found"),
+                ArgumentException argEx => ((int)HttpStatusCode.BadRequest, argEx.Message),
+                _ => ((int)HttpStatusCode.InternalServerError, "An internal server error occurred")
             };
 
-            switch (exception)
-            {
-                case ValidationException validationEx:
-                    context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
-                    response.Message = validationEx.Message;
-                    break;
+            context.Response.StatusCode = statusCode;
 
-                case UnauthorizedAccessException:
-                    context.Response.StatusCode = (int)HttpStatusCode.Unauthorized;
-                    response.Message = "Unauthorized access";
-                    break;
-
-                case KeyNotFoundException:
-                    context.Response.StatusCode = (int)HttpStatusCode.NotFound;
-                    response.Message = "Resource not found";
-                    break;
-
-                case ArgumentException argEx:
-                    context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
-                    response.Message = argEx.Message;
-                    break;
-
-                default:
-                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-                    response.Message = "An internal server error occurred";
-                    break;
-            }
+            // Construct the response with all needed properties at once
+            var response = ApiResult<object>.Failure(errorMessage, exception);
 
             var jsonResponse = JsonSerializer.Serialize(response, new JsonSerializerOptions
             {
