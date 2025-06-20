@@ -9,6 +9,7 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons.Gmail.Implementations;
+using Services.Commons.Gmail.Interfaces;
 using Services.Implementations;
 using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
@@ -23,14 +24,28 @@ namespace WebAPI.Extensions
         {
             // 1. Cấu hình Settings
             services.Configure<DTOs.UserDTOs.Identities.JwtSettings>(configuration.GetSection("JwtSettings"));
-            //services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
             services.AddHttpContextAccessor();
 
-            // 2. DbContext và CORS
-            services.AddDbContext<T_ShirtAIcommerceContext>(opt =>
+            // 2. DbContext với cấu hình cải tiến - FIX CONCURRENCY ISSUE
+            services.AddDbContextPool<T_ShirtAIcommerceContext>(opt =>
                 opt.UseSqlServer(
                     configuration.GetConnectionString("T_ShirtAIcommerceContext"),
-                    sql => sql.MigrationsAssembly("Repositories")));
+                    sql => sql.MigrationsAssembly("Repositories")
+                        .CommandTimeout(30) // Add command timeout
+                        .EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(5),
+                            errorNumbersToAdd: null)),
+                poolSize: 128); // Use connection pooling for better performance
+
+            // Alternative: If you prefer regular DbContext instead of pooling
+            // services.AddDbContext<T_ShirtAIcommerceContext>(opt =>
+            //     opt.UseSqlServer(
+            //         configuration.GetConnectionString("T_ShirtAIcommerceContext"),
+            //         sql => sql.MigrationsAssembly("Repositories")
+            //             .CommandTimeout(30)
+            //             .EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null)),
+            //     ServiceLifetime.Scoped); // Explicitly set scoped lifetime
 
             services.AddCors(opt =>
             {
@@ -100,21 +115,9 @@ namespace WebAPI.Extensions
             {
                 googleOptions.ClientId = configuration["Authentication:Google:ClientId"];
                 googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
-                googleOptions.SaveTokens = true;
-
-                // Scope cần thiết cho Google Sign-In
-                googleOptions.Scope.Add("email");
-                googleOptions.Scope.Add("profile");
-
-                // Events để debug
-                googleOptions.Events.OnCreatingTicket = context =>
-                {
-                    Console.WriteLine($"Google login successful for: {context.Principal.FindFirst(ClaimTypes.Email)?.Value}");
-                    return Task.CompletedTask;
-                };
             });
 
-            // 4. Repositories & Domain Services
+            // 4. Repository & Service Registration
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
             services.AddScoped<IRepositoryFactory, RepositoryFactory>();
@@ -125,12 +128,6 @@ namespace WebAPI.Extensions
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IUserEmailService, UserEmailService>();
-
-            // 5. Email + Quartz
-            services.AddEmailServices(configuration.GetSection("EmailSettings"));
-
-            // 6. Controllers
-            services.AddControllers();
 
             return services;
         }

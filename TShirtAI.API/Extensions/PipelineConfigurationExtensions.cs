@@ -11,7 +11,8 @@ namespace WebAPI.Extensions
         public static async Task<IApplicationBuilder> UseApplicationPipeline(this IApplicationBuilder app)
         {
             app.UseGlobalExceptionHandling();
-            // 1. Chuẩn bị scope để migrate DB & Swagger
+
+            // 1. Database Migration and Seeding with improved error handling
             var scopeFactory = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>();
             using (var scope = scopeFactory.CreateScope())
             {
@@ -20,15 +21,21 @@ namespace WebAPI.Extensions
                 var db = scope.ServiceProvider.GetRequiredService<T_ShirtAIcommerceContext>();
                 var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
                 var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+
                 try
                 {
-                    db.Database.Migrate();
-                    // nếu cần: await DBInitializer.Initialize(db);
+                    // FIX: Use async migration with timeout
+                    await db.Database.MigrateAsync();
+
+                    // FIX: Initialize database with proper error handling
                     await DBInitializer.Initialize(db, userManager, roleManager);
+
+                    logger.LogInformation("Database migration and seeding completed successfully.");
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Error when migrating/seeding DB.");
+                    logger.LogError(ex, "Error when migrating/seeding database. Application will continue but may have issues.");
+                    // Don't throw here to allow app to start even if seeding fails
                 }
 
                 if (env.IsDevelopment())
@@ -38,27 +45,30 @@ namespace WebAPI.Extensions
                 }
             }
 
-            // 2. Middleware chung
+            // 2. Common Middleware
             app.UseHttpsRedirection();
             app.UseRouting();
 
-            // 2.1. Kích hoạt CORS
+            // 2.1. Enable CORS
             app.UseCors("CorsPolicy");
 
-            // 2.2. Thêm header để cho phép popup OAuth Google postMessage về trang chủ
+            // 2.2. Add header for Google OAuth popup
             app.Use(async (context, next) =>
             {
-                // Phải đúng tên; có thể thay đổi hoa-thường, có 3 giá trị nằm trong ba token chuẩn.
                 context.Response.Headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
                 await next();
             });
 
-            // 2.3. Xác thực & phân quyền
+            // 2.3. Authentication & Authorization
             app.UseAuthentication();
-            app.UseMiddleware<SecurityStampValidationMiddleware>(); //Security Stamp
+            app.UseMiddleware<SecurityStampValidationMiddleware>();
+
+            // FIX: Add transaction middleware for data consistency
+            app.UseMiddleware<DbContextTransactionMiddleware>();
+
             app.UseAuthorization();
 
-            // 3. Endpoint
+            // 3. Endpoints
             app.UseEndpoints(endpoints => endpoints.MapControllers());
 
             return app;

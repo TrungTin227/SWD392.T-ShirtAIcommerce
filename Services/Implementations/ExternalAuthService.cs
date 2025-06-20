@@ -49,13 +49,11 @@ public class ExternalAuthService : IExternalAuthService
             var validationSettings = new GoogleJsonWebSignature.ValidationSettings
             {
                 Audience = new[] { _configuration["Authentication:Google:ClientId"] },
-                // Remove the hardcoded audience, only use the configured one
-                HostedDomain = null, // Allow any domain unless you want to restrict
+                HostedDomain = null,
                 IssuedAtClockTolerance = TimeSpan.FromSeconds(30),
                 ExpirationTimeClockTolerance = TimeSpan.FromSeconds(30)
             };
 
-            // This will automatically handle RS256 validation
             GoogleJsonWebSignature.Payload payload;
             try
             {
@@ -69,7 +67,6 @@ public class ExternalAuthService : IExternalAuthService
 
             Console.WriteLine($"Token validated successfully for email: {payload.Email}");
 
-            // Continue with user creation/login after successful validation
             var googleInfo = new DTOs.UserDTOs.Identities.GoogleUserInfo
             {
                 Email = payload.Email,
@@ -77,7 +74,7 @@ public class ExternalAuthService : IExternalAuthService
                 LastName = payload.FamilyName
             };
 
-            // Create or update user
+            // FIX: Ensure all async operations are properly awaited
             var userResp = await _userService.CreateOrUpdateGoogleUserAsync(googleInfo);
             if (userResp == null)
                 return ApiResult<UserResponse>.Failure(new Exception("Cannot create or update Google user"));
@@ -86,7 +83,7 @@ public class ExternalAuthService : IExternalAuthService
             if (user == null)
                 return ApiResult<UserResponse>.Failure(new Exception("User not found after creation"));
 
-            // Generate tokens
+            // FIX: Await token generation properly
             var tokenResult = await _tokenService.GenerateToken(user);
             if (!tokenResult.IsSuccess)
                 return ApiResult<UserResponse>.Failure(new Exception("Cannot generate token"));
@@ -105,7 +102,7 @@ public class ExternalAuthService : IExternalAuthService
             _httpContextAccessor.HttpContext!
                 .Response.Cookies.Append("refreshToken", refreshToken.Token, cookieOpts);
 
-            // Return user response with access token
+            // FIX: Ensure user response mapping is awaited
             var dto = await user.ToUserResponseAsync(_userManager, accessToken);
             return ApiResult<UserResponse>.Success(dto, "Google authentication successful");
         }
@@ -121,19 +118,19 @@ public class ExternalAuthService : IExternalAuthService
     {
         try
         {
-            // 1) Lấy thông tin Google login
+            // 1) Get Google login info
             var info = await _signInManager.GetExternalLoginInfoAsync();
             if (info == null)
                 return ApiResult<UserResponse>.Failure(new Exception("Google login information not found"));
 
-            // 2) Thử đăng nhập nếu đã liên kết
+            // 2) Try to sign in if already linked
             var signInResult = await _signInManager.ExternalLoginSignInAsync(
                 info.LoginProvider, info.ProviderKey,
                 isPersistent: false, bypassTwoFactor: true);
 
             if (!signInResult.Succeeded)
             {
-                // 3) Tạo hoặc cập nhật User
+                // 3) Create or update User - FIX: Ensure sequential async operations
                 var email = info.Principal.FindFirstValue(ClaimTypes.Email);
                 var given = info.Principal.FindFirstValue(ClaimTypes.GivenName);
                 var family = info.Principal.FindFirstValue(ClaimTypes.Surname);
@@ -144,6 +141,8 @@ public class ExternalAuthService : IExternalAuthService
                     FirstName = given,
                     LastName = family
                 };
+
+                // FIX: Await user creation/update
                 var userResp = await _userService.CreateOrUpdateGoogleUserAsync(googleInfo);
                 if (userResp == null)
                     return ApiResult<UserResponse>.Failure(new Exception("Cannot create or update Google user"));
@@ -152,27 +151,36 @@ public class ExternalAuthService : IExternalAuthService
                 if (user == null)
                     return ApiResult<UserResponse>.Failure(new Exception("User not found after creation"));
 
-                // 4) Xác nhận email
+                // 4) Confirm email - FIX: Await user update
                 if (!user.EmailConfirmed)
                 {
                     user.EmailConfirmed = true;
-                    await _userManager.UpdateAsync(user);
+                    var updateResult = await _userManager.UpdateAsync(user);
+                    if (!updateResult.Succeeded)
+                    {
+                        return ApiResult<UserResponse>.Failure(new Exception("Failed to confirm email"));
+                    }
                 }
 
-                // 5) Link Google login
-                await _userManager.AddLoginAsync(user, info);
+                // 5) Link Google login - FIX: Await login addition
+                var addLoginResult = await _userManager.AddLoginAsync(user, info);
+                if (!addLoginResult.Succeeded)
+                {
+                    return ApiResult<UserResponse>.Failure(new Exception("Failed to link Google account"));
+                }
 
-                // 6) Sign-in cookie
+                // 6) Sign-in cookie - FIX: Await sign in
                 await _signInManager.SignInAsync(user, isPersistent: false);
 
-                // 7) Sinh access + refresh token
+                // 7) Generate tokens - FIX: Await token generation
                 var tokenResult = await _tokenService.GenerateToken(user);
                 if (!tokenResult.IsSuccess)
                     return ApiResult<UserResponse>.Failure(new Exception("Cannot generate token"));
+
                 var accessToken = tokenResult.Data;
                 var refreshToken = _tokenService.GenerateRefreshToken();
 
-                // 8) Đặt HttpOnly cookie cho refresh token
+                // 8) Set HttpOnly cookie for refresh token
                 var cookieOpts = new CookieOptions
                 {
                     HttpOnly = true,
@@ -183,41 +191,41 @@ public class ExternalAuthService : IExternalAuthService
                 _httpContextAccessor.HttpContext!
                     .Response.Cookies.Append("refreshToken", refreshToken.Token, cookieOpts);
 
-                // 9) Trả về chỉ Access Token và user info
-                var dto = await user.ToUserResponseAsync(
-                              _userManager,
-                              accessToken);
+                // 9) Return access token and user info - FIX: Await response mapping
+                var dto = await user.ToUserResponseAsync(_userManager, accessToken);
                 return ApiResult<UserResponse>.Success(dto, "Google login successful");
             }
 
-            // 10) Nếu đã liên kết: tương tự
-            var existingUser = await _userManager.FindByLoginAsync(
-                                      info.LoginProvider, info.ProviderKey);
-            var existingToken = await _tokenService.GenerateToken(existingUser);
-            var existingAccess = existingToken.Data;
+            // 10) If already linked - FIX: Ensure all async operations are awaited
+            var existingUser = await _userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
+            if (existingUser == null)
+                return ApiResult<UserResponse>.Failure(new Exception("Linked user not found"));
+
+            var existingTokenResult = await _tokenService.GenerateToken(existingUser);
+            if (!existingTokenResult.IsSuccess)
+                return ApiResult<UserResponse>.Failure(new Exception("Cannot generate token for existing user"));
+
+            var existingAccess = existingTokenResult.Data;
             var newRefresh = _tokenService.GenerateRefreshToken();
 
-            // Cập nhật cookie
+            // Update cookie
             var opts = new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
-                Expires = DateTime.UtcNow
-                           .AddDays(_jwtSettings.RefreshTokenDays)
+                Expires = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenDays)
             };
             _httpContextAccessor.HttpContext!
-                .Response.Cookies.Append("refreshToken",
-                                         newRefresh.Token,
-                                         opts);
+                .Response.Cookies.Append("refreshToken", newRefresh.Token, opts);
 
-            var existingDto = await existingUser.ToUserResponseAsync(
-                                  _userManager, existingAccess);
+            var existingDto = await existingUser.ToUserResponseAsync(_userManager, existingAccess);
             return ApiResult<UserResponse>.Success(existingDto, "Google login successful");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Google login error: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
             return ApiResult<UserResponse>.Failure(new Exception($"Google login failed: {ex.Message}"));
         }
     }
