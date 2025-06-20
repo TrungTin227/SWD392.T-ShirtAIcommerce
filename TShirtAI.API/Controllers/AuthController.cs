@@ -138,7 +138,7 @@ namespace WebAPI.Controllers
         }
 
         [HttpPost("refresh-token")]
-        [Authorize]
+        [AllowAnonymous]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
         {
             var result = await _userService.RefreshTokenAsync(request);

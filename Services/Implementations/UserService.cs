@@ -258,7 +258,7 @@ namespace Services.Implementations
 
             var token = await _tokenService.GenerateToken(user);
             var refreshToken = _tokenService.GenerateRefreshToken();
-            await _userManager.SetAuthenticationTokenAsync(user, "MyApp", "RefreshToken", refreshToken.Token);
+            await _userManager.SetAuthenticationTokenAsync(user, "T-ShirtAIcommerce", "RefreshToken", refreshToken.Token);
 
             return ApiResult<UserResponse>.Success(await UserMappings.ToUserResponseAsync(user, _userManager, token.Data, refreshToken.Token));
         }

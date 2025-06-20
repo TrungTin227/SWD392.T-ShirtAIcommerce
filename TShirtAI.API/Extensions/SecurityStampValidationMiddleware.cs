@@ -20,18 +20,22 @@ namespace WebAPI.Extensions
                 var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var tokenStamp = context.User.FindFirst("securityStamp")?.Value;
 
-                if (userId != null && tokenStamp != null)
+                if (!string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(tokenStamp))
                 {
                     var user = await userManager.FindByIdAsync(userId);
-                    if (user != null)
+                    if (user == null || await userManager.IsLockedOutAsync(user))
                     {
-                        var currentStamp = await userManager.GetSecurityStampAsync(user);
-                        if (tokenStamp != currentStamp)
-                        {
-                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                            await context.Response.WriteAsync("Token không hợp lệ do thông tin bảo mật đã thay đổi.");
-                            return;
-                        }
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        await context.Response.WriteAsync("User account is invalid or locked.");
+                        return;
+                    }
+
+                    var currentStamp = await userManager.GetSecurityStampAsync(user);
+                    if (tokenStamp != currentStamp)
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        await context.Response.WriteAsync("Token không hợp lệ do thông tin bảo mật đã thay đổi.");
+                        return;
                     }
                 }
             }
