@@ -5,7 +5,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BusinessObjects.Orders
 {
-    // KHÔNG kế thừa BaseEntity - dữ liệu snapshot, không cần tracking
     public class OrderItem
     {
         [Key]

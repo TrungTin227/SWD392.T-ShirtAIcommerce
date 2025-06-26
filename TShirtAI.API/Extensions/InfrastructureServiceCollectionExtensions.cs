@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Repositories;
 using Repositories.Implementations;
+using Repositories.Implements;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
@@ -106,6 +107,8 @@ namespace WebAPI.Extensions
             services.AddScoped<IRepositoryFactory, RepositoryFactory>();
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserAddressRepository, UserAddressRepository>();
+            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
+
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             services.AddScoped<IExternalAuthService, ExternalAuthService>();
@@ -113,7 +116,7 @@ namespace WebAPI.Extensions
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IUserEmailService, UserEmailService>();
             services.AddScoped<IUserAddressService, UserAddressService>();
-
+            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
 
