@@ -10,7 +10,6 @@ namespace Services.Interfaces
     public interface IUserService
     {
         // Existing methods
-        Task<ApiResult<UserResponse>> RegisterAsync(UserRegisterRequest req);
         Task<ApiResult<string>> ConfirmEmailAsync(Guid userId, string encodedToken);
         Task<ApiResult<string>> ResendConfirmationEmailAsync(string email);
         Task<ApiResult<string>> InitiatePasswordResetAsync(ForgotPasswordRequestDTO request);
@@ -35,5 +34,7 @@ namespace Services.Interfaces
         Task<ApiResult<string>> LogoutAsync(LogoutRequest request);
         Task<ApiResult<ValidateTokenResponse>> ValidateTokenAsync(string token);
         Task<ApiResult<string>> Verify2FAAsync(Verify2FARequest request);
+        Task<ApiResult<UserResponse>> RegisterAsync(UserRegisterRequest req);
+
     }
 }

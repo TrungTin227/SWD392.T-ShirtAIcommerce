@@ -1,7 +1,8 @@
-﻿using Repositories.Commons;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Repositories.Commons;
 using Repositories.WorkSeeds.Interfaces;
 using System.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace Services.Extensions
 {
@@ -13,41 +14,57 @@ namespace Services.Extensions
             IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
             CancellationToken cancellationToken = default)
         {
-            // Kiểm tra xem IUnitOfWork có property Context không
-            // Nếu không có, bạn cần thêm vào interface IUnitOfWork
-            if (unitOfWork is not IUnitOfWorkWithContext contextProvider)
+            if (unitOfWork is IUnitOfWorkWithContext contextProvider)
             {
-                // Fallback: Execute without retry strategy nếu không có Context
-                return await ExecuteWithoutRetryAsync(unitOfWork, operation, isolationLevel, cancellationToken);
-            }
+                var strategy = contextProvider.Context.Database.CreateExecutionStrategy();
 
-            // Sử dụng execution strategy để handle retry logic
-            var strategy = contextProvider.Context.Database.CreateExecutionStrategy();
-
-            return await strategy.ExecuteAsync(async () =>
-            {
-                using var transaction = await contextProvider.Context.Database.BeginTransactionAsync(isolationLevel, cancellationToken);
-                try
+                return await strategy.ExecuteAsync(async () =>
                 {
-                    var result = await operation();
-
-                    if (result.IsSuccess)
+                    using var transaction = await contextProvider.Context.Database.BeginTransactionAsync(isolationLevel, cancellationToken);
+                    try
                     {
-                        await transaction.CommitAsync(cancellationToken);
+                        var result = await operation();
+
+                        if (result.IsSuccess)
+                            await transaction.CommitAsync(cancellationToken);
+                        else
+                            await transaction.RollbackAsync(cancellationToken);
+
+                        return result;
                     }
-                    else
+                    catch
                     {
                         await transaction.RollbackAsync(cancellationToken);
+                        throw;
                     }
+                });
+            }
+            else
+            {
+                return await ExecuteWithoutRetryAsync(unitOfWork, operation, isolationLevel, cancellationToken);
+            }
+        }
 
-                    return result;
-                }
-                catch
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                    throw;
-                }
-            });
+        public static async Task<ApiResult<bool>> ExecuteTransactionAsync(
+            this IUnitOfWork unitOfWork,
+            Func<Task<ApiResult<bool>>> operation,
+            IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
+            CancellationToken cancellationToken = default)
+        {
+            return await unitOfWork.ExecuteTransactionAsync(async () => await operation(), isolationLevel, cancellationToken);
+        }
+
+        public static async Task<ApiResult<bool>> ExecuteTransactionAsync(
+            this IUnitOfWork unitOfWork,
+            Func<Task> operation,
+            IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
+            CancellationToken cancellationToken = default)
+        {
+            return await unitOfWork.ExecuteTransactionAsync(async () =>
+            {
+                await operation();
+                return ApiResult<bool>.Success(true, "Operation completed successfully");
+            }, isolationLevel, cancellationToken);
         }
 
         private static async Task<ApiResult<T>> ExecuteWithoutRetryAsync<T>(
@@ -56,37 +73,50 @@ namespace Services.Extensions
             IsolationLevel isolationLevel,
             CancellationToken cancellationToken)
         {
-            // Existing logic từ code cũ của bạn
             if (unitOfWork.HasActiveTransaction)
             {
                 return await operation();
             }
 
-            using var transaction = await unitOfWork.BeginTransactionAsync(isolationLevel, cancellationToken);
+            IDbContextTransaction? transaction = null;
             try
             {
+                transaction = await unitOfWork.BeginTransactionAsync(isolationLevel, cancellationToken);
+
                 var result = await operation();
 
                 if (result.IsSuccess)
-                {
                     await transaction.CommitAsync(cancellationToken);
-                }
                 else
-                {
                     await transaction.RollbackAsync(cancellationToken);
-                }
 
                 return result;
             }
             catch
             {
-                await transaction.RollbackAsync(cancellationToken);
+                if (transaction != null)
+                    await SafeRollbackAsync(transaction, cancellationToken);
                 throw;
+            }
+            finally
+            {
+                transaction?.Dispose();
+            }
+        }
+
+        private static async Task SafeRollbackAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            catch
+            {
+                // Log rollback error if needed
             }
         }
     }
 
-    // Interface helper để access DbContext
     public interface IUnitOfWorkWithContext : IUnitOfWork
     {
         DbContext Context { get; }

@@ -105,12 +105,14 @@ namespace WebAPI.Extensions
             services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
             services.AddScoped<IRepositoryFactory, RepositoryFactory>();
             services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IUserAddressRepository, UserAddressRepository>();
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             services.AddScoped<IExternalAuthService, ExternalAuthService>();
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IUserEmailService, UserEmailService>();
+            services.AddScoped<IUserAddressService, UserAddressService>();
 
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));

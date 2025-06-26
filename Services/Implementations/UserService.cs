@@ -1,12 +1,13 @@
-﻿using System.Text;
-using Repositories.Commons;
-using BusinessObjects.Identity;
+﻿using BusinessObjects.Identity;
+using DTOs.UserAddressDTOs.Request;
+using DTOs.UserDTOs.Identities;
 using DTOs.UserDTOs.Request;
 using DTOs.UserDTOs.Response;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Repositories.Commons;
 using Repositories.Helpers;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
@@ -14,10 +15,10 @@ using Services.Extensions;
 using Services.Helpers.Mapers;
 using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
-using UserDTOs.DTOs.Response;
-using DTOs.UserDTOs.Identities;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
+using UserDTOs.DTOs.Response;
 
 namespace Services.Implementations
 {
@@ -32,6 +33,8 @@ namespace Services.Implementations
         private readonly string _confirmEmailUri;
         private readonly string _resetPasswordUri;
         private readonly IUserRepository _userRepository;
+        private readonly IUserAddressService _userAddressService;
+
 
         public UserService(
             UserManager<ApplicationUser> userManager,
@@ -41,7 +44,8 @@ namespace Services.Implementations
             ILogger<UserService> logger,
             IUserEmailService userEmailService,
             IConfiguration configuration,
-            IUserRepository userRepository)
+            IUserRepository userRepository,
+            IUserAddressService userAddressService)
         {
             _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
             _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
@@ -52,6 +56,7 @@ namespace Services.Implementations
             _confirmEmailUri = configuration["Frontend:ConfirmEmailUri"] ?? throw new ArgumentNullException(nameof(configuration), "ConfirmEmailUri is missing");
             _resetPasswordUri = configuration["Frontend:ResetPasswordUri"] ?? throw new ArgumentNullException(nameof(configuration), "ResetPasswordUri is missing");
             _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+            _userAddressService = userAddressService;
         }
 
         public async Task<ApiResult<UserResponse>> RegisterAsync(UserRegisterRequest req)
@@ -70,6 +75,21 @@ namespace Services.Implementations
                     return ApiResult<UserResponse>.Failure(createRes.ErrorMessage);
 
                 await _userManager.AddDefaultRoleAsync(user);
+
+                // Tạo địa chỉ mặc định cho user mới
+                var defaultAddressRequest = new CreateUserAddressRequest
+                {
+                    ReceiverName = $"{user.FirstName} {user.LastName}".Trim(),
+                    Phone = user.PhoneNumber ?? "",
+                    DetailAddress = "Chưa cập nhật",
+                    Ward = "Chưa cập nhật",
+                    District = "Chưa cập nhật",
+                    Province = "Chưa cập nhật",
+                    IsDefault = true
+                };
+
+                await _userAddressService.CreateDefaultAddressForNewUserAsync(user.Id, defaultAddressRequest);
+
                 return ApiResult<UserResponse>.Success(await UserMappings.ToUserResponseAsync(user, _userManager));
             });
 

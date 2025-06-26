@@ -1,4 +1,8 @@
 ﻿using Repositories;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Threading.Tasks;
 
 namespace WebAPI.Middlewares
 {
@@ -15,35 +19,8 @@ namespace WebAPI.Middlewares
 
         public async Task InvokeAsync(HttpContext context, T_ShirtAIcommerceContext dbContext)
         {
-            // Skip for GET requests as they usually don't modify data
-            if (context.Request.Method == HttpMethods.Get)
-            {
-                await _next(context);
-                return;
-            }
-
-            // For POST, PUT, DELETE requests, use transaction
-            using var transaction = await dbContext.Database.BeginTransactionAsync();
-            try
-            {
-                await _next(context);
-
-                // Only commit if response is successful
-                if (context.Response.StatusCode < 400)
-                {
-                    await transaction.CommitAsync();
-                }
-                else
-                {
-                    await transaction.RollbackAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during request processing. Rolling back transaction.");
-                await transaction.RollbackAsync();
-                throw;
-            }
+            // Simply pass through - let services handle their own transactions
+            await _next(context);
         }
     }
 }

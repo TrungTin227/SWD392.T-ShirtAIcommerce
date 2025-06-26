@@ -2,8 +2,13 @@
 {
     public interface ICurrentUserService
     {
-        public Guid? GetUserId();
-        public bool IsAdmin();
-
+        Guid? GetUserId();
+        string? GetCurrentUserEmail();
+        bool IsAuthenticated();
+        bool IsAdmin();
+        bool IsCustomer();
+        bool IsStaff();
+        bool CanManageProducts();
+        bool CanProcessOrders();
     }
 }

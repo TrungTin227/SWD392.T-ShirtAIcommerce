@@ -7,10 +7,12 @@ namespace Services.Implementations
     public class CurrentUserService : ICurrentUserService
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
+
         public CurrentUserService(IHttpContextAccessor httpContextAccessor)
         {
             _httpContextAccessor = httpContextAccessor;
         }
+
         public Guid? GetUserId()
         {
             var userIdString = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -23,11 +25,32 @@ namespace Services.Implementations
 
             return null;
         }
+
+        public string? GetCurrentUserEmail()
+        {
+            return _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.Email);
+        }
+
+        public bool IsAuthenticated()
+        {
+            return _httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated ?? false;
+        }
+
         public bool IsAdmin()
         {
-            // Giả sử role admin có tên "ADMIN"
-            return _httpContextAccessor.HttpContext?.User?.IsInRole("ADMIN") ?? false;
+            return _httpContextAccessor.HttpContext?.User?.IsInRole("Admin") ?? false;
         }
+
+        public bool IsCustomer()
+        {
+            return _httpContextAccessor.HttpContext?.User?.IsInRole("Customer") ?? false;
+        }
+
+        public bool IsStaff()
+        {
+            return _httpContextAccessor.HttpContext?.User?.IsInRole("Staff") ?? false;
+        }
+
         public bool CanManageProducts()
         {
             return IsAdmin() || _httpContextAccessor.HttpContext?.User?.IsInRole("PRODUCT_MANAGER") == true;
