@@ -3,7 +3,7 @@ using DTOs.Common;
 
 namespace DTOs.Orders
 {
-    public class OrderFilterRequest : PaginationRequest
+    public class OrderFilterRequest
     {
         public Guid? UserId { get; set; }
         public OrderStatus? Status { get; set; }

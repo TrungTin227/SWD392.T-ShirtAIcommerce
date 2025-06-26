@@ -7,8 +7,9 @@ using Repositories.Helpers;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using System;
+using System.Linq.Expressions;
 
-namespace Repositories.Implements
+namespace Repositories.Implementations
 {
     public class OrderItemRepository : GenericRepository<OrderItem, Guid>, IOrderItemRepository
     {
@@ -18,93 +19,52 @@ namespace Repositories.Implements
 
         public async Task<PagedList<OrderItem>> GetOrderItemsAsync(OrderItemQueryDto query)
         {
-            var queryable = _dbSet.AsQueryable()
-                .Include(oi => oi.Product)
-                .Include(oi => oi.CustomDesign)
-                .Include(oi => oi.ProductVariant)
-                .Include(oi => oi.Order);
-
-            // Apply filters
-            if (query.OrderId.HasValue)
-                queryable = queryable.Where(oi => oi.OrderId == query.OrderId.Value);
-
-            if (query.ProductId.HasValue)
-                queryable = queryable.Where(oi => oi.ProductId == query.ProductId.Value);
-
-            if (query.CustomDesignId.HasValue)
-                queryable = queryable.Where(oi => oi.CustomDesignId == query.CustomDesignId.Value);
-
-            if (query.ProductVariantId.HasValue)
-                queryable = queryable.Where(oi => oi.ProductVariantId == query.ProductVariantId.Value);
-
-            if (!string.IsNullOrEmpty(query.SelectedColor))
-                queryable = queryable.Where(oi => oi.SelectedColor == query.SelectedColor);
-
-            if (!string.IsNullOrEmpty(query.SelectedSize))
-                queryable = queryable.Where(oi => oi.SelectedSize == query.SelectedSize);
-
-            if (query.MinUnitPrice.HasValue)
-                queryable = queryable.Where(oi => oi.UnitPrice >= query.MinUnitPrice.Value);
-
-            if (query.MaxUnitPrice.HasValue)
-                queryable = queryable.Where(oi => oi.UnitPrice <= query.MaxUnitPrice.Value);
-
-            if (query.MinQuantity.HasValue)
-                queryable = queryable.Where(oi => oi.Quantity >= query.MinQuantity.Value);
-
-            if (query.MaxQuantity.HasValue)
-                queryable = queryable.Where(oi => oi.Quantity <= query.MaxQuantity.Value);
-
-            if (!string.IsNullOrEmpty(query.Search))
+            // Sử dụng các include expressions từ common pattern
+            var includes = new Expression<Func<OrderItem, object>>[]
             {
-                queryable = queryable.Where(oi =>
-                    oi.ItemName.Contains(query.Search) ||
-                    (oi.Product != null && oi.Product.Name.Contains(query.Search)) ||
-                    (oi.CustomDesign != null && oi.CustomDesign.Name.Contains(query.Search)));
-            }
+                oi => oi.Product,
+                oi => oi.CustomDesign,
+                oi => oi.ProductVariant,
+                oi => oi.Order
+            };
 
-            // Apply sorting
-            if (!string.IsNullOrEmpty(query.SortBy))
-            {
-                queryable = query.SortBy.ToLower() switch
-                {
-                    "itemname" => query.IsDescending ? queryable.OrderByDescending(oi => oi.ItemName) : queryable.OrderBy(oi => oi.ItemName),
-                    "unitprice" => query.IsDescending ? queryable.OrderByDescending(oi => oi.UnitPrice) : queryable.OrderBy(oi => oi.UnitPrice),
-                    "quantity" => query.IsDescending ? queryable.OrderByDescending(oi => oi.Quantity) : queryable.OrderBy(oi => oi.Quantity),
-                    "totalprice" => query.IsDescending ? queryable.OrderByDescending(oi => oi.TotalPrice) : queryable.OrderBy(oi => oi.TotalPrice),
-                    "selectedcolor" => query.IsDescending ? queryable.OrderByDescending(oi => oi.SelectedColor) : queryable.OrderBy(oi => oi.SelectedColor),
-                    "selectedsize" => query.IsDescending ? queryable.OrderByDescending(oi => oi.SelectedSize) : queryable.OrderBy(oi => oi.SelectedSize),
-                    _ => query.IsDescending ? queryable.OrderByDescending(oi => oi.Id) : queryable.OrderBy(oi => oi.Id)
-                };
-            }
+            // Predicate để filter dữ liệu
+            Expression<Func<OrderItem, bool>>? predicate = BuildFilterPredicate(query);
 
-            return await PagedList<OrderItem>.ToPagedListAsync(queryable, query.Page, query.Size);
+            // Ordering function
+            Func<IQueryable<OrderItem>, IOrderedQueryable<OrderItem>>? orderBy = BuildOrderingFunction(query);
+
+            // Sử dụng method GetPagedAsync từ GenericRepository thay vì custom implementation
+            return await GetPagedAsync(
+                query.Page,
+                query.Size,
+                predicate,
+                orderBy,
+                includes);
         }
 
         public async Task<IEnumerable<OrderItem>> GetByOrderIdAsync(Guid orderId)
         {
-            return await _dbSet
-                .Include(oi => oi.Product)
-                .Include(oi => oi.CustomDesign)
-                .Include(oi => oi.ProductVariant)
-                .Where(oi => oi.OrderId == orderId)
-                .OrderBy(oi => oi.ItemName)
-                .ToListAsync();
+            return await GetAllAsync(
+                oi => oi.OrderId == orderId,
+                q => q.OrderBy(oi => oi.ItemName),
+                oi => oi.Product,
+                oi => oi.CustomDesign,
+                oi => oi.ProductVariant);
         }
 
         public async Task<OrderItem?> GetWithDetailsAsync(Guid id)
         {
-            return await _dbSet
-                .Include(oi => oi.Product)
-                .Include(oi => oi.CustomDesign)
-                .Include(oi => oi.ProductVariant)
-                .Include(oi => oi.Order)
-                .FirstOrDefaultAsync(oi => oi.Id == id);
+            return await GetByIdAsync(id,
+                oi => oi.Product,
+                oi => oi.CustomDesign,
+                oi => oi.ProductVariant,
+                oi => oi.Order);
         }
 
         public async Task<bool> ValidateOrderExistsAsync(Guid orderId)
         {
-            return await _context.Set<Order>().AnyAsync(o => o.Id == orderId);
+            return await AnyAsync(oi => oi.OrderId == orderId);
         }
 
         public async Task<bool> ValidateProductExistsAsync(Guid productId)
@@ -124,16 +84,94 @@ namespace Repositories.Implements
 
         public async Task<decimal> GetOrderTotalAsync(Guid orderId)
         {
-            return await _dbSet
-                .Where(oi => oi.OrderId == orderId)
-                .SumAsync(oi => oi.TotalPrice);
+            var orderItems = await GetAllAsync(oi => oi.OrderId == orderId);
+            return orderItems.Sum(oi => oi.TotalPrice);
         }
 
         public async Task<int> GetOrderItemCountAsync(Guid orderId)
         {
-            return await _dbSet
-                .Where(oi => oi.OrderId == orderId)
-                .SumAsync(oi => oi.Quantity);
+            var orderItems = await GetAllAsync(oi => oi.OrderId == orderId);
+            return orderItems.Sum(oi => oi.Quantity);
         }
+
+        #region Private Helper Methods
+
+        private static Expression<Func<OrderItem, bool>>? BuildFilterPredicate(OrderItemQueryDto query)
+        {
+            Expression<Func<OrderItem, bool>>? predicate = null;
+
+            if (query.OrderId.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.OrderId == query.OrderId.Value);
+
+            if (query.ProductId.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.ProductId == query.ProductId.Value);
+
+            if (query.CustomDesignId.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.CustomDesignId == query.CustomDesignId.Value);
+
+            if (query.ProductVariantId.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.ProductVariantId == query.ProductVariantId.Value);
+
+            if (!string.IsNullOrEmpty(query.SelectedColor))
+                predicate = CombinePredicates(predicate, oi => oi.SelectedColor == query.SelectedColor);
+
+            if (!string.IsNullOrEmpty(query.SelectedSize))
+                predicate = CombinePredicates(predicate, oi => oi.SelectedSize == query.SelectedSize);
+
+            if (query.MinUnitPrice.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.UnitPrice >= query.MinUnitPrice.Value);
+
+            if (query.MaxUnitPrice.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.UnitPrice <= query.MaxUnitPrice.Value);
+
+            if (query.MinQuantity.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.Quantity >= query.MinQuantity.Value);
+
+            if (query.MaxQuantity.HasValue)
+                predicate = CombinePredicates(predicate, oi => oi.Quantity <= query.MaxQuantity.Value);
+
+            if (!string.IsNullOrEmpty(query.Search))
+            {
+                predicate = CombinePredicates(predicate, oi =>
+                    oi.ItemName.Contains(query.Search) ||
+                    (oi.Product != null && oi.Product.Name.Contains(query.Search)));
+            }
+
+            return predicate;
+        }
+
+        private static Func<IQueryable<OrderItem>, IOrderedQueryable<OrderItem>>? BuildOrderingFunction(OrderItemQueryDto query)
+        {
+            if (string.IsNullOrEmpty(query.SortBy))
+                return q => query.IsDescending ? q.OrderByDescending(oi => oi.Id) : q.OrderBy(oi => oi.Id);
+
+            return query.SortBy.ToLower() switch
+            {
+                "itemname" => q => query.IsDescending ? q.OrderByDescending(oi => oi.ItemName) : q.OrderBy(oi => oi.ItemName),
+                "unitprice" => q => query.IsDescending ? q.OrderByDescending(oi => oi.UnitPrice) : q.OrderBy(oi => oi.UnitPrice),
+                "quantity" => q => query.IsDescending ? q.OrderByDescending(oi => oi.Quantity) : q.OrderBy(oi => oi.Quantity),
+                "totalprice" => q => query.IsDescending ? q.OrderByDescending(oi => oi.TotalPrice) : q.OrderBy(oi => oi.TotalPrice),
+                "selectedcolor" => q => query.IsDescending ? q.OrderByDescending(oi => oi.SelectedColor) : q.OrderBy(oi => oi.SelectedColor),
+                "selectedsize" => q => query.IsDescending ? q.OrderByDescending(oi => oi.SelectedSize) : q.OrderBy(oi => oi.SelectedSize),
+                _ => q => query.IsDescending ? q.OrderByDescending(oi => oi.Id) : q.OrderBy(oi => oi.Id)
+            };
+        }
+
+        private static Expression<Func<T, bool>>? CombinePredicates<T>(
+            Expression<Func<T, bool>>? first,
+            Expression<Func<T, bool>> second)
+        {
+            if (first == null)
+                return second;
+
+            var parameter = Expression.Parameter(typeof(T));
+            var body = Expression.AndAlso(
+                Expression.Invoke(first, parameter),
+                Expression.Invoke(second, parameter));
+
+            return Expression.Lambda<Func<T, bool>>(body, parameter);
+        }
+
+        #endregion
     }
 }

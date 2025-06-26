@@ -15,7 +15,12 @@ namespace Repositories.WorkSeeds.Implements
         public GenericRepository(T_ShirtAIcommerceContext context)
         {
             _context = context;
-            _dbSet = _context.Set<TEntity>(); // Sửa lỗi syntax *dbSet = *context.Set<TEntity>()
+            _dbSet = _context.Set<TEntity>();
+        }
+
+        public virtual IQueryable<TEntity> GetQueryable()
+        {
+            return _dbSet.AsQueryable();
         }
 
         // Repository chỉ làm việc với data, không set audit fields
@@ -136,106 +141,74 @@ namespace Repositories.WorkSeeds.Implements
 
         public virtual async Task<int> CountAsync(Expression<Func<TEntity, bool>>? predicate = null)
         {
-            if (predicate == null)
-                return await _dbSet.CountAsync();
-
-            return await _dbSet.CountAsync(predicate);
+            return predicate == null ? await _dbSet.CountAsync() : await _dbSet.CountAsync(predicate);
         }
 
-        // Soft delete nhận audit info từ bên ngoài
         public virtual async Task<bool> SoftDeleteAsync(TKey id, Guid? deletedBy = null)
         {
             var entity = await _dbSet.FindAsync(id);
             if (entity == null) return false;
 
-            // Handle BaseEntity cũ
-            if (IsInheritedFromBaseEntity(entity.GetType()))
+            // Check if entity supports soft delete
+            var isDeletedProperty = entity.GetType().GetProperty("IsDeleted");
+            if (isDeletedProperty != null && isDeletedProperty.PropertyType == typeof(bool))
             {
-                SetProperty(entity, "IsDeleted", true);
-                SetProperty(entity, "DeletedAt", DateTime.UtcNow);
-                if (deletedBy.HasValue)
+                isDeletedProperty.SetValue(entity, true);
+
+                var deletedAtProperty = entity.GetType().GetProperty("DeletedAt");
+                if (deletedAtProperty != null && deletedAtProperty.PropertyType == typeof(DateTime?))
                 {
-                    SetProperty(entity, "DeletedBy", deletedBy.Value);
-                    SetProperty(entity, "UpdatedAt", DateTime.UtcNow);
-                    SetProperty(entity, "UpdatedBy", deletedBy.Value);
-                }
-            }
-            else if (entity is ISoftDeletable softDeletable)
-            {
-                softDeletable.IsDeleted = true;
-                softDeletable.DeletedAt = DateTime.UtcNow;
-                if (deletedBy.HasValue)
-                {
-                    softDeletable.DeletedBy = deletedBy.Value;
+                    deletedAtProperty.SetValue(entity, DateTime.UtcNow);
                 }
 
-                if (entity is IBaseEntity<TKey> auditableEntity && deletedBy.HasValue)
+                var deletedByProperty = entity.GetType().GetProperty("DeletedBy");
+                if (deletedByProperty != null && deletedBy.HasValue)
                 {
-                    auditableEntity.UpdatedAt = DateTime.UtcNow;
-                    auditableEntity.UpdatedBy = deletedBy.Value;
+                    deletedByProperty.SetValue(entity, deletedBy.Value);
                 }
-            }
-            else
-            {
-                _dbSet.Remove(entity);
+
+                _dbSet.Update(entity);
                 return true;
             }
 
-            _dbSet.Update(entity);
+            // Fallback to hard delete
+            _dbSet.Remove(entity);
             return true;
         }
 
         public virtual async Task<bool> RestoreAsync(TKey id, Guid? restoredBy = null)
         {
-            var entity = await _dbSet.IgnoreQueryFilters().FirstOrDefaultAsync(e => EF.Property<TKey>(e, "Id").Equals(id));
+            var entity = await _dbSet.FindAsync(id);
             if (entity == null) return false;
 
-            if (IsInheritedFromBaseEntity(entity.GetType()))
+            var isDeletedProperty = entity.GetType().GetProperty("IsDeleted");
+            if (isDeletedProperty != null && isDeletedProperty.PropertyType == typeof(bool))
             {
-                SetProperty(entity, "IsDeleted", false);
-                SetProperty(entity, "DeletedAt", null);
-                SetProperty(entity, "DeletedBy", null);
-                if (restoredBy.HasValue)
+                isDeletedProperty.SetValue(entity, false);
+
+                var deletedAtProperty = entity.GetType().GetProperty("DeletedAt");
+                if (deletedAtProperty != null)
                 {
-                    SetProperty(entity, "UpdatedAt", DateTime.UtcNow);
-                    SetProperty(entity, "UpdatedBy", restoredBy.Value);
+                    deletedAtProperty.SetValue(entity, null);
                 }
-            }
-            else if (entity is ISoftDeletable softDeletable)
-            {
-                softDeletable.IsDeleted = false;
-                softDeletable.DeletedAt = null;
-                softDeletable.DeletedBy = null;
 
-                if (entity is IBaseEntity<TKey> auditableEntity && restoredBy.HasValue)
+                var restoredAtProperty = entity.GetType().GetProperty("RestoredAt");
+                if (restoredAtProperty != null && restoredAtProperty.PropertyType == typeof(DateTime?))
                 {
-                    auditableEntity.UpdatedAt = DateTime.UtcNow;
-                    auditableEntity.UpdatedBy = restoredBy.Value;
+                    restoredAtProperty.SetValue(entity, DateTime.UtcNow);
                 }
+
+                var restoredByProperty = entity.GetType().GetProperty("RestoredBy");
+                if (restoredByProperty != null && restoredBy.HasValue)
+                {
+                    restoredByProperty.SetValue(entity, restoredBy.Value);
+                }
+
+                _dbSet.Update(entity);
+                return true;
             }
-            else
-            {
-                return false; // Entity không support soft delete
-            }
 
-            _dbSet.Update(entity);
-            return true;
-        }
-
-        // Helper methods
-        private bool IsInheritedFromBaseEntity(Type type)
-        {
-            return typeof(BusinessObjects.Identity.BaseEntity).IsAssignableFrom(type);
-        }
-
-        private void SetProperty(object obj, string propertyName, object? value)
-        {
-            var property = obj.GetType().GetProperty(propertyName);
-            property?.SetValue(obj, value);
-        }
-        public virtual IQueryable<TEntity> GetQueryable()
-        {
-            return _dbSet.AsQueryable();
+            return false;
         }
     }
 }

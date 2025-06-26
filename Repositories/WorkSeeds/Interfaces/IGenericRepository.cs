@@ -1,5 +1,6 @@
 ﻿using Repositories.Helpers;
 using System.Linq.Expressions;
+
 namespace Repositories.WorkSeeds.Interfaces
 {
     public interface IGenericRepository<TEntity, TKey> where TEntity : class
@@ -16,7 +17,6 @@ namespace Repositories.WorkSeeds.Interfaces
         Task DeleteRangeAsync(IEnumerable<TKey> ids);
 
         // Query operations
-
         IQueryable<TEntity> GetQueryable();
 
         Task<IReadOnlyList<TEntity>> GetAllAsync(

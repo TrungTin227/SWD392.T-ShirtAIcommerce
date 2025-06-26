@@ -1,4 +1,6 @@
-﻿using BusinessObjects.Orders;
+﻿using BusinessObjects.CustomDesigns;
+using BusinessObjects.Orders;
+using BusinessObjects.Products;
 using DTOs.OrderItem;
 using Repositories.Commons;
 using Repositories.Helpers;
@@ -7,6 +9,7 @@ using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
 using Services.Extensions;
 using Services.Helpers;
+using Services.Helpers.Mappers;
 using Services.Interfaces;
 using System.Data;
 
@@ -15,24 +18,18 @@ namespace Services.Implementations
     public class OrderItemService : BaseService<OrderItem, Guid>, IOrderItemService
     {
         private readonly IOrderItemRepository _orderItemRepository;
-        private readonly IProductRepository _productRepository;
-        private readonly ICustomDesignRepository _customDesignRepository;
-        private readonly IProductVariantRepository _productVariantRepository;
+        private readonly IRepositoryFactory _repositoryFactory;
 
         public OrderItemService(
             IOrderItemRepository orderItemRepository,
-            IProductRepository productRepository,
-            ICustomDesignRepository customDesignRepository,
-            IProductVariantRepository productVariantRepository,
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
-            ICurrentTime currentTime)
+            ICurrentTime currentTime,
+            IRepositoryFactory repositoryFactory)
             : base(orderItemRepository, currentUserService, unitOfWork, currentTime)
         {
             _orderItemRepository = orderItemRepository;
-            _productRepository = productRepository;
-            _customDesignRepository = customDesignRepository;
-            _productVariantRepository = productVariantRepository;
+            _repositoryFactory = repositoryFactory;
         }
 
         public async Task<ApiResult<OrderItemDto>> CreateAsync(CreateOrderItemDto dto)
@@ -41,7 +38,7 @@ namespace Services.Implementations
             {
                 try
                 {
-                    // Validate input
+                    // Validate input using business logic
                     if (!OrderItemBusinessLogic.ValidateOrderItemInput(dto))
                     {
                         return ApiResult<OrderItemDto>.Failure("Invalid order item input");
@@ -53,10 +50,15 @@ namespace Services.Implementations
                         return ApiResult<OrderItemDto>.Failure("Order not found");
                     }
 
+                    // Get repositories using factory pattern
+                    var productRepo = _repositoryFactory.GetRepository<Product, Guid>();
+                    var customDesignRepo = _repositoryFactory.GetRepository<CustomDesign, Guid>();
+                    var productVariantRepo = _repositoryFactory.GetRepository<ProductVariant, Guid>();
+
                     // Get source entities and validate
-                    var product = dto.ProductId.HasValue ? await _productRepository.GetByIdAsync(dto.ProductId.Value) : null;
-                    var customDesign = dto.CustomDesignId.HasValue ? await _customDesignRepository.GetByIdAsync(dto.CustomDesignId.Value) : null;
-                    var productVariant = dto.ProductVariantId.HasValue ? await _productVariantRepository.GetByIdAsync(dto.ProductVariantId.Value) : null;
+                    var product = dto.ProductId.HasValue ? await productRepo.GetByIdAsync(dto.ProductId.Value) : null;
+                    var customDesign = dto.CustomDesignId.HasValue ? await customDesignRepo.GetByIdAsync(dto.CustomDesignId.Value) : null;
+                    var productVariant = dto.ProductVariantId.HasValue ? await productVariantRepo.GetByIdAsync(dto.ProductVariantId.Value) : null;
 
                     if (dto.ProductId.HasValue && product == null)
                         return ApiResult<OrderItemDto>.Failure("Product not found");
@@ -76,9 +78,8 @@ namespace Services.Implementations
                     // Get price from appropriate source
                     var unitPrice = OrderItemBusinessLogic.GetPriceFromSource(product, customDesign, productVariant);
 
-                    // Create order item
+                    // Create order item using BaseService which handles audit fields
                     var orderItem = OrderItemMapper.ToEntity(dto, unitPrice);
-
                     var createdOrderItem = await CreateAsync(orderItem);
                     var result = OrderItemMapper.ToDto(createdOrderItem);
 
@@ -112,6 +113,7 @@ namespace Services.Implementations
                     // Update using mapper with business logic
                     OrderItemMapper.UpdateEntity(existingOrderItem, dto);
 
+                    // Use BaseService UpdateAsync which handles audit fields
                     var updatedOrderItem = await UpdateAsync(existingOrderItem);
                     var result = OrderItemMapper.ToDto(updatedOrderItem);
 
@@ -128,22 +130,21 @@ namespace Services.Implementations
         {
             return await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                try
-                {
-                    var exists = await _orderItemRepository.GetByIdAsync(id);
-                    if (exists == null)
-                    {
-                        return ApiResult<bool>.Failure("Order item not found");
-                    }
+                // 1. Kiểm tra tồn tại
+                var entity = await _orderItemRepository.GetByIdAsync(id);
+                if (entity == null)
+                    return ApiResult<bool>.Failure("Order item not found");
 
-                    var result = await DeleteAsync(id);
-                    return ApiResult<bool>.Success(result, "Order item deleted successfully");
-                }
-                catch (Exception ex)
-                {
-                    return ApiResult<bool>.Failure("Failed to delete order item", ex);
-                }
-            }, IsolationLevel.ReadCommitted);
+                // 2. Gọi BaseService.DeleteAsync (soft‐delete + audit + SaveChanges)
+                var wasDeleted = await base.DeleteAsync(id);
+
+                // 3. Trả về kết quả
+                if (wasDeleted)
+                    return ApiResult<bool>.Success(true, "Order item deleted successfully");
+                else
+                    return ApiResult<bool>.Failure("Failed to delete order item");
+            },
+            IsolationLevel.ReadCommitted);
         }
 
         public async Task<ApiResult<OrderItemDto?>> GetByIdAsync(Guid id)

@@ -1,5 +1,4 @@
-﻿using DTOs.Common;
-using System.ComponentModel.DataAnnotations;
+﻿using DTOs.OrderItem;
 
 namespace DTOs.Orders
 {
@@ -33,7 +32,7 @@ namespace DTOs.Orders
         public string? AssignedStaffName { get; set; }
         public string? CouponCode { get; set; }
         public string? ShippingMethodName { get; set; }
-        public List<OrderItemDTO> OrderItems { get; set; } = new();
-        public List<PaymentDTO> Payments { get; set; } = new();
+        public List<OrderItemDto> OrderItems { get; set; } = new();
+        //public List<PaymentDTO> Payments { get; set; } = new();
     }
 }
