@@ -1,20 +1,33 @@
-﻿using BusinessObjects.Orders;
+﻿using AutoMapper;
+using BusinessObjects.Orders;
 using DTOs.Common;
 using DTOs.Orders;
 using Microsoft.Extensions.Logging;
+using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
+using Services.Commons;
 using Services.Interfaces;
+using Services.Helpers;
 
 namespace Services.Implementations
 {
-    public class OrderService : IOrderService
+    public class OrderService : BaseService<Order, Guid>, IOrderService
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IOrderRepository _orderRepository;
+        private readonly IMapper _mapper;
         private readonly ILogger<OrderService> _logger;
 
-        public OrderService(IUnitOfWork unitOfWork, ILogger<OrderService> logger)
+        public OrderService(
+            IOrderRepository repository,
+            ICurrentUserService currentUserService,
+            IUnitOfWork unitOfWork,
+            ICurrentTime currentTime,
+            IMapper mapper,
+            ILogger<OrderService> logger)
+            : base(repository, currentUserService, unitOfWork, currentTime)
         {
-            _unitOfWork = unitOfWork;
+            _orderRepository = repository;
+            _mapper = mapper;
             _logger = logger;
         }
 
@@ -22,22 +35,18 @@ namespace Services.Implementations
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null)
-                    throw new InvalidOperationException("Order repository not found");
-
-                var pagedOrders = await orderRepo.GetOrdersAsync(filter);
-                var orderDTOs = _mapper.Map<List<OrderDTO>>(pagedOrders.Items);
+                var pagedOrders = await _orderRepository.GetOrdersAsync(filter);
+                var orderDTOs = _mapper.Map<List<OrderDTO>>(pagedOrders);
 
                 return new PagedResponse<OrderDTO>
                 {
                     Data = orderDTOs,
-                    PageNumber = pagedOrders.PageNumber,
-                    PageSize = pagedOrders.PageSize,
-                    TotalPages = pagedOrders.TotalPages,
-                    TotalRecords = pagedOrders.TotalRecords,
-                    HasNextPage = pagedOrders.HasNextPage,
-                    HasPreviousPage = pagedOrders.HasPreviousPage,
+                    CurrentPage = pagedOrders.MetaData.CurrentPage,
+                    TotalPages = pagedOrders.MetaData.TotalPages,
+                    PageSize = pagedOrders.MetaData.PageSize,
+                    TotalCount = pagedOrders.MetaData.TotalCount,
+                    HasNextPage = pagedOrders.MetaData.CurrentPage < pagedOrders.MetaData.TotalPages,
+                    HasPreviousPage = pagedOrders.MetaData.CurrentPage > 1,
                     Message = "Lấy danh sách đơn hàng thành công",
                     IsSuccess = true
                 };
@@ -48,7 +57,8 @@ namespace Services.Implementations
                 return new PagedResponse<OrderDTO>
                 {
                     Message = "Có lỗi xảy ra khi lấy danh sách đơn hàng",
-                    IsSuccess = false
+                    IsSuccess = false,
+                    Errors = new List<string> { ex.Message }
                 };
             }
         }
@@ -57,10 +67,7 @@ namespace Services.Implementations
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return null;
-
-                var order = await orderRepo.GetOrderWithDetailsAsync(orderId);
+                var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
                 return order != null ? _mapper.Map<OrderDTO>(order) : null;
             }
             catch (Exception ex)
@@ -75,16 +82,12 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null)
-                    throw new InvalidOperationException("Order repository not found");
-
                 // Generate order number
-                var orderNumber = await orderRepo.GenerateOrderNumberAsync();
+                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
 
                 // Calculate totals
                 var subtotal = request.OrderItems.Sum(item => item.UnitPrice * item.Quantity);
-                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId);
+                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
                 var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
                 var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
@@ -93,7 +96,7 @@ namespace Services.Implementations
                 {
                     Id = Guid.NewGuid(),
                     OrderNumber = orderNumber,
-                    UserId = request.UserId,
+                    UserId = createdBy ?? _currentUserService.GetUserId() ?? Guid.Empty,
                     TotalAmount = totalAmount,
                     ShippingFee = shippingFee,
                     DiscountAmount = discountAmount,
@@ -105,15 +108,10 @@ namespace Services.Implementations
                     ReceiverPhone = request.ReceiverPhone,
                     CustomerNotes = request.CustomerNotes,
                     CouponId = request.CouponId,
-                    ShippingMethodId = request.ShippingMethodId,
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = createdBy
+                    ShippingMethodId = request.ShippingMethodId
                 };
 
-                await orderRepo.AddAsync(order);
-
                 // Create order items
-                var orderItemRepo = _unitOfWork.GetRepository<OrderItem, Guid>();
                 foreach (var itemRequest in request.OrderItems)
                 {
                     var orderItem = new OrderItem
@@ -121,25 +119,27 @@ namespace Services.Implementations
                         Id = Guid.NewGuid(),
                         OrderId = order.Id,
                         ProductId = itemRequest.ProductId,
+                        CustomDesignId = itemRequest.CustomDesignId,
                         ProductVariantId = itemRequest.ProductVariantId,
+                        ItemName = itemRequest.ItemName,
+                        SelectedColor = itemRequest.SelectedColor,
+                        SelectedSize = itemRequest.SelectedSize,
                         Quantity = itemRequest.Quantity,
                         UnitPrice = itemRequest.UnitPrice,
-                        TotalPrice = itemRequest.UnitPrice * itemRequest.Quantity,
-                        CreatedAt = DateTime.UtcNow,
-                        CreatedBy = createdBy
+                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice, itemRequest.Quantity)
                     };
-                    await orderItemRepo.AddAsync(orderItem);
+
+                    order.OrderItems.Add(orderItem);
                 }
 
-                await _unitOfWork.SaveChangesAsync();
-                await _unitOfWork.CommitTransactionAsync();
+                var createdOrder = await CreateAsync(order);
+                await transaction.CommitAsync();
 
-                var createdOrder = await orderRepo.GetOrderWithDetailsAsync(order.Id);
                 return _mapper.Map<OrderDTO>(createdOrder);
             }
             catch (Exception ex)
             {
-                await _unitOfWork.RollbackTransactionAsync();
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error creating order {@Request}", request);
                 return null;
             }
@@ -149,18 +149,14 @@ namespace Services.Implementations
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>();
-                var order = await orderRepo.GetByIdAsync(orderId);
-
+                var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null) return null;
 
-                // Update fields if provided
-                if (request.Status.HasValue)
-                    order.Status = request.Status.Value;
+                // Only allow updates for certain statuses
+                if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
+                    return null;
 
-                if (request.PaymentStatus.HasValue)
-                    order.PaymentStatus = request.PaymentStatus.Value;
-
+                // Update fields
                 if (!string.IsNullOrEmpty(request.ShippingAddress))
                     order.ShippingAddress = request.ShippingAddress;
 
@@ -173,33 +169,27 @@ namespace Services.Implementations
                 if (request.CustomerNotes != null)
                     order.CustomerNotes = request.CustomerNotes;
 
+                if (request.CouponId.HasValue)
+                    order.CouponId = request.CouponId;
+
+                if (request.ShippingMethodId.HasValue)
+                    order.ShippingMethodId = request.ShippingMethodId;
+
                 if (request.EstimatedDeliveryDate.HasValue)
                     order.EstimatedDeliveryDate = request.EstimatedDeliveryDate;
 
                 if (!string.IsNullOrEmpty(request.TrackingNumber))
                     order.TrackingNumber = request.TrackingNumber;
 
-                if (!string.IsNullOrEmpty(request.CancellationReason))
-                    order.CancellationReason = request.CancellationReason;
-
                 if (request.AssignedStaffId.HasValue)
                     order.AssignedStaffId = request.AssignedStaffId;
 
-                if (request.ShippingMethodId.HasValue)
-                    order.ShippingMethodId = request.ShippingMethodId;
-
-                order.UpdatedAt = DateTime.UtcNow;
-                if (updatedBy.HasValue)
-                    order.UpdatedBy = updatedBy.Value;
-
-                await orderRepo.UpdateAsync(order);
-                await _unitOfWork.SaveChangesAsync();
-
-                return _mapper.Map<OrderDTO>(order);
+                var updatedOrder = await UpdateAsync(order);
+                return _mapper.Map<OrderDTO>(updatedOrder);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating order {OrderId} with {@Request}", orderId, request);
+                _logger.LogError(ex, "Error updating order {OrderId}", orderId);
                 return null;
             }
         }
@@ -208,11 +198,7 @@ namespace Services.Implementations
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>();
-                var result = await orderRepo.SoftDeleteAsync(orderId, deletedBy);
-                if (result)
-                    await _unitOfWork.SaveChangesAsync();
-                return result;
+                return await DeleteAsync(orderId);
             }
             catch (Exception ex)
             {
@@ -225,16 +211,26 @@ namespace Services.Implementations
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return new List<OrderDTO>();
-
-                var orders = await orderRepo.GetUserOrdersAsync(userId);
+                var orders = await _orderRepository.GetUserOrdersAsync(userId);
                 return _mapper.Map<IEnumerable<OrderDTO>>(orders);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting user orders for {UserId}", userId);
-                return new List<OrderDTO>();
+                _logger.LogError(ex, "Error getting user orders for user {UserId}", userId);
+                return Enumerable.Empty<OrderDTO>();
+            }
+        }
+
+        public async Task<bool> IsOrderOwnedByUserAsync(Guid orderId, Guid userId)
+        {
+            try
+            {
+                return await _orderRepository.IsOrderOwnedByUserAsync(orderId, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking order ownership {OrderId} for user {UserId}", orderId, userId);
+                return false;
             }
         }
 
@@ -245,12 +241,10 @@ namespace Services.Implementations
                 if (!Enum.TryParse<OrderStatus>(status, out var orderStatus))
                     return false;
 
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return false;
-
-                var result = await orderRepo.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
+                var result = await _orderRepository.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
+
                 return result;
             }
             catch (Exception ex)
@@ -264,20 +258,35 @@ namespace Services.Implementations
         {
             try
             {
-                if (!Enum.TryParse<PaymentStatus>(paymentStatus, out var payStatus))
+                if (!Enum.TryParse<PaymentStatus>(paymentStatus, out var paymentStatusEnum))
                     return false;
 
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return false;
-
-                var result = await orderRepo.UpdatePaymentStatusAsync(orderId, payStatus, updatedBy);
+                var result = await _orderRepository.UpdatePaymentStatusAsync(orderId, paymentStatusEnum, updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
+
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating payment status {OrderId} to {Status}", orderId, paymentStatus);
+                _logger.LogError(ex, "Error updating payment status {OrderId} to {PaymentStatus}", orderId, paymentStatus);
+                return false;
+            }
+        }
+
+        public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
+        {
+            try
+            {
+                var result = await _orderRepository.CancelOrderAsync(orderId, reason, cancelledBy);
+                if (result)
+                    await _unitOfWork.SaveChangesAsync();
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling order {OrderId}", orderId);
                 return false;
             }
         }
@@ -286,12 +295,10 @@ namespace Services.Implementations
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return false;
-
-                var result = await orderRepo.AssignOrderToStaffAsync(orderId, staffId, updatedBy);
+                var result = await _orderRepository.AssignOrderToStaffAsync(orderId, staffId, updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
+
                 return result;
             }
             catch (Exception ex)
@@ -301,39 +308,17 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
-        {
-            try
-            {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return false;
-
-                var result = await orderRepo.CancelOrderAsync(orderId, reason, cancelledBy);
-                if (result)
-                    await _unitOfWork.SaveChangesAsync();
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error canceling order {OrderId}", orderId);
-                return false;
-            }
-        }
-
         public async Task<IEnumerable<OrderDTO>> GetStaffOrdersAsync(Guid staffId)
         {
             try
             {
-                var orderRepo = _unitOfWork.GetRepository<Order, Guid>() as Repositories.Interfaces.IOrderRepository;
-                if (orderRepo == null) return new List<OrderDTO>();
-
-                var orders = await orderRepo.GetStaffOrdersAsync(staffId);
+                var orders = await _orderRepository.GetStaffOrdersAsync(staffId);
                 return _mapper.Map<IEnumerable<OrderDTO>>(orders);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting staff orders for {StaffId}", staffId);
-                return new List<OrderDTO>();
+                _logger.LogError(ex, "Error getting staff orders for staff {StaffId}", staffId);
+                return Enumerable.Empty<OrderDTO>();
             }
         }
 
@@ -341,82 +326,187 @@ namespace Services.Implementations
         {
             var result = new BatchOperationResultDTO
             {
-                TotalRequested = orderIds.Count
+                TotalRequested = orderIds.Count,
+                SuccessfulOperations = new List<Guid>(),
+                FailedOperations = new List<BatchOperationError>()
             };
 
             if (!Enum.TryParse<OrderStatus>(status, out var orderStatus))
             {
-                result.Message = "Trạng thái không hợp lệ";
-                result.FailureCount = orderIds.Count;
-                result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
+                result.FailedOperations = orderIds.Select(id => new BatchOperationError
                 {
-                    Id = id.ToString(),
-                    Error = "Invalid status",
-                    Details = $"Status '{status}' is not valid"
+                    Id = id,
+                    Error = "Invalid status value"
                 }).ToList();
                 return result;
             }
 
-            foreach (var orderId in orderIds)
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                try
+                foreach (var orderId in orderIds)
                 {
-                    var success = await UpdateOrderStatusAsync(orderId, status, updatedBy);
-                    if (success)
+                    try
                     {
-                        result.SuccessCount++;
-                        result.SuccessIds.Add(orderId.ToString());
+                        var success = await _orderRepository.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
+                        if (success)
+                            result.SuccessfulOperations.Add(orderId);
+                        else
+                            result.FailedOperations.Add(new BatchOperationError
+                            {
+                                Id = orderId,
+                                Error = "Failed to update order status"
+                            });
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        result.FailureCount++;
-                        result.Errors.Add(new BatchOperationErrorDTO
+                        result.FailedOperations.Add(new BatchOperationError
                         {
-                            Id = orderId.ToString(),
-                            Error = "Update failed",
-                            Details = "Could not update order status"
+                            Id = orderId,
+                            Error = ex.Message
                         });
                     }
                 }
-                catch (Exception ex)
-                {
-                    result.FailureCount++;
-                    result.Errors.Add(new BatchOperationErrorDTO
-                    {
-                        Id = orderId.ToString(),
-                        Error = "Exception occurred",
-                        Details = ex.Message
-                    });
-                }
-            }
 
-            result.Message = $"Cập nhật thành công {result.SuccessCount}/{result.TotalRequested} đơn hàng";
-            return result;
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                result.SuccessCount = result.SuccessfulOperations.Count;
+                result.FailureCount = result.FailedOperations.Count;
+                result.IsSuccess = result.SuccessCount > 0;
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error in bulk update status operation");
+
+                result.FailedOperations = orderIds.Select(id => new BatchOperationError
+                {
+                    Id = id,
+                    Error = "Transaction failed"
+                }).ToList();
+                result.FailureCount = orderIds.Count;
+                result.IsSuccess = false;
+
+                return result;
+            }
         }
 
-        // Helper methods
-        private async Task<decimal> CalculateShippingFeeAsync(Guid? shippingMethodId)
+        public async Task<decimal> CalculateOrderTotalAsync(Guid orderId)
+        {
+            try
+            {
+                return await _orderRepository.CalculateOrderTotalAsync(orderId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating order total {OrderId}", orderId);
+                return 0;
+            }
+        }
+
+        public async Task<string> GenerateOrderNumberAsync()
+        {
+            try
+            {
+                return await _orderRepository.GenerateOrderNumberAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating order number");
+                return string.Empty;
+            }
+        }
+
+        public async Task<Dictionary<string, int>> GetOrderStatusCountsAsync()
+        {
+            try
+            {
+                var counts = await _orderRepository.GetOrderStatusCountsAsync();
+                return counts.ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting order status counts");
+                return new Dictionary<string, int>();
+            }
+        }
+
+        public async Task<IEnumerable<OrderDTO>> GetRecentOrdersAsync(int limit = 10)
+        {
+            try
+            {
+                var orders = await _orderRepository.GetRecentOrdersAsync(limit);
+                return _mapper.Map<IEnumerable<OrderDTO>>(orders);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting recent orders");
+                return Enumerable.Empty<OrderDTO>();
+            }
+        }
+
+        public async Task<IEnumerable<OrderDTO>> GetOrdersForAnalyticsAsync(DateTime fromDate, DateTime toDate)
+        {
+            try
+            {
+                var orders = await _orderRepository.GetOrdersForAnalyticsAsync(fromDate, toDate);
+                return _mapper.Map<IEnumerable<OrderDTO>>(orders);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting orders for analytics");
+                return Enumerable.Empty<OrderDTO>();
+            }
+        }
+
+        public async Task<bool> UpdateTrackingNumberAsync(Guid orderId, string trackingNumber, Guid? updatedBy = null)
+        {
+            try
+            {
+                var result = await _orderRepository.UpdateTrackingNumberAsync(orderId, trackingNumber, updatedBy);
+                if (result)
+                    await _unitOfWork.SaveChangesAsync();
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating tracking number {OrderId}", orderId);
+                return false;
+            }
+        }
+
+        #region Private Helper Methods
+
+        private async Task<decimal> CalculateShippingFeeAsync(Guid? shippingMethodId, decimal subtotal)
         {
             if (!shippingMethodId.HasValue) return 0;
 
-            // Implementation would get shipping method and calculate fee
-            // For now, return a default value
-            return 30000; // 30k VND default shipping fee
+            // TODO: Implement shipping fee calculation based on method and subtotal
+            // This would typically involve getting the shipping method from repository
+            // and checking for free shipping thresholds
+            return 25000m; // Default shipping fee
         }
 
         private async Task<(decimal discountAmount, decimal taxAmount)> CalculateDiscountAndTaxAsync(Guid? couponId, decimal subtotal)
         {
             decimal discountAmount = 0;
-            decimal taxAmount = subtotal * 0.1m; // 10% VAT
+            decimal taxAmount = subtotal * 0.1m; // 10% tax
 
             if (couponId.HasValue)
             {
-                // Implementation would get coupon and calculate discount
-                // For now, return a default discount
-                discountAmount = subtotal * 0.05m; // 5% discount
+                // TODO: Implement coupon discount calculation
+                // This would involve getting the coupon from repository
+                // and calculating discount based on coupon type and value
+                discountAmount = subtotal * 0.05m; // 5% discount as example
             }
 
             return (discountAmount, taxAmount);
         }
+
+        #endregion
     }
 }

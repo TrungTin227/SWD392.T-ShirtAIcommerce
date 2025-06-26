@@ -1,6 +1,6 @@
 ﻿using Repositories.Interfaces;
 
-namespace Services.Implementations
+namespace Repositories.Implementations
 {
     public class CurrentTime : ICurrentTime
     {

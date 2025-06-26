@@ -20,5 +20,9 @@ namespace Repositories.Interfaces
         Task<bool> IsOrderOwnedByUserAsync(Guid orderId, Guid userId);
         Task<IEnumerable<Order>> GetStaffOrdersAsync(Guid staffId);
         Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null);
+        Task<IEnumerable<Order>> GetOrdersForAnalyticsAsync(DateTime fromDate, DateTime toDate);
+        Task<Dictionary<OrderStatus, int>> GetOrderStatusCountsAsync();
+        Task<IEnumerable<Order>> GetRecentOrdersAsync(int limit = 10);
+        Task<bool> UpdateTrackingNumberAsync(Guid orderId, string trackingNumber, Guid? updatedBy = null);
     }
 }

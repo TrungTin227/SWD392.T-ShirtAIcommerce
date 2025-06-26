@@ -1,10 +1,15 @@
 ﻿using BusinessObjects.Orders;
-using DTOs.Common;
 
 namespace DTOs.Orders
 {
     public class OrderFilterRequest
     {
+        public int PageNumber { get; set; } = 1;
+        public int PageSize { get; set; } = 10;
+        public string? SortBy { get; set; } = "CreatedAt";
+        public bool SortDescending { get; set; } = true;
+
+        // Filter fields
         public Guid? UserId { get; set; }
         public OrderStatus? Status { get; set; }
         public PaymentStatus? PaymentStatus { get; set; }
@@ -16,7 +21,9 @@ namespace DTOs.Orders
         public string? ReceiverPhone { get; set; }
         public decimal? MinAmount { get; set; }
         public decimal? MaxAmount { get; set; }
-        public string? SortBy { get; set; } = "CreatedAt";
-        public bool SortDescending { get; set; } = true;
+        public string? Search { get; set; }
+        public bool? HasTracking { get; set; }
+        public Guid? CouponId { get; set; }
+        public Guid? ShippingMethodId { get; set; }
     }
 }

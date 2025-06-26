@@ -26,6 +26,8 @@ namespace DTOs.Orders
         public Guid? ShippingMethodId { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public Guid? CreatedBy { get; set; }
+        public Guid? UpdatedBy { get; set; }
 
         // Navigation properties
         public string UserName { get; set; } = string.Empty;
@@ -33,6 +35,6 @@ namespace DTOs.Orders
         public string? CouponCode { get; set; }
         public string? ShippingMethodName { get; set; }
         public List<OrderItemDto> OrderItems { get; set; } = new();
-        //public List<PaymentDTO> Payments { get; set; } = new();
+        public decimal FinalTotal => TotalAmount + ShippingFee + TaxAmount - DiscountAmount;
     }
 }

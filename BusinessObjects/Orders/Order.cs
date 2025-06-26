@@ -1,8 +1,8 @@
-﻿using BusinessObjects.Coupons;
-using BusinessObjects.Entities.Payments;
-using BusinessObjects.Identity;
-using BusinessObjects.Reviews;
+﻿using BusinessObjects.Identity;
+using BusinessObjects.Coupons;
 using BusinessObjects.Shipping;
+using BusinessObjects.Entities.Payments;
+using BusinessObjects.Reviews;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

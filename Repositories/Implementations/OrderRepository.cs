@@ -51,6 +51,29 @@ namespace Repositories.Implementations
             if (filter.MaxAmount.HasValue)
                 query = query.Where(o => o.TotalAmount <= filter.MaxAmount.Value);
 
+            if (!string.IsNullOrEmpty(filter.Search))
+            {
+                query = query.Where(o =>
+                    o.OrderNumber.Contains(filter.Search) ||
+                    o.ReceiverName.Contains(filter.Search) ||
+                    o.ReceiverPhone.Contains(filter.Search) ||
+                    o.ShippingAddress.Contains(filter.Search));
+            }
+
+            if (filter.HasTracking.HasValue)
+            {
+                if (filter.HasTracking.Value)
+                    query = query.Where(o => !string.IsNullOrEmpty(o.TrackingNumber));
+                else
+                    query = query.Where(o => string.IsNullOrEmpty(o.TrackingNumber));
+            }
+
+            if (filter.CouponId.HasValue)
+                query = query.Where(o => o.CouponId == filter.CouponId.Value);
+
+            if (filter.ShippingMethodId.HasValue)
+                query = query.Where(o => o.ShippingMethodId == filter.ShippingMethodId.Value);
+
             // Apply sorting
             query = filter.SortBy?.ToLower() switch
             {
@@ -63,9 +86,15 @@ namespace Repositories.Implementations
                 "status" => filter.SortDescending
                     ? query.OrderByDescending(o => o.Status)
                     : query.OrderBy(o => o.Status),
+                "paymentstatus" => filter.SortDescending
+                    ? query.OrderByDescending(o => o.PaymentStatus)
+                    : query.OrderBy(o => o.PaymentStatus),
                 "receivername" => filter.SortDescending
                     ? query.OrderByDescending(o => o.ReceiverName)
                     : query.OrderBy(o => o.ReceiverName),
+                "estimateddeliverydate" => filter.SortDescending
+                    ? query.OrderByDescending(o => o.EstimatedDeliveryDate)
+                    : query.OrderBy(o => o.EstimatedDeliveryDate),
                 _ => filter.SortDescending
                     ? query.OrderByDescending(o => o.CreatedAt)
                     : query.OrderBy(o => o.CreatedAt)
@@ -79,18 +108,13 @@ namespace Repositories.Implementations
                          .Include(o => o.OrderItems)
                          .Include(o => o.Payments);
 
-            var totalCount = await query.CountAsync();
-            var items = await query.Skip((filter.PageNumber - 1) * filter.PageSize)
-                                  .Take(filter.PageSize)
-                                  .ToListAsync();
-
-            return new PagedList<Order>(items, totalCount, filter.PageNumber, filter.PageSize);
+            return await PagedList<Order>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
         }
 
         public async Task<IEnumerable<Order>> GetUserOrdersAsync(Guid userId)
         {
             return await _dbSet
-                .Where(o => o.UserId == userId)
+                .Where(o => o.UserId == userId && !o.IsDeleted)
                 .Include(o => o.OrderItems)
                 .Include(o => o.Payments)
                 .Include(o => o.ShippingMethod)
@@ -108,13 +132,13 @@ namespace Repositories.Implementations
                 .Include(o => o.OrderItems)
                 .Include(o => o.Payments)
                 .Include(o => o.Reviews)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
+                .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted);
         }
 
         public async Task<IEnumerable<Order>> GetOrdersByStatusAsync(OrderStatus status)
         {
             return await _dbSet
-                .Where(o => o.Status == status)
+                .Where(o => o.Status == status && !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                 .OrderByDescending(o => o.CreatedAt)
@@ -124,7 +148,7 @@ namespace Repositories.Implementations
         public async Task<IEnumerable<Order>> GetOrdersByDateRangeAsync(DateTime fromDate, DateTime toDate)
         {
             return await _dbSet
-                .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate)
+                .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate && !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                 .OrderByDescending(o => o.CreatedAt)
@@ -134,7 +158,7 @@ namespace Repositories.Implementations
         public async Task<bool> UpdateOrderStatusAsync(Guid orderId, OrderStatus status, Guid? updatedBy = null)
         {
             var order = await _dbSet.FindAsync(orderId);
-            if (order == null) return false;
+            if (order == null || order.IsDeleted) return false;
 
             order.Status = status;
             order.UpdatedAt = DateTime.UtcNow;
@@ -151,6 +175,10 @@ namespace Repositories.Implementations
                 case OrderStatus.Cancelled:
                     order.PaymentStatus = PaymentStatus.Refunded;
                     break;
+                case OrderStatus.Confirmed:
+                    if (!order.EstimatedDeliveryDate.HasValue)
+                        order.EstimatedDeliveryDate = DateTime.UtcNow.AddDays(7); // Default 7 days
+                    break;
             }
 
             return true;
@@ -159,7 +187,7 @@ namespace Repositories.Implementations
         public async Task<bool> UpdatePaymentStatusAsync(Guid orderId, PaymentStatus paymentStatus, Guid? updatedBy = null)
         {
             var order = await _dbSet.FindAsync(orderId);
-            if (order == null) return false;
+            if (order == null || order.IsDeleted) return false;
 
             order.PaymentStatus = paymentStatus;
             order.UpdatedAt = DateTime.UtcNow;
@@ -172,7 +200,7 @@ namespace Repositories.Implementations
         public async Task<bool> AssignOrderToStaffAsync(Guid orderId, Guid staffId, Guid? updatedBy = null)
         {
             var order = await _dbSet.FindAsync(orderId);
-            if (order == null) return false;
+            if (order == null || order.IsDeleted) return false;
 
             order.AssignedStaffId = staffId;
             order.UpdatedAt = DateTime.UtcNow;
@@ -206,20 +234,20 @@ namespace Repositories.Implementations
         public async Task<decimal> CalculateOrderTotalAsync(Guid orderId)
         {
             return await _dbSet
-                .Where(o => o.Id == orderId)
+                .Where(o => o.Id == orderId && !o.IsDeleted)
                 .Select(o => o.TotalAmount + o.ShippingFee + o.TaxAmount - o.DiscountAmount)
                 .FirstOrDefaultAsync();
         }
 
         public async Task<bool> IsOrderOwnedByUserAsync(Guid orderId, Guid userId)
         {
-            return await _dbSet.AnyAsync(o => o.Id == orderId && o.UserId == userId);
+            return await _dbSet.AnyAsync(o => o.Id == orderId && o.UserId == userId && !o.IsDeleted);
         }
 
         public async Task<IEnumerable<Order>> GetStaffOrdersAsync(Guid staffId)
         {
             return await _dbSet
-                .Where(o => o.AssignedStaffId == staffId)
+                .Where(o => o.AssignedStaffId == staffId && !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                 .OrderByDescending(o => o.CreatedAt)
@@ -229,7 +257,7 @@ namespace Repositories.Implementations
         public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
         {
             var order = await _dbSet.FindAsync(orderId);
-            if (order == null) return false;
+            if (order == null || order.IsDeleted) return false;
 
             // Only allow cancellation for certain statuses
             if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
@@ -240,6 +268,46 @@ namespace Repositories.Implementations
             order.UpdatedAt = DateTime.UtcNow;
             if (cancelledBy.HasValue)
                 order.UpdatedBy = cancelledBy.Value;
+
+            return true;
+        }
+
+        public async Task<IEnumerable<Order>> GetOrdersForAnalyticsAsync(DateTime fromDate, DateTime toDate)
+        {
+            return await _dbSet
+                .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate && !o.IsDeleted)
+                .Include(o => o.OrderItems)
+                .ToListAsync();
+        }
+
+        public async Task<Dictionary<OrderStatus, int>> GetOrderStatusCountsAsync()
+        {
+            return await _dbSet
+                .Where(o => !o.IsDeleted)
+                .GroupBy(o => o.Status)
+                .ToDictionaryAsync(g => g.Key, g => g.Count());
+        }
+
+        public async Task<IEnumerable<Order>> GetRecentOrdersAsync(int limit = 10)
+        {
+            return await _dbSet
+                .Where(o => !o.IsDeleted)
+                .Include(o => o.User)
+                .Include(o => o.OrderItems)
+                .OrderByDescending(o => o.CreatedAt)
+                .Take(limit)
+                .ToListAsync();
+        }
+
+        public async Task<bool> UpdateTrackingNumberAsync(Guid orderId, string trackingNumber, Guid? updatedBy = null)
+        {
+            var order = await _dbSet.FindAsync(orderId);
+            if (order == null || order.IsDeleted) return false;
+
+            order.TrackingNumber = trackingNumber;
+            order.UpdatedAt = DateTime.UtcNow;
+            if (updatedBy.HasValue)
+                order.UpdatedBy = updatedBy.Value;
 
             return true;
         }
