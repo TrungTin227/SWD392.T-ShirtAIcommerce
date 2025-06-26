@@ -1,16 +1,29 @@
 ﻿using Repositories.Interfaces;
 
-namespace Repositories.Implementations
+namespace Services.Implementations
 {
     public class CurrentTime : ICurrentTime
     {
-        private static readonly TimeZoneInfo VietnamZone =
-            TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); // Windows
+        private static readonly TimeZoneInfo VietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
 
-        public DateTime GetCurrentTime()
-            => DateTime.UtcNow; // hoặc DateTime.Now tuỳ nhu cầu
+        public DateTime GetUtcNow()
+        {
+            return DateTime.UtcNow;
+        }
 
         public DateTime GetVietnamTime()
-            => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamZone);
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone);
+        }
+
+        public DateOnly GetCurrentDate()
+        {
+            return DateOnly.FromDateTime(GetVietnamTime());
+        }
+
+        public TimeOnly GetCurrentTime()
+        {
+            return TimeOnly.FromDateTime(GetVietnamTime());
+        }
     }
 }

@@ -9,6 +9,11 @@ namespace Repositories.WorkSeeds.Interfaces
         bool HasActiveTransaction { get; }
         T_ShirtAIcommerceContext Context { get; }
         IUserRepository UserRepository { get; }
+        ICouponRepository CouponRepository { get; }
+        IOrderRepository OrderRepository { get; }
+        IOrderItemRepository OrderItemRepository { get; }
+        IUserAddressRepository UserAddressRepository { get; }
+
 
         Task<IDbContextTransaction> BeginTransactionAsync(
             IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,

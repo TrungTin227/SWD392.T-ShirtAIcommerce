@@ -2,7 +2,9 @@
 {
     public interface ICurrentTime
     {
-        DateTime GetCurrentTime();
-        DateTime GetVietnamTime(); // Giờ Việt Nam (UTC+7)
+        DateTime GetUtcNow();
+        DateTime GetVietnamTime();
+        DateOnly GetCurrentDate();
+        TimeOnly GetCurrentTime();
     }
 }

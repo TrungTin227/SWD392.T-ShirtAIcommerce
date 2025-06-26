@@ -108,6 +108,8 @@ namespace WebAPI.Extensions
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserAddressRepository, UserAddressRepository>();
             services.AddScoped<IOrderItemRepository, OrderItemRepository>();
+            services.AddScoped<ICurrentTime, CurrentTime>();
+            services.AddScoped<IOrderRepository, OrderRepository>();
 
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -117,6 +119,8 @@ namespace WebAPI.Extensions
             services.AddScoped<IUserEmailService, UserEmailService>();
             services.AddScoped<IUserAddressService, UserAddressService>();
             services.AddScoped<IOrderItemRepository, OrderItemRepository>();
+            services.AddScoped<ICouponService, CouponService>();
+
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
 
