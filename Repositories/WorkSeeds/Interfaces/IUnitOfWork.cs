@@ -14,7 +14,7 @@ namespace Repositories.WorkSeeds.Interfaces
         IOrderItemRepository OrderItemRepository { get; }
         IUserAddressRepository UserAddressRepository { get; }
         IShippingMethodRepository ShippingMethodRepository { get; }
-
+        ICartItemRepository CartItemRepository { get; }
 
         Task<IDbContextTransaction> BeginTransactionAsync(
             IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,

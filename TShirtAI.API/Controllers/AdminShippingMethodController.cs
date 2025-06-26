@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 
-namespace WebAPI.Controllers.Admin
+namespace WebAPI.Controllers
 {
     [ApiController]
     [Route("api/admin/shipping-methods")]

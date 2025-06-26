@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Identity;
+using Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons.Gmail.Implementations;
+using Services.Configuration;
 using Services.Implementations;
 using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
@@ -100,6 +102,18 @@ namespace WebAPI.Extensions
                 googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
             });
 
+
+            // Add VnPay configuration
+            services.Configure<VnPayConfig>(
+                services.Configuration.GetSection("VnPay"));
+
+            // Register HttpClient for VnPay
+            services.AddHttpClient<IVnPayService, VnPayService>();
+
+            // Register HttpContextAccessor
+            services.AddHttpContextAccessor();
+
+
             // 4. Repositories & Domain Services
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
@@ -111,7 +125,9 @@ namespace WebAPI.Extensions
             services.AddScoped<IOrderRepository, OrderRepository>();
             services.AddScoped<ICouponRepository, CouponRepository>();
             services.AddScoped<IShippingMethodRepository, ShippingMethodRepository>();
-
+            services.AddScoped<ICartItemRepository, CartItemRepository>();
+            services.AddScoped<IPaymentRepository, PaymentRepository>();
+            
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             services.AddScoped<IExternalAuthService, ExternalAuthService>();
@@ -123,7 +139,9 @@ namespace WebAPI.Extensions
             services.AddScoped<IOrderService, OrderService>();
             services.AddScoped<IOrderItemService, OrderItemService>();
             services.AddScoped<IShippingMethodService, ShippingMethodService>();
-
+            services.AddScoped<ICartItemService, CartItemService>();
+            services.AddScoped<IVnPayService, VnPayService>();
+            services.AddScoped<IPaymentService, PaymentService>();
 
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));

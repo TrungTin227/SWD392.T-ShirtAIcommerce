@@ -1,0 +1,53 @@
+﻿using BusinessObjects.Entities.Payments;
+using Microsoft.EntityFrameworkCore;
+using Repositories.Interfaces;
+
+namespace Repositories.Implementations
+{
+    public class PaymentRepository : IPaymentRepository
+    {
+        private readonly DbContext _context;
+        private readonly DbSet<Payment> _payments;
+
+        public PaymentRepository(DbContext context)
+        {
+            _context = context;
+            _payments = context.Set<Payment>();
+        }
+
+        public async Task<Payment?> GetByIdAsync(Guid id)
+        {
+            return await _payments
+                .Include(p => p.Order)
+                .FirstOrDefaultAsync(p => p.Id == id);
+        }
+
+        public async Task<IEnumerable<Payment>> GetByOrderIdAsync(Guid orderId)
+        {
+            return await _payments
+                .Where(p => p.OrderId == orderId)
+                .Include(p => p.Order)
+                .ToListAsync();
+        }
+
+        public async Task AddAsync(Payment payment)
+        {
+            await _payments.AddAsync(payment);
+        }
+
+        public async Task UpdateAsync(Payment payment)
+        {
+            _payments.Update(payment);
+        }
+
+        public async Task DeleteAsync(Payment payment)
+        {
+            _payments.Remove(payment);
+        }
+
+        public async Task SaveChangesAsync()
+        {
+            await _context.SaveChangesAsync();
+        }
+    }
+}

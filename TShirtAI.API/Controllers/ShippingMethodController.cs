@@ -1,5 +1,4 @@
-﻿using DTOs.Shipping;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 using System.ComponentModel.DataAnnotations;
 
