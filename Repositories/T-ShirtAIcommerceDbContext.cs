@@ -21,6 +21,7 @@ namespace Repositories
     public class T_ShirtAIcommerceContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>
     {
         private readonly IHttpContextAccessor? _httpContextAccessor;
+        private bool _disposed = false;
 
         // Updated constructor to handle null HttpContextAccessor safely
         public T_ShirtAIcommerceContext(DbContextOptions<T_ShirtAIcommerceContext> options, IHttpContextAccessor? httpContextAccessor = null) : base(options)
@@ -156,51 +157,67 @@ namespace Repositories
         // ✅ FIXED: Auto audit cho BaseEntity với thread-safe operations
         public override int SaveChanges()
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(T_ShirtAIcommerceContext));
+
             UpdateAuditFields();
             return base.SaveChanges();
         }
 
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(T_ShirtAIcommerceContext));
+
             UpdateAuditFields();
             return await base.SaveChangesAsync(cancellationToken);
         }
 
-        // ✅ FIXED: Thread-safe audit field updates
+        // ✅ FIXED: Thread-safe audit field updates với dispose check
         private void UpdateAuditFields()
         {
-            var entries = ChangeTracker.Entries<BaseEntity>();
-            var currentUserId = GetCurrentUserId();
+            if (_disposed) return;
 
-            foreach (var entry in entries)
+            try
             {
-                switch (entry.State)
+                var entries = ChangeTracker.Entries<BaseEntity>();
+                var currentUserId = GetCurrentUserId();
+
+                foreach (var entry in entries)
                 {
-                    case EntityState.Added:
-                        entry.Entity.CreatedAt = DateTime.UtcNow;
-                        entry.Entity.CreatedBy = currentUserId;
-                        entry.Entity.UpdatedAt = DateTime.UtcNow;
-                        entry.Entity.UpdatedBy = currentUserId;
-                        break;
+                    switch (entry.State)
+                    {
+                        case EntityState.Added:
+                            entry.Entity.CreatedAt = DateTime.UtcNow;
+                            entry.Entity.CreatedBy = currentUserId;
+                            entry.Entity.UpdatedAt = DateTime.UtcNow;
+                            entry.Entity.UpdatedBy = currentUserId;
+                            break;
 
-                    case EntityState.Modified:
-                        entry.Entity.UpdatedAt = DateTime.UtcNow;
-                        entry.Entity.UpdatedBy = currentUserId;
-                        break;
+                        case EntityState.Modified:
+                            entry.Entity.UpdatedAt = DateTime.UtcNow;
+                            entry.Entity.UpdatedBy = currentUserId;
+                            break;
 
-                    case EntityState.Deleted:
-                        entry.State = EntityState.Modified;
-                        entry.Entity.IsDeleted = true;
-                        entry.Entity.DeletedAt = DateTime.UtcNow;
-                        entry.Entity.DeletedBy = currentUserId;
-                        break;
+                        case EntityState.Deleted:
+                            entry.State = EntityState.Modified;
+                            entry.Entity.IsDeleted = true;
+                            entry.Entity.DeletedAt = DateTime.UtcNow;
+                            entry.Entity.DeletedBy = currentUserId;
+                            break;
+                    }
                 }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Context đã dispose, không cần update audit fields
+                return;
             }
         }
 
         // ✅ FIXED: Null-safe HttpContextAccessor handling
         private Guid? GetCurrentUserId()
         {
+            if (_disposed) return null;
+
             try
             {
                 // Add comprehensive null checks to prevent threading issues
@@ -224,40 +241,80 @@ namespace Repositories
             }
         }
 
-        // ✅ NEW: Add method to reset context state if needed
+        // ✅ FIXED: Safe method to reset context state
         public void ResetChangeTracker()
         {
-            ChangeTracker.Clear();
-        }
+            if (_disposed) return;
 
-        // ✅ NEW: Add method to check if context has pending changes
-        public bool HasPendingChanges()
-        {
-            return ChangeTracker.HasChanges();
-        }
-
-        // ✅ NEW: Override Dispose to ensure proper cleanup
-        public override void Dispose()
-        {
             try
             {
                 ChangeTracker.Clear();
             }
+            catch (ObjectDisposedException)
+            {
+                // Context đã dispose, không cần clear
+            }
+        }
+
+        // ✅ FIXED: Safe method to check if context has pending changes
+        public bool HasPendingChanges()
+        {
+            if (_disposed) return false;
+
+            try
+            {
+                return ChangeTracker.HasChanges();
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        // ✅ FIXED: Override Dispose to ensure proper cleanup order
+        public override void Dispose()
+        {
+            if (_disposed) return;
+
+            try
+            {
+                // Clear change tracker TRƯỚC KHI gọi base.Dispose()
+                if (ChangeTracker != null)
+                {
+                    ChangeTracker.Clear();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore if already disposed
+            }
             finally
             {
+                _disposed = true;
                 base.Dispose();
             }
         }
 
-        // ✅ NEW: Override DisposeAsync for async cleanup
+        // ✅ FIXED: Override DisposeAsync for proper async cleanup order
         public override async ValueTask DisposeAsync()
         {
+            if (_disposed) return;
+
             try
             {
-                ChangeTracker.Clear();
+                // Clear change tracker TRƯỚC KHI gọi base.DisposeAsync()
+                if (ChangeTracker != null)
+                {
+                    ChangeTracker.Clear();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore if already disposed
             }
             finally
             {
+                _disposed = true;
                 await base.DisposeAsync();
             }
         }

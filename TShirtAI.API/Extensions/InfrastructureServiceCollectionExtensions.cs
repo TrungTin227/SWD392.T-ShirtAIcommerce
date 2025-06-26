@@ -26,30 +26,14 @@ namespace WebAPI.Extensions
             services.AddHttpContextAccessor();
 
             // 2. DbContext với cấu hình cải tiến - FIX CONCURRENCY ISSUE
-            services.AddDbContextPool<T_ShirtAIcommerceContext>(opt =>
+            services.AddDbContext<T_ShirtAIcommerceContext>(opt =>
                 opt.UseSqlServer(
                     configuration.GetConnectionString("T_ShirtAIcommerceContext"),
-                    sql => sql.MigrationsAssembly("Repositories")
-                        .CommandTimeout(30) // Add command timeout
-                        .EnableRetryOnFailure(
-                            maxRetryCount: 3, 
-                            maxRetryDelay: TimeSpan.FromSeconds(5), 
-                            errorNumbersToAdd: null)),
-                poolSize: 128); // Use connection pooling for better performance
-
-            // Alternative: If you prefer regular DbContext instead of pooling
-            // services.AddDbContext<T_ShirtAIcommerceContext>(opt =>
-            //     opt.UseSqlServer(
-            //         configuration.GetConnectionString("T_ShirtAIcommerceContext"),
-            //         sql => sql.MigrationsAssembly("Repositories")
-            //             .CommandTimeout(30)
-            //             .EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null)),
-            //     ServiceLifetime.Scoped); // Explicitly set scoped lifetime
-
+                    sql => sql.MigrationsAssembly("Repositories")));            
             services.AddCors(opt =>
             {
                 opt.AddPolicy("CorsPolicy", b => b
-                    .WithOrigins("http://localhost:5173")
+                    .WithOrigins("http://localhost:5265")
                     .AllowAnyMethod()
                     .AllowAnyHeader());
             });

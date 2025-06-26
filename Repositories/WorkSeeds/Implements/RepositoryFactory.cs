@@ -1,5 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Repositories.WorkSeeds.Interfaces;
 
 namespace Repositories.WorkSeeds.Implements
@@ -7,19 +6,19 @@ namespace Repositories.WorkSeeds.Implements
     public class RepositoryFactory : IRepositoryFactory
     {
         private readonly T_ShirtAIcommerceContext _context;
-        private readonly IServiceProvider _serviceProvider; // Thêm field này
+        private readonly IServiceProvider _serviceProvider;
         private readonly Dictionary<Type, object> _repositories = new();
 
-        public RepositoryFactory(T_ShirtAIcommerceContext context, IServiceProvider serviceProvider) // Thêm parameter
+        public RepositoryFactory(T_ShirtAIcommerceContext context, IServiceProvider serviceProvider)
         {
             _context = context;
-            _serviceProvider = serviceProvider; // Gán giá trị
+            _serviceProvider = serviceProvider;
         }
 
         public IGenericRepository<TEntity, TKey> GetRepository<TEntity, TKey>()
             where TEntity : class
         {
-            var type = typeof(TEntity);
+            var type = typeof(IGenericRepository<TEntity, TKey>);
             if (_repositories.ContainsKey(type))
             {
                 return (IGenericRepository<TEntity, TKey>)_repositories[type];

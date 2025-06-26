@@ -1,4 +1,6 @@
-﻿namespace Repositories.WorkSeeds.Interfaces
+﻿using Repositories.Interfaces;
+
+namespace Repositories.WorkSeeds.Interfaces
 {
     public interface IRepositoryFactory
     {

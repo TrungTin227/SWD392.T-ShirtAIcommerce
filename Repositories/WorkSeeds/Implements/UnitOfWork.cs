@@ -12,7 +12,6 @@ namespace Repositories.WorkSeeds.Implements
         private readonly IRepositoryFactory _repositoryFactory;
         private IDbContextTransaction? _transaction;
 
-
         // Specific repositories
         private IUserRepository? _userRepository;
 
@@ -22,7 +21,9 @@ namespace Repositories.WorkSeeds.Implements
             _repositoryFactory = repositoryFactory;
         }
 
-        
+        // Add this property to implement the interface
+        public T_ShirtAIcommerceContext Context => _context;
+
         public IGenericRepository<TEntity, TKey> GetRepository<TEntity, TKey>()
             where TEntity : class
         {
@@ -35,8 +36,8 @@ namespace Repositories.WorkSeeds.Implements
         public bool HasActiveTransaction => _transaction != null;
 
         public async Task<IDbContextTransaction> BeginTransactionAsync(
-            IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
-            CancellationToken cancellationToken = default)
+    IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
+    CancellationToken cancellationToken = default)
         {
             if (_transaction != null)
                 throw new InvalidOperationException("A transaction is already active.");
