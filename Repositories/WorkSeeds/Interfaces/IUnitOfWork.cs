@@ -13,6 +13,7 @@ namespace Repositories.WorkSeeds.Interfaces
         IOrderRepository OrderRepository { get; }
         IOrderItemRepository OrderItemRepository { get; }
         IUserAddressRepository UserAddressRepository { get; }
+        IShippingMethodRepository ShippingMethodRepository { get; }
 
 
         Task<IDbContextTransaction> BeginTransactionAsync(
