@@ -1,7 +1,6 @@
 ﻿using BusinessObjects.Orders;
 using DTOs.OrderItem;
 using Repositories.Helpers;
-using Services.Helpers;
 
 namespace Services.Helpers.Mappers
 {
@@ -23,8 +22,10 @@ namespace Services.Helpers.Mappers
                 UnitPrice = entity.UnitPrice,
                 TotalPrice = entity.TotalPrice,
                 ProductName = entity.Product?.Name,
-                CustomDesignName = entity.CustomDesign?.Name,
-                VariantName = entity.ProductVariant?.Name
+                CustomDesignName = entity.CustomDesign?.DesignName,
+                VariantName = entity.ProductVariant == null 
+                    ? null 
+                    : $"{entity.ProductVariant.Color} - {entity.ProductVariant.Size}"
             };
         }
 

@@ -1,20 +1,19 @@
-﻿using AutoMapper;
-using BusinessObjects.Orders;
+﻿using BusinessObjects.Orders;
 using DTOs.Common;
+using DTOs.OrderItem;
 using DTOs.Orders;
 using Microsoft.Extensions.Logging;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
-using Services.Interfaces;
 using Services.Helpers;
+using Services.Interfaces;
 
 namespace Services.Implementations
 {
     public class OrderService : BaseService<Order, Guid>, IOrderService
     {
         private readonly IOrderRepository _orderRepository;
-        private readonly IMapper _mapper;
         private readonly ILogger<OrderService> _logger;
 
         public OrderService(
@@ -22,12 +21,10 @@ namespace Services.Implementations
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
             ICurrentTime currentTime,
-            IMapper mapper,
             ILogger<OrderService> logger)
             : base(repository, currentUserService, unitOfWork, currentTime)
         {
             _orderRepository = repository;
-            _mapper = mapper;
             _logger = logger;
         }
 
@@ -36,7 +33,7 @@ namespace Services.Implementations
             try
             {
                 var pagedOrders = await _orderRepository.GetOrdersAsync(filter);
-                var orderDTOs = _mapper.Map<List<OrderDTO>>(pagedOrders);
+                var orderDTOs = pagedOrders.Select(ConvertToOrderDTO).ToList();
 
                 return new PagedResponse<OrderDTO>
                 {
@@ -68,7 +65,7 @@ namespace Services.Implementations
             try
             {
                 var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
-                return order != null ? _mapper.Map<OrderDTO>(order) : null;
+                return order != null ? ConvertToOrderDTO(order) : null;
             }
             catch (Exception ex)
             {
@@ -82,6 +79,21 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
+                // Validate order items
+                if (request.OrderItems == null || !request.OrderItems.Any())
+                {
+                    throw new ArgumentException("Đơn hàng phải có ít nhất một sản phẩm");
+                }
+
+                // Validate each order item has at least one product reference
+                foreach (var item in request.OrderItems)
+                {
+                    if (!item.ProductId.HasValue && !item.CustomDesignId.HasValue && !item.ProductVariantId.HasValue)
+                    {
+                        throw new ArgumentException("Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: ProductId, CustomDesignId, hoặc ProductVariantId");
+                    }
+                }
+
                 // Generate order number
                 var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
 
@@ -91,12 +103,18 @@ namespace Services.Implementations
                 var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
                 var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
+                var userId = createdBy ?? _currentUserService.GetUserId();
+                if (!userId.HasValue)
+                {
+                    throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
+                }
+
                 // Create order
                 var order = new Order
                 {
                     Id = Guid.NewGuid(),
                     OrderNumber = orderNumber,
-                    UserId = createdBy ?? _currentUserService.GetUserId() ?? Guid.Empty,
+                    UserId = userId.Value,
                     TotalAmount = totalAmount,
                     ShippingFee = shippingFee,
                     DiscountAmount = discountAmount,
@@ -108,7 +126,10 @@ namespace Services.Implementations
                     ReceiverPhone = request.ReceiverPhone,
                     CustomerNotes = request.CustomerNotes,
                     CouponId = request.CouponId,
-                    ShippingMethodId = request.ShippingMethodId
+                    ShippingMethodId = request.ShippingMethodId,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = userId.Value,
+                    OrderItems = new List<OrderItem>()
                 };
 
                 // Create order items
@@ -126,7 +147,9 @@ namespace Services.Implementations
                         SelectedSize = itemRequest.SelectedSize,
                         Quantity = itemRequest.Quantity,
                         UnitPrice = itemRequest.UnitPrice,
-                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice, itemRequest.Quantity)
+                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice, itemRequest.Quantity),
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = userId.Value
                     };
 
                     order.OrderItems.Add(orderItem);
@@ -135,13 +158,13 @@ namespace Services.Implementations
                 var createdOrder = await CreateAsync(order);
                 await transaction.CommitAsync();
 
-                return _mapper.Map<OrderDTO>(createdOrder);
+                return ConvertToOrderDTO(createdOrder);
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error creating order {@Request}", request);
-                return null;
+                throw;
             }
         }
 
@@ -150,47 +173,71 @@ namespace Services.Implementations
             try
             {
                 var order = await _orderRepository.GetByIdAsync(orderId);
-                if (order == null) return null;
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại");
+                }
 
                 // Only allow updates for certain statuses
                 if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
-                    return null;
+                {
+                    throw new InvalidOperationException("Không thể cập nhật đơn hàng đã giao hoặc đã hủy");
+                }
 
-                // Update fields
-                if (!string.IsNullOrEmpty(request.ShippingAddress))
-                    order.ShippingAddress = request.ShippingAddress;
+                var userId = updatedBy ?? _currentUserService.GetUserId();
+                if (!userId.HasValue)
+                {
+                    throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
+                }
 
-                if (!string.IsNullOrEmpty(request.ReceiverName))
-                    order.ReceiverName = request.ReceiverName;
+                // Update fields if provided
+                if (!string.IsNullOrWhiteSpace(request.ShippingAddress))
+                    order.ShippingAddress = request.ShippingAddress.Trim();
 
-                if (!string.IsNullOrEmpty(request.ReceiverPhone))
-                    order.ReceiverPhone = request.ReceiverPhone;
+                if (!string.IsNullOrWhiteSpace(request.ReceiverName))
+                    order.ReceiverName = request.ReceiverName.Trim();
+
+                if (!string.IsNullOrWhiteSpace(request.ReceiverPhone))
+                    order.ReceiverPhone = request.ReceiverPhone.Trim();
 
                 if (request.CustomerNotes != null)
-                    order.CustomerNotes = request.CustomerNotes;
+                    order.CustomerNotes = request.CustomerNotes.Trim();
 
                 if (request.CouponId.HasValue)
+                {
                     order.CouponId = request.CouponId;
+                    // Recalculate discount and total if coupon changed
+                    var (discountAmount, _) = await CalculateDiscountAndTaxAsync(request.CouponId, order.TotalAmount);
+                    order.DiscountAmount = discountAmount;
+                }
 
                 if (request.ShippingMethodId.HasValue)
+                {
                     order.ShippingMethodId = request.ShippingMethodId;
+                    // Recalculate shipping fee if method changed
+                    order.ShippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, order.TotalAmount);
+                }
 
                 if (request.EstimatedDeliveryDate.HasValue)
                     order.EstimatedDeliveryDate = request.EstimatedDeliveryDate;
 
-                if (!string.IsNullOrEmpty(request.TrackingNumber))
-                    order.TrackingNumber = request.TrackingNumber;
+                if (!string.IsNullOrWhiteSpace(request.TrackingNumber))
+                    order.TrackingNumber = request.TrackingNumber.Trim();
 
                 if (request.AssignedStaffId.HasValue)
                     order.AssignedStaffId = request.AssignedStaffId;
 
+                // Update audit fields
+                order.UpdatedAt = DateTime.UtcNow;
+                order.UpdatedBy = userId.Value;
+
                 var updatedOrder = await UpdateAsync(order);
-                return _mapper.Map<OrderDTO>(updatedOrder);
+                return ConvertToOrderDTO(updatedOrder);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating order {OrderId}", orderId);
-                return null;
+                throw;
             }
         }
 
@@ -198,12 +245,22 @@ namespace Services.Implementations
         {
             try
             {
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null || order.IsDeleted)
+                    return false;
+
+                // Only allow deletion for pending orders
+                if (order.Status != OrderStatus.Pending)
+                {
+                    throw new InvalidOperationException("Chỉ có thể xóa đơn hàng đang chờ xử lý");
+                }
+
                 return await DeleteAsync(orderId);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting order {OrderId}", orderId);
-                return false;
+                throw;
             }
         }
 
@@ -212,7 +269,7 @@ namespace Services.Implementations
             try
             {
                 var orders = await _orderRepository.GetUserOrdersAsync(userId);
-                return _mapper.Map<IEnumerable<OrderDTO>>(orders);
+                return orders.Select(ConvertToOrderDTO);
             }
             catch (Exception ex)
             {
@@ -238,8 +295,27 @@ namespace Services.Implementations
         {
             try
             {
-                if (!Enum.TryParse<OrderStatus>(status, out var orderStatus))
-                    return false;
+                if (string.IsNullOrWhiteSpace(status))
+                {
+                    throw new ArgumentException("Trạng thái đơn hàng không được để trống");
+                }
+
+                if (!Enum.TryParse<OrderStatus>(status, true, out var orderStatus))
+                {
+                    throw new ArgumentException($"Trạng thái đơn hàng không hợp lệ: {status}");
+                }
+
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại");
+                }
+
+                // Validate status transition
+                if (!IsValidStatusTransition(order.Status, orderStatus))
+                {
+                    throw new InvalidOperationException($"Không thể chuyển trạng thái từ {order.Status} sang {orderStatus}");
+                }
 
                 var result = await _orderRepository.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
                 if (result)
@@ -250,7 +326,7 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating order status {OrderId} to {Status}", orderId, status);
-                return false;
+                throw;
             }
         }
 
@@ -258,8 +334,21 @@ namespace Services.Implementations
         {
             try
             {
-                if (!Enum.TryParse<PaymentStatus>(paymentStatus, out var paymentStatusEnum))
-                    return false;
+                if (string.IsNullOrWhiteSpace(paymentStatus))
+                {
+                    throw new ArgumentException("Trạng thái thanh toán không được để trống");
+                }
+
+                if (!Enum.TryParse<PaymentStatus>(paymentStatus, true, out var paymentStatusEnum))
+                {
+                    throw new ArgumentException($"Trạng thái thanh toán không hợp lệ: {paymentStatus}");
+                }
+
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại");
+                }
 
                 var result = await _orderRepository.UpdatePaymentStatusAsync(orderId, paymentStatusEnum, updatedBy);
                 if (result)
@@ -270,7 +359,7 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating payment status {OrderId} to {PaymentStatus}", orderId, paymentStatus);
-                return false;
+                throw;
             }
         }
 
@@ -278,7 +367,23 @@ namespace Services.Implementations
         {
             try
             {
-                var result = await _orderRepository.CancelOrderAsync(orderId, reason, cancelledBy);
+                if (string.IsNullOrWhiteSpace(reason))
+                {
+                    throw new ArgumentException("Lý do hủy đơn hàng là bắt buộc");
+                }
+
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại");
+                }
+
+                if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
+                {
+                    throw new InvalidOperationException("Không thể hủy đơn hàng đã giao hoặc đã hủy");
+                }
+
+                var result = await _orderRepository.CancelOrderAsync(orderId, reason.Trim(), cancelledBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
 
@@ -287,7 +392,7 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error cancelling order {OrderId}", orderId);
-                return false;
+                throw;
             }
         }
 
@@ -295,6 +400,17 @@ namespace Services.Implementations
         {
             try
             {
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại");
+                }
+
+                if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered)
+                {
+                    throw new InvalidOperationException("Không thể phân công đơn hàng đã hủy hoặc đã giao");
+                }
+
                 var result = await _orderRepository.AssignOrderToStaffAsync(orderId, staffId, updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
@@ -304,7 +420,7 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error assigning order {OrderId} to staff {StaffId}", orderId, staffId);
-                return false;
+                throw;
             }
         }
 
@@ -313,7 +429,7 @@ namespace Services.Implementations
             try
             {
                 var orders = await _orderRepository.GetStaffOrdersAsync(staffId);
-                return _mapper.Map<IEnumerable<OrderDTO>>(orders);
+                return orders.Select(ConvertToOrderDTO);
             }
             catch (Exception ex)
             {
@@ -326,74 +442,152 @@ namespace Services.Implementations
         {
             var result = new BatchOperationResultDTO
             {
-                TotalRequested = orderIds.Count,
-                SuccessfulOperations = new List<Guid>(),
-                FailedOperations = new List<BatchOperationError>()
+                TotalRequested = orderIds?.Count ?? 0,
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
             };
 
-            if (!Enum.TryParse<OrderStatus>(status, out var orderStatus))
+            if (orderIds == null || !orderIds.Any())
             {
-                result.FailedOperations = orderIds.Select(id => new BatchOperationError
+                result.Errors.Add(new BatchOperationErrorDTO
                 {
-                    Id = id,
-                    Error = "Invalid status value"
+                    Id = Guid.Empty.ToString(),
+                    ErrorMessage = "Danh sách ID đơn hàng không được để trống"
+                });
+                result.FailureCount = 1;
+                result.Message = "Danh sách ID đơn hàng không hợp lệ";
+                return result;
+            }
+
+            if (string.IsNullOrWhiteSpace(status))
+            {
+                result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
+                {
+                    Id = id.ToString(),
+                    ErrorMessage = "Trạng thái không được để trống"
                 }).ToList();
+                result.FailureCount = orderIds.Count;
+                result.Message = "Trạng thái không hợp lệ";
+                return result;
+            }
+
+            if (!Enum.TryParse<OrderStatus>(status, true, out var orderStatus))
+            {
+                result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
+                {
+                    Id = id.ToString(),
+                    ErrorMessage = $"Trạng thái không hợp lệ: {status}"
+                }).ToList();
+                result.FailureCount = orderIds.Count;
+                result.Message = $"Trạng thái '{status}' không hợp lệ";
                 return result;
             }
 
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
+                var successfulIds = new List<string>();
+                var errors = new List<BatchOperationErrorDTO>();
+
                 foreach (var orderId in orderIds)
                 {
                     try
                     {
+                        var order = await _orderRepository.GetByIdAsync(orderId);
+                        if (order == null || order.IsDeleted)
+                        {
+                            errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id = orderId.ToString(),
+                                ErrorMessage = "Đơn hàng không tồn tại"
+                            });
+                            continue;
+                        }
+
+                        if (!IsValidStatusTransition(order.Status, orderStatus))
+                        {
+                            errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id = orderId.ToString(),
+                                ErrorMessage = $"Không thể chuyển trạng thái từ {order.Status} sang {orderStatus}"
+                            });
+                            continue;
+                        }
+
                         var success = await _orderRepository.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
                         if (success)
-                            result.SuccessfulOperations.Add(orderId);
+                        {
+                            successfulIds.Add(orderId.ToString());
+                        }
                         else
-                            result.FailedOperations.Add(new BatchOperationError
+                        {
+                            errors.Add(new BatchOperationErrorDTO
                             {
-                                Id = orderId,
-                                Error = "Failed to update order status"
+                                Id = orderId.ToString(),
+                                ErrorMessage = "Cập nhật trạng thái thất bại"
                             });
+                        }
                     }
                     catch (Exception ex)
                     {
-                        result.FailedOperations.Add(new BatchOperationError
+                        errors.Add(new BatchOperationErrorDTO
                         {
-                            Id = orderId,
-                            Error = ex.Message
+                            Id = orderId.ToString(),
+                            ErrorMessage = ex.Message
                         });
+                        _logger.LogError(ex, "Error updating order {OrderId} status to {Status}", orderId, status);
                     }
                 }
 
-                await _unitOfWork.SaveChangesAsync();
-                await transaction.CommitAsync();
+                // Only commit if we have at least one success
+                if (successfulIds.Any())
+                {
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                else
+                {
+                    await transaction.RollbackAsync();
+                }
 
-                result.SuccessCount = result.SuccessfulOperations.Count;
-                result.FailureCount = result.FailedOperations.Count;
-                result.IsSuccess = result.SuccessCount > 0;
+                result.SuccessIds = successfulIds;
+                result.Errors = errors;
+                result.SuccessCount = successfulIds.Count;
+                result.FailureCount = errors.Count;
+
+                // Set appropriate message based on results
+                if (result.IsCompleteSuccess)
+                {
+                    result.Message = $"Đã cập nhật thành công trạng thái cho tất cả {result.SuccessCount} đơn hàng";
+                }
+                else if (result.IsCompleteFailure)
+                {
+                    result.Message = $"Không thể cập nhật trạng thái cho bất kỳ đơn hàng nào. {result.FailureCount} đơn hàng thất bại";
+                }
+                else if (result.IsPartialSuccess)
+                {
+                    result.Message = $"Cập nhật một phần thành công: {result.SuccessCount} thành công, {result.FailureCount} thất bại";
+                }
 
                 return result;
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error in bulk update status operation");
+                _logger.LogError(ex, "Error in bulk update status operation for orders: {OrderIds}", string.Join(", ", orderIds));
 
-                result.FailedOperations = orderIds.Select(id => new BatchOperationError
+                result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
                 {
-                    Id = id,
-                    Error = "Transaction failed"
+                    Id = id.ToString(),
+                    ErrorMessage = "Giao dịch thất bại do lỗi hệ thống"
                 }).ToList();
                 result.FailureCount = orderIds.Count;
-                result.IsSuccess = false;
+                result.SuccessCount = 0;
+                result.Message = "Cập nhật thất bại do lỗi hệ thống";
 
                 return result;
             }
         }
-
         public async Task<decimal> CalculateOrderTotalAsync(Guid orderId)
         {
             try
@@ -438,8 +632,11 @@ namespace Services.Implementations
         {
             try
             {
+                if (limit <= 0) limit = 10;
+                if (limit > 100) limit = 100; // Prevent too large requests
+
                 var orders = await _orderRepository.GetRecentOrdersAsync(limit);
-                return _mapper.Map<IEnumerable<OrderDTO>>(orders);
+                return orders.Select(ConvertToOrderDTO);
             }
             catch (Exception ex)
             {
@@ -452,13 +649,18 @@ namespace Services.Implementations
         {
             try
             {
+                if (fromDate > toDate)
+                {
+                    throw new ArgumentException("Ngày bắt đầu không thể lớn hơn ngày kết thúc");
+                }
+
                 var orders = await _orderRepository.GetOrdersForAnalyticsAsync(fromDate, toDate);
-                return _mapper.Map<IEnumerable<OrderDTO>>(orders);
+                return orders.Select(ConvertToOrderDTO);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting orders for analytics");
-                return Enumerable.Empty<OrderDTO>();
+                throw;
             }
         }
 
@@ -466,7 +668,23 @@ namespace Services.Implementations
         {
             try
             {
-                var result = await _orderRepository.UpdateTrackingNumberAsync(orderId, trackingNumber, updatedBy);
+                if (string.IsNullOrWhiteSpace(trackingNumber))
+                {
+                    throw new ArgumentException("Mã vận đơn không được để trống");
+                }
+
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại");
+                }
+
+                if (order.Status != OrderStatus.Shipping && order.Status != OrderStatus.Confirmed)
+                {
+                    throw new InvalidOperationException("Chỉ có thể cập nhật mã vận đơn cho đơn hàng đã xác nhận hoặc đang giao");
+                }
+
+                var result = await _orderRepository.UpdateTrackingNumberAsync(orderId, trackingNumber.Trim(), updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
 
@@ -475,7 +693,7 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating tracking number {OrderId}", orderId);
-                return false;
+                throw;
             }
         }
 
@@ -485,26 +703,117 @@ namespace Services.Implementations
         {
             if (!shippingMethodId.HasValue) return 0;
 
-            // TODO: Implement shipping fee calculation based on method and subtotal
-            // This would typically involve getting the shipping method from repository
-            // and checking for free shipping thresholds
-            return 25000m; // Default shipping fee
+            try
+            {
+                // TODO: Implement proper shipping fee calculation
+                // For now, return a default fee
+                var defaultFee = 25000m;
+
+                // Free shipping for orders over 500,000 VND
+                if (subtotal >= 500000m) return 0;
+
+                return defaultFee;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error calculating shipping fee, using default");
+                return 25000m; // Default shipping fee
+            }
         }
 
         private async Task<(decimal discountAmount, decimal taxAmount)> CalculateDiscountAndTaxAsync(Guid? couponId, decimal subtotal)
         {
-            decimal discountAmount = 0;
-            decimal taxAmount = subtotal * 0.1m; // 10% tax
-
-            if (couponId.HasValue)
+            try
             {
-                // TODO: Implement coupon discount calculation
-                // This would involve getting the coupon from repository
-                // and calculating discount based on coupon type and value
-                discountAmount = subtotal * 0.05m; // 5% discount as example
-            }
+                decimal discountAmount = 0;
+                decimal taxAmount = subtotal * 0.1m; // 10% VAT
 
-            return (discountAmount, taxAmount);
+                if (couponId.HasValue)
+                {
+                    // TODO: Implement proper coupon discount calculation
+                    // For now, apply a simple percentage discount
+                    discountAmount = subtotal * 0.05m; // 5% discount
+                }
+
+                return (discountAmount, taxAmount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error calculating discount and tax, using defaults");
+                return (0, subtotal * 0.1m);
+            }
+        }
+
+        private static bool IsValidStatusTransition(OrderStatus currentStatus, OrderStatus newStatus)
+        {
+            // Define valid status transitions
+            return currentStatus switch
+            {
+                OrderStatus.Pending => newStatus is OrderStatus.Confirmed or OrderStatus.Cancelled,
+                OrderStatus.Confirmed => newStatus is OrderStatus.Processing or OrderStatus.Cancelled,
+                OrderStatus.Processing => newStatus is OrderStatus.Shipping or OrderStatus.Cancelled,
+                OrderStatus.Shipping => newStatus is OrderStatus.Delivered or OrderStatus.Returned,
+                OrderStatus.Delivered => newStatus is OrderStatus.Returned,
+                OrderStatus.Cancelled => false, // Cannot change from cancelled
+                OrderStatus.Returned => false, // Cannot change from returned
+                _ => false
+            };
+        }
+
+        private OrderDTO ConvertToOrderDTO(Order order)
+        {
+            if (order == null) return null;
+
+            return new OrderDTO
+            {
+                Id = order.Id,
+                OrderNumber = order.OrderNumber,
+                UserId = order.UserId,
+                TotalAmount = order.TotalAmount,
+                ShippingFee = order.ShippingFee,
+                DiscountAmount = order.DiscountAmount,
+                TaxAmount = order.TaxAmount,
+                Status = order.Status.ToString(),
+                PaymentStatus = order.PaymentStatus.ToString(),
+                ShippingAddress = order.ShippingAddress,
+                ReceiverName = order.ReceiverName,
+                ReceiverPhone = order.ReceiverPhone,
+                CustomerNotes = order.CustomerNotes,
+                EstimatedDeliveryDate = order.EstimatedDeliveryDate,
+                TrackingNumber = order.TrackingNumber,
+                AssignedStaffId = order.AssignedStaffId,
+                CouponId = order.CouponId,
+                ShippingMethodId = order.ShippingMethodId,
+                CreatedAt = order.CreatedAt,
+                UpdatedAt = order.UpdatedAt,
+                CreatedBy = order.CreatedBy,
+                UpdatedBy = order.UpdatedBy,
+                UserName = order.User?.UserName ?? "",
+                AssignedStaffName = order.AssignedStaff?.UserName ?? "",
+                CouponCode = order.Coupon?.Code ?? "",
+                ShippingMethodName = order.ShippingMethod?.Name ?? "",
+                OrderItems = order.OrderItems?.Select(ConvertToOrderItemDto).ToList() ?? new List<OrderItemDto>()
+            };
+        }
+
+        private OrderItemDto ConvertToOrderItemDto(OrderItem orderItem)
+        {
+            if (orderItem == null) return null;
+
+            return new OrderItemDto
+            {
+                Id = orderItem.Id,
+                OrderId = orderItem.OrderId,
+                ProductId = orderItem.ProductId,
+                CustomDesignId = orderItem.CustomDesignId,
+                ProductVariantId = orderItem.ProductVariantId,
+                ItemName = orderItem.ItemName,
+                SelectedColor = orderItem.SelectedColor,
+                SelectedSize = orderItem.SelectedSize,
+                Quantity = orderItem.Quantity,
+                UnitPrice = orderItem.UnitPrice,
+                TotalPrice = orderItem.TotalPrice
+            };
         }
 
         #endregion

@@ -1,11 +1,12 @@
 ﻿using BusinessObjects.CustomDesigns;
+using BusinessObjects.Identity;
 using BusinessObjects.Products;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BusinessObjects.Orders
 {
-    public class OrderItem
+    public class OrderItem : BaseEntity
     {
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();

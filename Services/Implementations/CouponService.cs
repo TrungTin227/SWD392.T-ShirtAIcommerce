@@ -1,5 +1,6 @@
 ﻿using BusinessObjects.Coupons;
 using DTOs.Coupons;
+using Microsoft.EntityFrameworkCore;
 using Repositories.Commons;
 using Repositories.Helpers;
 using Repositories.Interfaces;
@@ -289,8 +290,9 @@ namespace Services.Implementations
                         return ApiResult<bool>.Failure("Không thể sử dụng coupon");
 
                     // Update or create user coupon usage
-                    var userCoupon = await _context.Set<UserCoupon>()
-                        .FirstOrDefaultAsync(uc => uc.CouponId == couponId && uc.UserId == userId);
+                    var userCoupon = await _unitOfWork.Context.Set<UserCoupon>()
+                .FirstOrDefaultAsync(uc => uc.CouponId == couponId && uc.UserId == userId);
+
 
                     if (userCoupon == null)
                     {
@@ -303,7 +305,7 @@ namespace Services.Implementations
                             FirstUsedAt = DateTime.UtcNow,
                             LastUsedAt = DateTime.UtcNow
                         };
-                        await _context.Set<UserCoupon>().AddAsync(userCoupon);
+                        await _unitOfWork.Context.Set<UserCoupon>().AddAsync(userCoupon);
                     }
                     else
                     {

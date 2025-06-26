@@ -1,4 +1,6 @@
-﻿using DTOs.OrderItem;
+﻿using BusinessObjects.CustomDesigns;
+using BusinessObjects.Products;
+using DTOs.OrderItem;
 
 namespace Services.Helpers
 {
@@ -48,21 +50,38 @@ namespace Services.Helpers
         }
 
         public static decimal GetPriceFromSource(
-            BusinessObjects.Products.Product? product,
-            BusinessObjects.CustomDesigns.CustomDesign? customDesign,
-            BusinessObjects.Products.ProductVariant? productVariant)
+    Product? product,
+    CustomDesign? customDesign,
+    ProductVariant? productVariant)
         {
-            // Priority: ProductVariant > Product > CustomDesign
-            if (productVariant != null && productVariant.Price.HasValue)
-                return productVariant.Price.Value;
+            // Ưu tiên variant: nếu có product gốc thì cộng chênh lệch, 
+            // nếu không có chênh lệch thì trả về giá gốc hoặc ném lỗi
+            if (productVariant != null)
+            {
+                if (product != null && productVariant.PriceAdjustment.HasValue)
+                    return product.Price + productVariant.PriceAdjustment.Value;
 
+                // Nếu bạn muốn cho phép variant tự định nghĩa giá tuyệt đối
+                if (productVariant.PriceAdjustment.HasValue)
+                    return productVariant.PriceAdjustment.Value;
+
+                // Không có chênh lệch, quay về giá product (nếu product != null)
+                if (product != null)
+                    return product.Price;
+
+                throw new InvalidOperationException("Không xác định được giá từ variant");
+            }
+
+            // Nếu không có variant, dùng giá product
             if (product != null)
                 return product.Price;
 
+            // Cuối cùng, nếu là custom design thì dùng TotalPrice
             if (customDesign != null)
-                return customDesign.Price;
+                return customDesign.TotalPrice;
 
             throw new InvalidOperationException("Unable to determine price from any source");
         }
+
     }
 }

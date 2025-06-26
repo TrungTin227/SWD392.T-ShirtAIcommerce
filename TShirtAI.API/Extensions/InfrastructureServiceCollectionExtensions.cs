@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Repositories;
 using Repositories.Implementations;
-using Repositories.Implements;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
@@ -110,6 +109,8 @@ namespace WebAPI.Extensions
             services.AddScoped<IOrderItemRepository, OrderItemRepository>();
             services.AddScoped<ICurrentTime, CurrentTime>();
             services.AddScoped<IOrderRepository, OrderRepository>();
+            services.AddScoped<ICouponRepository, CouponRepository>();
+            services.AddScoped<IShippingMethodRepository, ShippingMethodRepository>();
 
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -118,8 +119,11 @@ namespace WebAPI.Extensions
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IUserEmailService, UserEmailService>();
             services.AddScoped<IUserAddressService, UserAddressService>();
-            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
             services.AddScoped<ICouponService, CouponService>();
+            services.AddScoped<IOrderService, OrderService>();
+            services.AddScoped<IOrderItemService, OrderItemService>();
+            services.AddScoped<IShippingMethodService, ShippingMethodService>();
+
 
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
