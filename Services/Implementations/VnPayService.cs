@@ -17,6 +17,12 @@ namespace Services.Implementations
             _httpClient = httpClient;
         }
 
+        private DateTime GetVietnamTime()
+        {
+            var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById(_config.TimeZoneId);
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+        }
+
         public async Task<VnPayCreatePaymentResponse> CreatePaymentUrlAsync(VnPayCreatePaymentRequest request)
         {
             try
@@ -56,7 +62,7 @@ namespace Services.Implementations
                 {
                     Success = false,
                     PaymentUrl = string.Empty,
-                    Message = ex.Message
+                    Message = $"Error creating VnPay payment URL: {ex.Message}"
                 };
             }
         }
@@ -66,7 +72,20 @@ namespace Services.Implementations
             try
             {
                 var queryUrl = CreateQueryUrl(request);
-                var response = await _httpClient.GetAsync(queryUrl);
+
+                // Add timeout and error handling for API calls
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var response = await _httpClient.GetAsync(queryUrl, cts.Token);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new VnPayQueryResponse
+                    {
+                        vnp_ResponseCode = "99",
+                        vnp_Message = $"API call failed with status: {response.StatusCode}"
+                    };
+                }
+
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 // Parse response content (VnPay returns query string format)
@@ -88,12 +107,20 @@ namespace Services.Implementations
                     vnp_SecureHash = queryData.GetValueOrDefault("vnp_SecureHash", "")
                 };
             }
+            catch (TaskCanceledException)
+            {
+                return new VnPayQueryResponse
+                {
+                    vnp_ResponseCode = "99",
+                    vnp_Message = "Request timeout"
+                };
+            }
             catch (Exception ex)
             {
                 return new VnPayQueryResponse
                 {
                     vnp_ResponseCode = "99",
-                    vnp_Message = ex.Message
+                    vnp_Message = $"Query payment error: {ex.Message}"
                 };
             }
         }
@@ -145,6 +172,10 @@ namespace Services.Implementations
         private static Dictionary<string, string> ParseQueryString(string queryString)
         {
             var result = new Dictionary<string, string>();
+
+            if (string.IsNullOrEmpty(queryString))
+                return result;
+
             var pairs = queryString.Split('&');
 
             foreach (var pair in pairs)

@@ -11,5 +11,6 @@
         public string Command { get; set; } = "pay";
         public string CurrCode { get; set; } = "VND";
         public string Locale { get; set; } = "vn";
+        public string TimeZoneId { get; set; } = "SE Asia Standard Time";
     }
 }

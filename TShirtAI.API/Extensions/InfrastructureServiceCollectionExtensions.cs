@@ -10,7 +10,6 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons.Gmail.Implementations;
-using Services.Configuration;
 using Services.Implementations;
 using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
@@ -104,8 +103,7 @@ namespace WebAPI.Extensions
 
 
             // Add VnPay configuration
-            services.Configure<VnPayConfig>(
-                services.Configuration.GetSection("VnPay"));
+            services.Configure<VnPayConfig>(configuration.GetSection("VnPay"));
 
             // Register HttpClient for VnPay
             services.AddHttpClient<IVnPayService, VnPayService>();
@@ -127,7 +125,6 @@ namespace WebAPI.Extensions
             services.AddScoped<IShippingMethodRepository, ShippingMethodRepository>();
             services.AddScoped<ICartItemRepository, CartItemRepository>();
             services.AddScoped<IPaymentRepository, PaymentRepository>();
-            
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             services.AddScoped<IExternalAuthService, ExternalAuthService>();

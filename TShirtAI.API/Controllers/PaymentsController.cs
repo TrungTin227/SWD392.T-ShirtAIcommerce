@@ -1,3 +1,4 @@
+using DTOs.Orders;
 using DTOs.Payments;
 using DTOs.Payments.VnPay;
 using Microsoft.AspNetCore.Mvc;
@@ -198,15 +199,15 @@ namespace Controllers
 
         [HttpPut("{id}/status")]
         public async Task<ActionResult<PaymentResponse>> UpdatePaymentStatus(
-            Guid id,
-            [FromBody] UpdatePaymentStatusRequest request)
+    Guid id,
+    [FromBody] UpdatePaymentStatusRequest request)
         {
             try
             {
                 var payment = await _paymentService.UpdatePaymentStatusAsync(
                     id,
-                    request.Status,
-                    request.TransactionId);
+                    request.PaymentStatus,
+                    null); 
 
                 return Ok(new
                 {
@@ -224,11 +225,5 @@ namespace Controllers
                 });
             }
         }
-    }
-
-    public class UpdatePaymentStatusRequest
-    {
-        public string Status { get; set; } = string.Empty;
-        public string? TransactionId { get; set; }
     }
 }

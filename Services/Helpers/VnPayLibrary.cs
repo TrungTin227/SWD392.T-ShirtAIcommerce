@@ -1,0 +1,175 @@
+﻿using System.Globalization;
+using System.Net;
+using System.Text;
+using Microsoft.AspNetCore.Http;
+
+namespace Services.Helpers
+{
+    public class VnPayLibrary
+    {
+        private readonly SortedList<string, string> _requestData = new SortedList<string, string>(new VnPayCompare());
+        private readonly SortedList<string, string> _responseData = new SortedList<string, string>(new VnPayCompare());
+
+        public void AddRequestData(string key, string value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                _requestData.Add(key, value);
+            }
+        }
+
+        public void AddResponseData(string key, string value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                _responseData.Add(key, value);
+            }
+        }
+
+        public string GetResponseData(string key)
+        {
+            return _responseData.TryGetValue(key, out string? retValue) ? retValue : string.Empty;
+        }
+
+        public string CreateRequestUrl(string baseUrl, string vnpHashSecret)
+        {
+            var data = new StringBuilder();
+
+            foreach (var kv in _requestData)
+            {
+                if (!string.IsNullOrEmpty(kv.Value))
+                {
+                    data.Append(WebUtility.UrlEncode(kv.Key) + "=" + WebUtility.UrlEncode(kv.Value) + "&");
+                }
+            }
+
+            var queryString = data.ToString();
+
+            baseUrl += "?" + queryString;
+            var signData = queryString;
+            if (signData.Length > 0)
+            {
+                signData = signData.Remove(data.Length - 1, 1);
+            }
+
+            var vnpSecureHash = Utils.HmacSHA512(vnpHashSecret, signData);
+            baseUrl += "vnp_SecureHash=" + vnpSecureHash;
+
+            return baseUrl;
+        }
+
+        public bool ValidateSignature(string inputHash, string secretKey)
+        {
+            var rspRaw = GetResponseData();
+            var myChecksum = Utils.HmacSHA512(secretKey, rspRaw);
+            return myChecksum.Equals(inputHash, StringComparison.InvariantCultureIgnoreCase);
+        }
+
+        public static string GetIpAddress(HttpContext context)
+        {
+            try
+            {
+                string ipAddress = string.Empty;
+
+                // Check for X-Forwarded-For header (common in load balancers and proxies)
+                if (context.Request.Headers.ContainsKey("X-Forwarded-For"))
+                {
+                    var forwardedFor = context.Request.Headers["X-Forwarded-For"].ToString();
+                    if (!string.IsNullOrEmpty(forwardedFor))
+                    {
+                        // Take the first IP if there are multiple (original client IP)
+                        ipAddress = forwardedFor.Split(',')[0].Trim();
+                    }
+                }
+
+                // Check for X-Real-IP header (used by some reverse proxies)
+                if (string.IsNullOrEmpty(ipAddress) && context.Request.Headers.ContainsKey("X-Real-IP"))
+                {
+                    ipAddress = context.Request.Headers["X-Real-IP"].ToString();
+                }
+
+                // Check for CF-Connecting-IP header (Cloudflare)
+                if (string.IsNullOrEmpty(ipAddress) && context.Request.Headers.ContainsKey("CF-Connecting-IP"))
+                {
+                    ipAddress = context.Request.Headers["CF-Connecting-IP"].ToString();
+                }
+
+                // Fall back to RemoteIpAddress
+                if (string.IsNullOrEmpty(ipAddress))
+                {
+                    ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+                }
+
+                // Handle IPv6 loopback and map to IPv4 if needed
+                if (ipAddress == "::1")
+                {
+                    ipAddress = "127.0.0.1";
+                }
+
+                // If still empty or localhost, use a default IP for VnPay
+                if (string.IsNullOrEmpty(ipAddress) || ipAddress == "127.0.0.1" || ipAddress == "::1")
+                {
+                    // Use a placeholder IP for development/localhost scenarios
+                    // In production, this should be the actual server IP
+                    ipAddress = "127.0.0.1";
+                }
+
+                // Validate IP format
+                if (IPAddress.TryParse(ipAddress, out _))
+                {
+                    return ipAddress;
+                }
+
+                // Return default if parsing fails
+                return "127.0.0.1";
+            }
+            catch
+            {
+                // Return default IP if any exception occurs
+                return "127.0.0.1";
+            }
+        }
+
+        private string GetResponseData()
+        {
+            var data = new StringBuilder();
+            if (_responseData.ContainsKey("vnp_SecureHashType"))
+            {
+                _responseData.Remove("vnp_SecureHashType");
+            }
+
+            if (_responseData.ContainsKey("vnp_SecureHash"))
+            {
+                _responseData.Remove("vnp_SecureHash");
+            }
+
+            foreach (var kv in _responseData)
+            {
+                if (!string.IsNullOrEmpty(kv.Value))
+                {
+                    data.Append(WebUtility.UrlEncode(kv.Key) + "=" + WebUtility.UrlEncode(kv.Value) + "&");
+                }
+            }
+
+            // Remove last &
+            if (data.Length > 0)
+            {
+                data.Remove(data.Length - 1, 1);
+            }
+
+            return data.ToString();
+        }
+    }
+
+    public class VnPayCompare : IComparer<string>
+    {
+        public int Compare(string x, string y)
+        {
+            if (x == y) return 0;
+            if (x == null) return -1;
+            if (y == null) return 1;
+            var vnpCompare = CompareInfo.GetCompareInfo("en-US");
+            return vnpCompare.Compare(x, y, CompareOptions.Ordinal);
+        }
+    }
+}

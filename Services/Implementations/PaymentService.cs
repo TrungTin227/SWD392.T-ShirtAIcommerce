@@ -45,6 +45,11 @@ namespace Services.Implementations
             return MapToResponse(payment);
         }
 
+        private DateTime GetVietnamTime()
+        {
+            var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+        }
         public async Task<PaymentResponse?> GetPaymentByIdAsync(Guid id)
         {
             var payment = await _paymentRepository.GetByIdAsync(id);

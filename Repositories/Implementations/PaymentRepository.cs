@@ -6,10 +6,10 @@ namespace Repositories.Implementations
 {
     public class PaymentRepository : IPaymentRepository
     {
-        private readonly DbContext _context;
+        private readonly T_ShirtAIcommerceContext _context;
         private readonly DbSet<Payment> _payments;
 
-        public PaymentRepository(DbContext context)
+        public PaymentRepository(T_ShirtAIcommerceContext context)
         {
             _context = context;
             _payments = context.Set<Payment>();
