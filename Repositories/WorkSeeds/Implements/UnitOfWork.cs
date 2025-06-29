@@ -20,6 +20,8 @@ namespace Repositories.WorkSeeds.Implements
         private IUserAddressRepository? _userAddressRepository;
         private IShippingMethodRepository? _shippingMethodRepository;
         private ICartItemRepository? _cartItemRepository;
+        private ICategoryRepository? _categoryRepository;
+        private IProductRepository? _productRepository;
 
 
         public UnitOfWork(T_ShirtAIcommerceContext context, IRepositoryFactory repositoryFactory)
@@ -50,6 +52,10 @@ namespace Repositories.WorkSeeds.Implements
         public IUserAddressRepository UserAddressRepository =>  _userAddressRepository ??= _repositoryFactory.GetCustomRepository<IUserAddressRepository>();
         public IShippingMethodRepository ShippingMethodRepository => _shippingMethodRepository ??= _repositoryFactory.GetCustomRepository<IShippingMethodRepository>();
         public ICartItemRepository CartItemRepository => _cartItemRepository ??= _repositoryFactory.GetCustomRepository<ICartItemRepository>();
+        public ICategoryRepository CategoryRepository =>
+          _categoryRepository ??= _repositoryFactory.GetCustomRepository<ICategoryRepository>();
+        public IProductRepository ProductRepository =>
+         _productRepository ??= _repositoryFactory.GetCustomRepository<IProductRepository>();
 
         public bool HasActiveTransaction => _transaction != null;
 

@@ -28,8 +28,4 @@
     <ProjectReference Include="..\DTOs\DTOs.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="WorkSeeds\Extensions\" />
-  </ItemGroup>
-
 </Project>

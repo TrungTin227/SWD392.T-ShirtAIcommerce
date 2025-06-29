@@ -189,20 +189,79 @@ namespace Services.Commons.Gmail.Implementations
 
         private MailMessage CreateMailMessage(EmailRequest emailRequest)
         {
-            var mailMessage = new MailMessage
-            {
-                From = new MailAddress(_emailSettings.FromEmail, _emailSettings.FromName),
-                Subject = emailRequest.Subject,
-                Body = emailRequest.Body,
-                IsBodyHtml = true
-            };
+            var mailMessage = new MailMessage();
 
-            foreach (var to in emailRequest.To)
+            // Validate and set From address - sử dụng đúng property name
+            var fromEmail = _emailSettings.FromEmail?.Trim();
+            var fromDisplayName = _emailSettings.FromName?.Trim();
+
+            if (string.IsNullOrWhiteSpace(fromEmail))
+                throw new InvalidOperationException("FromEmail is not configured or empty in EmailSettings");
+
+            // Create From address - only use display name if it's not empty
+            if (!string.IsNullOrWhiteSpace(fromDisplayName))
+                mailMessage.From = new MailAddress(fromEmail, fromDisplayName);
+            else
+                mailMessage.From = new MailAddress(fromEmail);
+
+            // Validate and add To addresses
+            if (emailRequest.To == null || !emailRequest.To.Any())
+                throw new ArgumentException("No recipients specified");
+
+            foreach (var toEmail in emailRequest.To)
             {
-                mailMessage.To.Add(to);
+                var cleanEmail = toEmail?.Trim();
+                if (!string.IsNullOrWhiteSpace(cleanEmail) && IsValidEmail(cleanEmail))
+                {
+                    mailMessage.To.Add(new MailAddress(cleanEmail));
+                }
+                else
+                {
+                    _logger.LogWarning("Invalid or empty email address skipped: '{Email}'", toEmail);
+                }
+            }
+
+            if (!mailMessage.To.Any())
+                throw new ArgumentException("No valid recipients found");
+
+            // Set subject and body
+            mailMessage.Subject = emailRequest.Subject ?? string.Empty;
+            mailMessage.Body = emailRequest.Body ?? string.Empty;
+            mailMessage.IsBodyHtml = true;
+
+            // Set Reply-To using SupportEmail
+            var replyToEmail = _emailSettings.SupportEmail?.Trim();
+            if (!string.IsNullOrWhiteSpace(replyToEmail) && IsValidEmail(replyToEmail))
+            {
+                mailMessage.ReplyToList.Add(new MailAddress(replyToEmail));
             }
 
             return mailMessage;
+        }
+
+        private bool IsValidEmail(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return false;
+
+            try
+            {
+                var addr = new MailAddress(email);
+                return addr.Address == email.Trim();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Thêm method debug để kiểm tra EmailSettings
+        public void LogEmailSettings()
+        {
+            _logger.LogInformation("EmailSettings Debug - FromEmail: '{FromEmail}', FromName: '{FromName}', SupportEmail: '{SupportEmail}'",
+                _emailSettings.FromEmail,
+                _emailSettings.FromName,
+                _emailSettings.SupportEmail);
         }
     }
 }

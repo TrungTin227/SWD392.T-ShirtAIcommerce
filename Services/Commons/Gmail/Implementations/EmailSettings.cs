@@ -1,4 +1,6 @@
-﻿namespace Services.Commons.Gmail.Implementations
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace Services.Commons.Gmail.Implementations
 {
     public class EmailSettings
     {
@@ -7,10 +9,11 @@
         public string SmtpUsername { get; set; } = string.Empty;
         public string SmtpPassword { get; set; } = string.Empty;
         public bool EnableSsl { get; set; } = true;
+        [Required, EmailAddress]
         public string FromEmail { get; set; } = string.Empty;
         public string FromName { get; set; } = "T-Shirt AI Commerce";
         public string CompanyName { get; set; } = "T-Shirt AI Commerce";
-        public string SupportEmail { get; set; } = "support@tshirtai.com";
+        public string SupportEmail { get; set; } = "tinvtse@gmail.com";
         public int MaxRetryAttempts { get; set; } = 3;
     }
 }

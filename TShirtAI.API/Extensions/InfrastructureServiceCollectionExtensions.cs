@@ -11,6 +11,7 @@ using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons.Gmail.Implementations;
 using Services.Implementations;
+using Services.Implements;
 using Services.Interfaces;
 using Services.Interfaces.Services.Commons.User;
 using System.Security.Claims;
@@ -125,6 +126,8 @@ namespace WebAPI.Extensions
             services.AddScoped<IShippingMethodRepository, ShippingMethodRepository>();
             services.AddScoped<ICartItemRepository, CartItemRepository>();
             services.AddScoped<IPaymentRepository, PaymentRepository>();
+            services.AddScoped<ICategoryRepository, CategoryRepository>();
+            services.AddScoped<IProductRepository, ProductRepository>();
 
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             services.AddScoped<IExternalAuthService, ExternalAuthService>();
@@ -139,7 +142,8 @@ namespace WebAPI.Extensions
             services.AddScoped<ICartItemService, CartItemService>();
             services.AddScoped<IVnPayService, VnPayService>();
             services.AddScoped<IPaymentService, PaymentService>();
-
+            services.AddScoped<ICategoryService, CategoryService>();
+            services.AddScoped<IProductService, ProductService>();
             // 5. Email + Quartz
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
 
