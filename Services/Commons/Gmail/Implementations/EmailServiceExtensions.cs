@@ -6,9 +6,13 @@ namespace Services.Commons.Gmail.Implementations
 {
     public static class EmailServiceExtensions
     {
-        public static IServiceCollection AddEmailServices(this IServiceCollection services, IConfiguration configuration)
+        public static IServiceCollection AddEmailServices(
+        this IServiceCollection services,
+        IConfigurationSection emailSettingsSection)
         {
-            services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
+            // Bind một lần duy nhất, chính xác vào section EmailSettings
+            services.Configure<EmailSettings>(emailSettingsSection);
+
             services.AddSingleton<EmailQueue>();
             services.AddTransient<IEmailService, EmailService>();
             services.AddTransient<IEmailQueueService, EmailQueueService>();
@@ -17,10 +21,7 @@ namespace Services.Commons.Gmail.Implementations
             services.AddHostedService<EmailReminderService>();
             services.AddTransient<EmailTemplateService>();
             services.AddQuartz(q => { });
-            services.AddQuartzHostedService(options =>
-            {
-                options.WaitForJobsToComplete = true;
-            });
+            services.AddQuartzHostedService(opt => opt.WaitForJobsToComplete = true);
 
             return services;
         }

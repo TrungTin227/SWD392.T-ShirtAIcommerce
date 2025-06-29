@@ -11,9 +11,9 @@ namespace Services.Commons.Gmail.Implementations
         public bool EnableSsl { get; set; } = true;
         [Required, EmailAddress]
         public string FromEmail { get; set; } = string.Empty;
-        public string FromName { get; set; } = "T-Shirt AI Commerce";
-        public string CompanyName { get; set; } = "T-Shirt AI Commerce";
-        public string SupportEmail { get; set; } = "tinvtse@gmail.com";
+        public string FromName { get; set; } = string.Empty;
+        public string CompanyName { get; set; } = string.Empty;
+        public string SupportEmail { get; set; } = string.Empty;
         public int MaxRetryAttempts { get; set; } = 3;
     }
 }

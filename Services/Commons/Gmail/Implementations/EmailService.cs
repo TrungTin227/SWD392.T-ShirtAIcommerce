@@ -16,6 +16,7 @@ namespace Services.Commons.Gmail.Implementations
         {
             _emailSettings = emailSettings.Value;
             _logger = logger;
+            LogEmailSettings();
         }
 
         public async Task<bool> SendEmailAsync(EmailRequest emailRequest)
@@ -191,18 +192,49 @@ namespace Services.Commons.Gmail.Implementations
         {
             var mailMessage = new MailMessage();
 
-            // Validate and set From address - sử dụng đúng property name
+            // Debug log để kiểm tra EmailSettings
+            _logger.LogInformation("EmailSettings - FromEmail: '{FromEmail}', FromName: '{FromName}', SupportEmail: '{SupportEmail}'",
+                _emailSettings.FromEmail,
+                _emailSettings.FromName,
+                _emailSettings.SupportEmail);
+
+            // Validate and set From address
             var fromEmail = _emailSettings.FromEmail?.Trim();
             var fromDisplayName = _emailSettings.FromName?.Trim();
 
             if (string.IsNullOrWhiteSpace(fromEmail))
+            {
+                _logger.LogError("FromEmail is null, empty or whitespace in EmailSettings");
                 throw new InvalidOperationException("FromEmail is not configured or empty in EmailSettings");
+            }
 
-            // Create From address - only use display name if it's not empty
-            if (!string.IsNullOrWhiteSpace(fromDisplayName))
-                mailMessage.From = new MailAddress(fromEmail, fromDisplayName);
-            else
-                mailMessage.From = new MailAddress(fromEmail);
+            // Validate email format
+            if (!IsValidEmail(fromEmail))
+            {
+                _logger.LogError("FromEmail '{FromEmail}' is not a valid email address", fromEmail);
+                throw new InvalidOperationException($"FromEmail '{fromEmail}' is not a valid email address");
+            }
+
+            try
+            {
+                // Create From address - only use display name if it's not empty
+                if (!string.IsNullOrWhiteSpace(fromDisplayName))
+                {
+                    mailMessage.From = new MailAddress(fromEmail, fromDisplayName);
+                    _logger.LogDebug("Created From address with display name: {FromEmail} ({FromDisplayName})", fromEmail, fromDisplayName);
+                }
+                else
+                {
+                    mailMessage.From = new MailAddress(fromEmail);
+                    _logger.LogDebug("Created From address without display name: {FromEmail}", fromEmail);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create MailAddress with FromEmail: '{FromEmail}', FromDisplayName: '{FromDisplayName}'",
+                    fromEmail, fromDisplayName);
+                throw;
+            }
 
             // Validate and add To addresses
             if (emailRequest.To == null || !emailRequest.To.Any())
@@ -213,7 +245,14 @@ namespace Services.Commons.Gmail.Implementations
                 var cleanEmail = toEmail?.Trim();
                 if (!string.IsNullOrWhiteSpace(cleanEmail) && IsValidEmail(cleanEmail))
                 {
-                    mailMessage.To.Add(new MailAddress(cleanEmail));
+                    try
+                    {
+                        mailMessage.To.Add(new MailAddress(cleanEmail));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to add recipient email: '{Email}'", toEmail);
+                    }
                 }
                 else
                 {
@@ -233,7 +272,14 @@ namespace Services.Commons.Gmail.Implementations
             var replyToEmail = _emailSettings.SupportEmail?.Trim();
             if (!string.IsNullOrWhiteSpace(replyToEmail) && IsValidEmail(replyToEmail))
             {
-                mailMessage.ReplyToList.Add(new MailAddress(replyToEmail));
+                try
+                {
+                    mailMessage.ReplyToList.Add(new MailAddress(replyToEmail));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to set ReplyTo email: '{Email}'", replyToEmail);
+                }
             }
 
             return mailMessage;
