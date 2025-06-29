@@ -1,8 +1,8 @@
-﻿using BusinessObjects.Cart;
+﻿using BusinessObjects.AI;
+using BusinessObjects.Cart;
 using BusinessObjects.Common;
 using BusinessObjects.Coupons;
 using BusinessObjects.CustomDesigns;
-using BusinessObjects.Entities.AI;
 using BusinessObjects.Orders;
 using BusinessObjects.Products;
 using BusinessObjects.Reviews;

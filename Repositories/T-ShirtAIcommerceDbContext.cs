@@ -1,7 +1,6 @@
 ﻿using BusinessObjects.Analytics;
 using BusinessObjects.Cart;
 using BusinessObjects.CustomDesigns;
-using BusinessObjects.Entities.AI;
 using BusinessObjects.Entities.Payments;
 using BusinessObjects.Identity;
 using BusinessObjects.Orders;
@@ -15,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using BusinessObjects.Comparisons;
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
+using BusinessObjects.AI;
 
 namespace Repositories
 {

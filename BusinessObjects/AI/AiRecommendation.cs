@@ -3,7 +3,7 @@ using BusinessObjects.Products;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace BusinessObjects.Entities.AI
+namespace BusinessObjects.AI
 {
     // KHÔNG kế thừa BaseEntity - dữ liệu AI, chỉ cần created_at
     public class AiRecommendation

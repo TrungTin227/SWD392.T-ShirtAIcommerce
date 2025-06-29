@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Cart;
-using BusinessObjects.Entities.AI;
+﻿using BusinessObjects.AI;
+using BusinessObjects.Cart;
 using BusinessObjects.Identity;
 using BusinessObjects.Orders;
 using BusinessObjects.Reviews;
