@@ -1,8 +1,11 @@
-﻿using BusinessObjects.Identity;
+﻿// WebAPI/Extensions/InfrastructureServiceCollectionExtensions.cs
+
+using BusinessObjects.Identity;
 using Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Repositories;
 using Repositories.Implementations;
@@ -21,46 +24,58 @@ namespace WebAPI.Extensions
 {
     public static class InfrastructureServiceCollectionExtensions
     {
-        public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+        public static IServiceCollection AddInfrastructure(
+            this IServiceCollection services,
+            IConfiguration configuration)
         {
-            // 1. Cấu hình Settings
-            services.Configure<DTOs.UserDTOs.Identities.JwtSettings>(configuration.GetSection("JwtSettings"));
+            // === 0. Cấu hình Cache + Session (nếu cần) ===
+            services.AddDistributedMemoryCache();
+            services.AddSession(opts =>
+            {
+                opts.Cookie.Name = ".TShirtAICommerce.Session";
+                opts.IdleTimeout = TimeSpan.FromHours(1);
+                opts.Cookie.HttpOnly = true;
+            });
+
+            // === 1. Cấu hình Settings ===
+            services.Configure<DTOs.UserDTOs.Identities.JwtSettings>(
+                configuration.GetSection("JwtSettings"));
+            services.Configure<VnPayConfig>(
+                configuration.GetSection("VnPay"));
             services.AddHttpContextAccessor();
 
-            // 2. DbContext với cấu hình cải tiến - FIX CONCURRENCY ISSUE
+            // === 2. EF Core DbContext ===
             services.AddDbContext<T_ShirtAIcommerceContext>(opt =>
                 opt.UseSqlServer(
                     configuration.GetConnectionString("T_ShirtAIcommerceContext"),
-                    sql => sql.MigrationsAssembly("Repositories")));            
-            services.AddCors(opt =>
-            {
-                opt.AddPolicy("CorsPolicy", b => b
-                    .WithOrigins("http://localhost:5265")
-                    .AllowAnyMethod()
-                    .AllowAnyHeader());
-            });
+                    sql => sql.MigrationsAssembly("Repositories")));
 
-            // 3. Identity & Authentication
+            // === 3. CORS ===
+            services.AddCors(opt =>
+                opt.AddPolicy("CorsPolicy", b => b
+                    .WithOrigins("http://localhost:5173")
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()));
+
+            // === 4. Identity & Authentication ===
             services.AddIdentity<ApplicationUser, ApplicationRole>(opts =>
             {
-                // Bắt buộc phải xác thực email mới cho SignIn
                 opts.SignIn.RequireConfirmedEmail = true;
-
                 opts.ClaimsIdentity.UserNameClaimType = ClaimTypes.Name;
                 opts.ClaimsIdentity.RoleClaimType = ClaimTypes.Role;
                 opts.Lockout.MaxFailedAccessAttempts = 5;
                 opts.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-                opts.Lockout.AllowedForNewUsers = true;
+                opts.Password.RequiredLength = 4;
                 opts.Password.RequireNonAlphanumeric = false;
                 opts.Password.RequireDigit = false;
                 opts.Password.RequireLowercase = false;
                 opts.Password.RequireUppercase = false;
-                opts.Password.RequiredLength = 4;
             })
             .AddEntityFrameworkStores<T_ShirtAIcommerceContext>()
             .AddDefaultTokenProviders();
 
-            var jwt = configuration.GetSection("JwtSettings").Get<DTOs.UserDTOs.Identities.JwtSettings>()
+            var jwtSection = configuration.GetSection("JwtSettings");
+            var jwt = jwtSection.Get<DTOs.UserDTOs.Identities.JwtSettings>()
                       ?? throw new InvalidOperationException("JWT key is not configured.");
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key));
 
@@ -81,7 +96,6 @@ namespace WebAPI.Extensions
                     ValidAudience = jwt.ValidAudience,
                     IssuerSigningKey = key
                 };
-                // Custom error handling
                 opts.Events = new JwtBearerEvents
                 {
                     OnChallenge = ctx =>
@@ -96,32 +110,24 @@ namespace WebAPI.Extensions
                         return ctx.Response.WriteAsync(res);
                     }
                 };
-            }).AddGoogle(googleOptions =>
+            })
+            .AddGoogle(googleOptions =>
             {
                 googleOptions.ClientId = configuration["Authentication:Google:ClientId"];
                 googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
             });
 
-
-            // Add VnPay configuration
-            services.Configure<VnPayConfig>(configuration.GetSection("VnPay"));
-
-            // Register HttpClient for VnPay
+            // === 5. HTTP Clients (Ví dụ VnPay) ===
             services.AddHttpClient<IVnPayService, VnPayService>();
 
-            // Register HttpContextAccessor
-            services.AddHttpContextAccessor();
-
-
-            // 4. Repositories & Domain Services
+            // === 6. Repositories & Domain Services ===
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
             services.AddScoped<IRepositoryFactory, RepositoryFactory>();
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserAddressRepository, UserAddressRepository>();
-            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
-            services.AddScoped<ICurrentTime, CurrentTime>();
             services.AddScoped<IOrderRepository, OrderRepository>();
+            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
             services.AddScoped<ICouponRepository, CouponRepository>();
             services.AddScoped<IShippingMethodRepository, ShippingMethodRepository>();
             services.AddScoped<ICartItemRepository, CartItemRepository>();
@@ -129,6 +135,7 @@ namespace WebAPI.Extensions
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IProductRepository, ProductRepository>();
 
+            services.AddScoped<ICurrentTime, CurrentTime>();
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             services.AddScoped<IExternalAuthService, ExternalAuthService>();
             services.AddScoped<ITokenService, TokenService>();
@@ -144,10 +151,11 @@ namespace WebAPI.Extensions
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<IProductService, ProductService>();
-            // 5. Email + Quartz
+
+            // === 7. Email & Quartz ===
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
 
-            // 6. Controllers
+            // === 8. Controllers ===
             services.AddControllers();
 
             return services;
