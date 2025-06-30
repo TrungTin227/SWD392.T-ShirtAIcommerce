@@ -166,7 +166,6 @@ namespace Repositories.Implementations
             if (updatedBy.HasValue)
                 order.UpdatedBy = updatedBy.Value;
 
-            // Set additional fields based on status
             switch (status)
             {
                 case OrderStatus.Delivered:
@@ -197,7 +196,7 @@ namespace Repositories.Implementations
 
             return true;
         }
-
+        
         public async Task<bool> AssignOrderToStaffAsync(Guid orderId, Guid staffId, Guid? updatedBy = null)
         {
             var order = await _dbSet.FindAsync(orderId);

@@ -292,33 +292,15 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<bool> UpdateOrderStatusAsync(Guid orderId, string status, Guid? updatedBy = null)
+        public async Task<bool> UpdateOrderStatusAsync(Guid orderId, OrderStatus status, Guid? updatedBy = null)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(status))
-                {
-                    throw new ArgumentException("Trạng thái đơn hàng không được để trống");
-                }
-
-                if (!Enum.TryParse<OrderStatus>(status, true, out var orderStatus))
-                {
-                    throw new ArgumentException($"Trạng thái đơn hàng không hợp lệ: {status}");
-                }
-
                 var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null || order.IsDeleted)
-                {
                     throw new ArgumentException("Đơn hàng không tồn tại");
-                }
 
-                // Validate status transition
-                if (!IsValidStatusTransition(order.Status, orderStatus))
-                {
-                    throw new InvalidOperationException($"Không thể chuyển trạng thái từ {order.Status} sang {orderStatus}");
-                }
-
-                var result = await _orderRepository.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
+                var result = await _orderRepository.UpdateOrderStatusAsync(orderId, status, updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
 
@@ -331,27 +313,15 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<bool> UpdatePaymentStatusAsync(Guid orderId, string paymentStatus, Guid? updatedBy = null)
+        public async Task<bool> UpdatePaymentStatusAsync(Guid orderId, PaymentStatus paymentStatus, Guid? updatedBy = null)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(paymentStatus))
-                {
-                    throw new ArgumentException("Trạng thái thanh toán không được để trống");
-                }
-
-                if (!Enum.TryParse<PaymentStatus>(paymentStatus, true, out var paymentStatusEnum))
-                {
-                    throw new ArgumentException($"Trạng thái thanh toán không hợp lệ: {paymentStatus}");
-                }
-
                 var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null || order.IsDeleted)
-                {
                     throw new ArgumentException("Đơn hàng không tồn tại");
-                }
 
-                var result = await _orderRepository.UpdatePaymentStatusAsync(orderId, paymentStatusEnum, updatedBy);
+                var result = await _orderRepository.UpdatePaymentStatusAsync(orderId, paymentStatus, updatedBy);
                 if (result)
                     await _unitOfWork.SaveChangesAsync();
 
@@ -439,7 +409,7 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<BatchOperationResultDTO> BulkUpdateStatusAsync(List<Guid> orderIds, string status, Guid? updatedBy = null)
+        public async Task<BatchOperationResultDTO> BulkUpdateStatusAsync(List<Guid> orderIds, OrderStatus status, Guid? updatedBy = null)
         {
             var result = new BatchOperationResultDTO
             {
@@ -457,30 +427,6 @@ namespace Services.Implementations
                 });
                 result.FailureCount = 1;
                 result.Message = "Danh sách ID đơn hàng không hợp lệ";
-                return result;
-            }
-
-            if (string.IsNullOrWhiteSpace(status))
-            {
-                result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
-                {
-                    Id = id.ToString(),
-                    ErrorMessage = "Trạng thái không được để trống"
-                }).ToList();
-                result.FailureCount = orderIds.Count;
-                result.Message = "Trạng thái không hợp lệ";
-                return result;
-            }
-
-            if (!Enum.TryParse<OrderStatus>(status, true, out var orderStatus))
-            {
-                result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
-                {
-                    Id = id.ToString(),
-                    ErrorMessage = $"Trạng thái không hợp lệ: {status}"
-                }).ToList();
-                result.FailureCount = orderIds.Count;
-                result.Message = $"Trạng thái '{status}' không hợp lệ";
                 return result;
             }
 
@@ -505,17 +451,8 @@ namespace Services.Implementations
                             continue;
                         }
 
-                        if (!IsValidStatusTransition(order.Status, orderStatus))
-                        {
-                            errors.Add(new BatchOperationErrorDTO
-                            {
-                                Id = orderId.ToString(),
-                                ErrorMessage = $"Không thể chuyển trạng thái từ {order.Status} sang {orderStatus}"
-                            });
-                            continue;
-                        }
-
-                        var success = await _orderRepository.UpdateOrderStatusAsync(orderId, orderStatus, updatedBy);
+                        // Nếu muốn cho phép set bất kỳ trạng thái thì bỏ kiểm tra chuyển đổi
+                        var success = await _orderRepository.UpdateOrderStatusAsync(orderId, status, updatedBy);
                         if (success)
                         {
                             successfulIds.Add(orderId.ToString());
@@ -540,7 +477,6 @@ namespace Services.Implementations
                     }
                 }
 
-                // Only commit if we have at least one success
                 if (successfulIds.Any())
                 {
                     await _unitOfWork.SaveChangesAsync();
@@ -556,7 +492,6 @@ namespace Services.Implementations
                 result.SuccessCount = successfulIds.Count;
                 result.FailureCount = errors.Count;
 
-                // Set appropriate message based on results
                 if (result.IsCompleteSuccess)
                 {
                     result.Message = $"Đã cập nhật thành công trạng thái cho tất cả {result.SuccessCount} đơn hàng";
@@ -569,14 +504,12 @@ namespace Services.Implementations
                 {
                     result.Message = $"Cập nhật một phần thành công: {result.SuccessCount} thành công, {result.FailureCount} thất bại";
                 }
-
                 return result;
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error in bulk update status operation for orders: {OrderIds}", string.Join(", ", orderIds));
-
                 result.Errors = orderIds.Select(id => new BatchOperationErrorDTO
                 {
                     Id = id.ToString(),
@@ -585,7 +518,6 @@ namespace Services.Implementations
                 result.FailureCount = orderIds.Count;
                 result.SuccessCount = 0;
                 result.Message = "Cập nhật thất bại do lỗi hệ thống";
-
                 return result;
             }
         }
@@ -614,18 +546,16 @@ namespace Services.Implementations
                 return string.Empty;
             }
         }
-
-        public async Task<Dictionary<string, int>> GetOrderStatusCountsAsync()
+        public async Task<Dictionary<OrderStatus, int>> GetOrderStatusCountsAsync()
         {
             try
             {
-                var counts = await _orderRepository.GetOrderStatusCountsAsync();
-                return counts.ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value);
+                return await _orderRepository.GetOrderStatusCountsAsync();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting order status counts");
-                return new Dictionary<string, int>();
+                return new Dictionary<OrderStatus, int>();
             }
         }
 
@@ -774,8 +704,8 @@ namespace Services.Implementations
                 ShippingFee = order.ShippingFee,
                 DiscountAmount = order.DiscountAmount,
                 TaxAmount = order.TaxAmount,
-                Status = order.Status.ToString(),
-                PaymentStatus = order.PaymentStatus.ToString(),
+                Status = order.Status,
+                PaymentStatus = order.PaymentStatus,
                 ShippingAddress = order.ShippingAddress,
                 ReceiverName = order.ReceiverName,
                 ReceiverPhone = order.ReceiverPhone,

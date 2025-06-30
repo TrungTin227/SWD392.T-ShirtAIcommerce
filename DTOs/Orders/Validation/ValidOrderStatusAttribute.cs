@@ -1,36 +1,35 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using BusinessObjects.Products;
+using System.ComponentModel.DataAnnotations;
 
 namespace DTOs.Orders.Validation
 {
     public class ValidOrderStatusAttribute : ValidationAttribute
     {
-        private readonly string[] _validStatuses = { "Pending", "Confirmed", "Processing", "Shipping", "Delivered", "Cancelled", "Returned" };
-
         public override bool IsValid(object? value)
         {
             if (value == null) return false;
-            return _validStatuses.Contains(value.ToString());
+            return Enum.IsDefined(typeof(OrderStatus), value);
         }
 
         public override string FormatErrorMessage(string name)
         {
-            return $"Trạng thái {name} không hợp lệ. Các trạng thái hợp lệ: {string.Join(", ", _validStatuses)}";
+            var validStatuses = string.Join(", ", Enum.GetNames(typeof(OrderStatus)));
+            return $"Trạng thái {name} không hợp lệ. Các trạng thái hợp lệ: {validStatuses}";
         }
     }
 
     public class ValidPaymentStatusAttribute : ValidationAttribute
     {
-        private readonly string[] _validStatuses = { "Unpaid", "Paid", "PartiallyPaid", "Refunded", "PartiallyRefunded" };
-
         public override bool IsValid(object? value)
         {
             if (value == null) return false;
-            return _validStatuses.Contains(value.ToString());
+            return Enum.IsDefined(typeof(PaymentStatus), value);
         }
 
         public override string FormatErrorMessage(string name)
         {
-            return $"Trạng thái thanh toán {name} không hợp lệ. Các trạng thái hợp lệ: {string.Join(", ", _validStatuses)}";
+            var validStatuses = string.Join(", ", Enum.GetNames(typeof(PaymentStatus)));
+            return $"Trạng thái thanh toán {name} không hợp lệ. Các trạng thái hợp lệ: {validStatuses}";
         }
     }
 

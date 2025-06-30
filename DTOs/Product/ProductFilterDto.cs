@@ -1,5 +1,5 @@
-﻿using DTOs.Common;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Products;
+using DTOs.Common;
 
 namespace DTOs.Product
 {
@@ -14,8 +14,8 @@ namespace DTOs.Product
         public bool? IsFeatured { get; set; }
         public bool? IsBestseller { get; set; }
         public bool? InStock { get; set; }
-        public string? Material { get; set; }
-        public string? Season { get; set; }
+        public ProductMaterial? Material { get; set; }
+        public ProductSeason? Season { get; set; }
         public DateTime? CreatedFrom { get; set; }
         public DateTime? CreatedTo { get; set; }
         public string? SortBy { get; set; } = "CreatedAt"; // Name, Price, CreatedAt, SoldCount

@@ -28,7 +28,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách đơn hàng với filtering và pagination
+        /// Lấy danh sách đơn hàng với filtering và pagination (Admin/Staff)
         /// </summary>
         [HttpGet]
         [Authorize(Roles = "Admin,Staff")]
@@ -109,7 +109,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Tạo đơn hàng mới
+        /// Tạo đơn hàng mới (user)
         /// </summary>
         [HttpPost]
         [ServiceFilter(typeof(ValidateModelAttribute))]
@@ -140,7 +140,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Cập nhật thông tin đơn hàng
+        /// Cập nhật thông tin đơn hàng (user)
         /// </summary>
         [HttpPut("{id}")]
         [ServiceFilter(typeof(ValidateModelAttribute))]
@@ -168,7 +168,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Xóa đơn hàng (soft delete)
+        /// Xóa đơn hàng (soft delete, chỉ Admin)
         /// </summary>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
@@ -196,7 +196,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Cập nhật trạng thái đơn hàng
+        /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)
         /// </summary>
         [HttpPatch("{id}/status")]
         [Authorize(Roles = "Admin,Staff")]
@@ -225,7 +225,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Cập nhật trạng thái thanh toán
+        /// Cập nhật trạng thái thanh toán (Chỉ Admin/Staff)
         /// </summary>
         [HttpPatch("{id}/payment-status")]
         [Authorize(Roles = "Admin,Staff")]
@@ -254,7 +254,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Phân công đơn hàng cho nhân viên
+        /// Phân công đơn hàng cho nhân viên (Chỉ Admin)
         /// </summary>
         [HttpPatch("{id}/assign-staff")]
         [Authorize(Roles = "Admin")]
@@ -283,7 +283,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Hủy đơn hàng
+        /// Hủy đơn hàng (User hoặc Admin/Staff)
         /// </summary>
         [HttpPatch("{id}/cancel")]
         [ServiceFilter(typeof(ValidateModelAttribute))]
@@ -351,7 +351,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Cập nhật mã vận đơn
+        /// Cập nhật mã vận đơn (Admin/Staff)
         /// </summary>
         [HttpPatch("{id}/tracking")]
         [Authorize(Roles = "Admin,Staff")]
@@ -379,7 +379,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Cập nhật trạng thái hàng loạt
+        /// Cập nhật trạng thái hàng loạt (Chỉ Admin)
         /// </summary>
         [HttpPatch("bulk-update-status")]
         [Authorize(Roles = "Admin")]
@@ -405,7 +405,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Lấy thống kê trạng thái đơn hàng
+        /// Lấy thống kê trạng thái đơn hàng (Admin/Staff)
         /// </summary>
         [HttpGet("statistics/status-counts")]
         [Authorize(Roles = "Admin,Staff")]
@@ -428,7 +428,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách đơn hàng gần đây
+        /// Lấy danh sách đơn hàng gần đây (Admin/Staff)
         /// </summary>
         [HttpGet("recent")]
         [Authorize(Roles = "Admin,Staff")]
@@ -451,7 +451,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Lấy dữ liệu đơn hàng cho báo cáo
+        /// Lấy dữ liệu đơn hàng cho báo cáo (Admin)
         /// </summary>
         [HttpGet("analytics")]
         [Authorize(Roles = "Admin")]
@@ -509,7 +509,7 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Tạo mã đơn hàng mới
+        /// Tạo mã đơn hàng mới (Admin/Staff)
         /// </summary>
         [HttpGet("generate-order-number")]
         [Authorize(Roles = "Admin,Staff")]

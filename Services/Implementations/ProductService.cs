@@ -9,7 +9,7 @@ using Services.Commons;
 using Services.Extensions;
 using Services.Interfaces;
 
-namespace Services.Implements
+namespace Services.Implementations
 {
     public class ProductService : BaseService<Product, Guid>, IProductService
     {
@@ -361,8 +361,8 @@ namespace Services.Implements
                 Quantity = product.Quantity,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,
-                Material = product.Material.ToString(),
-                Season = product.Season.ToString(),
+                Material = product.Material,
+                Season = product.Season,
                 Weight = product.Weight,
                 Dimensions = product.Dimensions,
                 MetaTitle = product.MetaTitle,
@@ -375,12 +375,8 @@ namespace Services.Implements
                 IsFeatured = product.IsFeatured,
                 IsBestseller = product.IsBestseller,
                 DiscountPercentage = product.DiscountPercentage,
-                AvailableColors = product.AvailableColors
-                        .Select(c => c.ToString())
-                        .ToList(),
-                AvailableSizes = product.AvailableSizes
-                        .Select(s => s.ToString())
-                        .ToList(),
+                AvailableColors = product.AvailableColors?.ToList(),
+                AvailableSizes = product.AvailableSizes?.ToList(),
                 Images = product.Images,
                 Status = product.Status,
                 CreatedAt = product.CreatedAt,
@@ -402,8 +398,8 @@ namespace Services.Implements
                 Sku = dto.Sku,
                 Quantity = dto.Quantity,
                 CategoryId = dto.CategoryId,
-                Material = dto.Material.Value,
-                Season = dto.Season.Value,
+                Material = dto.Material,
+                Season = dto.Season,
                 Weight = dto.Weight,
                 Dimensions = dto.Dimensions,
                 MetaTitle = dto.MetaTitle,
@@ -414,15 +410,8 @@ namespace Services.Implements
                 IsFeatured = dto.IsFeatured,
                 IsBestseller = dto.IsBestseller,
                 DiscountPercentage = dto.DiscountPercentage,
-                AvailableColors = dto.AvailableColors?
-    .Select(name => Enum.Parse<ProductColor>(name, ignoreCase: true))
-    .ToList()
-    ?? new List<ProductColor>(),
-
-                AvailableSizes = dto.AvailableSizes?
-    .Select(name => Enum.Parse<ProductSize>(name, ignoreCase: true))
-    .ToList()
-    ?? new List<ProductSize>(),
+                AvailableColors = dto.AvailableColors ?? new List<ProductColor>(),
+                AvailableSizes = dto.AvailableSizes ?? new List<ProductSize>(),
                 Images = dto.Images,
                 Status = dto.Status
             };
@@ -451,11 +440,11 @@ namespace Services.Implements
             if (dto.CategoryId.HasValue)
                 product.CategoryId = dto.CategoryId;
 
-            if (!string.IsNullOrWhiteSpace(dto.Material.ToString()))
-                product.Material = Enum.Parse<ProductMaterial>(dto.Material.ToString(), true);
+            if (dto.Material.HasValue)
+                product.Material = dto.Material.Value;
 
-            if (!string.IsNullOrWhiteSpace(dto.Season.ToString()))
-                product.Season = Enum.Parse<ProductSeason>(dto.Season.ToString(), true);
+            if (dto.Season.HasValue)
+                product.Season = dto.Season.Value;
 
             if (dto.Weight.HasValue)
                 product.Weight = dto.Weight.Value;
@@ -488,14 +477,10 @@ namespace Services.Implements
                 product.DiscountPercentage = dto.DiscountPercentage.Value;
 
             if (dto.AvailableColors != null)
-                product.AvailableColors = dto.AvailableColors
-                                              .Select(name => Enum.Parse<ProductColor>(name, true))
-                                              .ToList();
+                product.AvailableColors = dto.AvailableColors.ToList();
 
             if (dto.AvailableSizes != null)
-                product.AvailableSizes = dto.AvailableSizes
-                                             .Select(name => Enum.Parse<ProductSize>(name, true))
-                                             .ToList();
+                product.AvailableSizes = dto.AvailableSizes.ToList();
 
             if (dto.Images != null)
                 product.Images = dto.Images;

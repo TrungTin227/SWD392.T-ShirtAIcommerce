@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Entities.Payments;
+﻿using BusinessObjects.Payments;
 
 namespace Repositories.Interfaces
 {

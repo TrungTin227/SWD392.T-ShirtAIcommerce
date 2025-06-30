@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using BusinessObjects.Products;
+using System.ComponentModel.DataAnnotations;
 
 namespace DTOs.Orders
 {
@@ -30,7 +31,7 @@ namespace DTOs.Orders
     public class UpdateOrderStatusRequest
     {
         [Required(ErrorMessage = "Trạng thái đơn hàng là bắt buộc")]
-        public string Status { get; set; } = string.Empty;
+        public OrderStatus Status { get; set; }
 
         [MaxLength(500, ErrorMessage = "Lý do không được vượt quá 500 ký tự")]
         public string? Reason { get; set; }
@@ -39,7 +40,20 @@ namespace DTOs.Orders
     public class UpdatePaymentStatusRequest
     {
         [Required(ErrorMessage = "Trạng thái thanh toán là bắt buộc")]
-        public string PaymentStatus { get; set; } = string.Empty;
+        public PaymentStatus PaymentStatus { get; set; }
+
+        [MaxLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự")]
+        public string? Notes { get; set; }
+    }
+
+    public class BulkUpdateStatusRequest
+    {
+        [Required(ErrorMessage = "Danh sách ID đơn hàng là bắt buộc")]
+        [MinLength(1, ErrorMessage = "Phải có ít nhất 1 đơn hàng")]
+        public List<Guid> OrderIds { get; set; } = new();
+
+        [Required(ErrorMessage = "Trạng thái là bắt buộc")]
+        public OrderStatus Status { get; set; }
 
         [MaxLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự")]
         public string? Notes { get; set; }
@@ -59,18 +73,5 @@ namespace DTOs.Orders
         [Required(ErrorMessage = "Lý do hủy đơn hàng là bắt buộc")]
         [MaxLength(500, ErrorMessage = "Lý do không được vượt quá 500 ký tự")]
         public string Reason { get; set; } = string.Empty;
-    }
-
-    public class BulkUpdateStatusRequest
-    {
-        [Required(ErrorMessage = "Danh sách ID đơn hàng là bắt buộc")]
-        [MinLength(1, ErrorMessage = "Phải có ít nhất 1 đơn hàng")]
-        public List<Guid> OrderIds { get; set; } = new();
-
-        [Required(ErrorMessage = "Trạng thái là bắt buộc")]
-        public string Status { get; set; } = string.Empty;
-
-        [MaxLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự")]
-        public string? Notes { get; set; }
     }
 }

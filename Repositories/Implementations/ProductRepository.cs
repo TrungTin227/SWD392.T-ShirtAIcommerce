@@ -15,13 +15,10 @@ namespace Repositories.Implementations
 
         public async Task<PagedList<Product>> GetPagedAsync(ProductFilterDto filter)
         {
-            // 1. Khởi tạo query với kiểu IQueryable<Product>
             IQueryable<Product> query = GetQueryable();
 
-            // 2. Include quan hệ Category (được gắn nhãn ở đây, vẫn trả về IQueryable<Product>)
             query = query.Include(p => p.Category);
 
-            // 3. Áp dụng các bộ lọc (filter)
             if (!string.IsNullOrWhiteSpace(filter.Name))
                 query = query.Where(x => x.Name.Contains(filter.Name));
 
@@ -51,21 +48,27 @@ namespace Repositories.Implementations
                     ? query.Where(x => x.Quantity > 0)
                     : query.Where(x => x.Quantity == 0);
 
+            // Filter by Material (enum)
+            if (filter.Material.HasValue)
+                query = query.Where(x => x.Material == filter.Material.Value);
+
+            // Filter by Season (enum)
+            if (filter.Season.HasValue)
+                query = query.Where(x => x.Season == filter.Season.Value);
+
             if (filter.CreatedFrom.HasValue)
                 query = query.Where(x => x.CreatedAt >= filter.CreatedFrom.Value);
 
             if (filter.CreatedTo.HasValue)
                 query = query.Where(x => x.CreatedAt <= filter.CreatedTo.Value);
 
-            // 4. Luôn loại bỏ bản ghi đã đánh dấu xoá
             query = query.Where(x => !x.IsDeleted);
 
-            // 5. Áp dụng phân trang và sắp xếp
             query = ApplySorting(query, filter.SortBy, filter.SortDirection);
 
-            // 6. Trả về kết quả phân trang
             return await PagedList<Product>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
         }
+
         public async Task<Product?> GetBySkuAsync(string sku)
         {
             return await FirstOrDefaultAsync(x => x.Sku == sku && !x.IsDeleted);

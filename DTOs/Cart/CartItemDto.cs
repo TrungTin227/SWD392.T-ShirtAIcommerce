@@ -1,4 +1,6 @@
-﻿namespace DTOs.Cart
+﻿using BusinessObjects.Products; // Add this using
+
+namespace DTOs.Cart
 {
     public class CartItemDto
     {
@@ -8,15 +10,13 @@
         public Guid? ProductId { get; set; }
         public Guid? CustomDesignId { get; set; }
         public Guid? ProductVariantId { get; set; }
-        public string? SelectedColor { get; set; }
-        public string? SelectedSize { get; set; }
+        public ProductColor? SelectedColor { get; set; }
+        public ProductSize? SelectedSize { get; set; }
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal TotalPrice { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
-
-        // Navigation properties
         public string? UserName { get; set; }
         public string? ProductName { get; set; }
         public string? CustomDesignName { get; set; }

@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Entities.Payments;
+﻿using BusinessObjects.Payments;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Interfaces;
 

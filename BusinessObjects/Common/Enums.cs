@@ -199,10 +199,24 @@ namespace BusinessObjects.Products
 
     public enum PaymentStatus
     {
+        [Description("Chưa thanh toán")]
         Unpaid,
-        Paid,
+        [Description("Đang xử lý")]
+        Processing,
+        [Description("Đã thanh toán")]
+        Completed,
+        [Description("Thanh toán một phần")]
         PartiallyPaid,
+        [Description("Hoàn tiền")]
         Refunded,
-        PartiallyRefunded
+        [Description("Hoàn tiền một phần")]
+        PartiallyRefunded,
+        [Description("Thất bại")]
+        Failed         
+    }
+    public enum PaymentMethod
+    {
+        VNPAY,
+        COD
     }
 }

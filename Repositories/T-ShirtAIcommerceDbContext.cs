@@ -1,7 +1,6 @@
 ﻿using BusinessObjects.Analytics;
 using BusinessObjects.Cart;
 using BusinessObjects.CustomDesigns;
-using BusinessObjects.Entities.Payments;
 using BusinessObjects.Identity;
 using BusinessObjects.Orders;
 using BusinessObjects.Products;
@@ -15,6 +14,7 @@ using BusinessObjects.Comparisons;
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
 using BusinessObjects.AI;
+using BusinessObjects.Payments;
 
 namespace Repositories
 {
@@ -210,6 +210,18 @@ namespace Repositories
                       .HasConversion<string>()
                       .HasMaxLength(20);
             });
+
+            modelBuilder.Entity<Payment>()
+                      .Property(p => p.PaymentMethod)
+                      .HasConversion<string>()
+                      .HasMaxLength(50)
+                      .HasColumnType("varchar(50)");
+
+            modelBuilder.Entity<Payment>()
+                     .Property(p => p.Status)
+                     .HasConversion<string>()
+                     .HasMaxLength(20)
+                     .HasColumnType("varchar(20)");
 
         }
 

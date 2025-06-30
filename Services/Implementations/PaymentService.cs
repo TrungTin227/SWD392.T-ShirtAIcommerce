@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Entities.Payments;
+﻿using BusinessObjects.Payments;
+using BusinessObjects.Products;
 using Configuration;
 using DTOs.Payments;
 using DTOs.Payments.VnPay;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Repositories.Interfaces;
 using Services.Helpers;
 using Services.Interfaces;
+using System.ComponentModel;
 
 namespace Services.Implementations
 {
@@ -31,12 +33,16 @@ namespace Services.Implementations
 
         public async Task<PaymentResponse> CreatePaymentAsync(PaymentCreateRequest request)
         {
+            // Chuyển đổi string sang enum
+            if (!Enum.TryParse<PaymentMethod>(request.PaymentMethod, true, out var paymentMethod))
+                throw new ArgumentException("Invalid payment method");
+
             var payment = new Payment
             {
                 OrderId = request.OrderId,
-                PaymentMethod = request.PaymentMethod,
+                PaymentMethod = paymentMethod,
                 Amount = request.Amount,
-                Status = "Pending"
+                Status = PaymentStatus.Unpaid
             };
 
             await _paymentRepository.AddAsync(payment);
@@ -50,6 +56,7 @@ namespace Services.Implementations
             var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
         }
+
         public async Task<PaymentResponse?> GetPaymentByIdAsync(Guid id)
         {
             var payment = await _paymentRepository.GetByIdAsync(id);
@@ -62,7 +69,7 @@ namespace Services.Implementations
             return payments.Select(MapToResponse);
         }
 
-        public async Task<PaymentResponse> UpdatePaymentStatusAsync(Guid id, string status, string? transactionId = null)
+        public async Task<PaymentResponse> UpdatePaymentStatusAsync(Guid id, PaymentStatus status, string? transactionId = null)
         {
             var payment = await _paymentRepository.GetByIdAsync(id);
             if (payment == null)
@@ -76,6 +83,14 @@ namespace Services.Implementations
             await _paymentRepository.SaveChangesAsync();
 
             return MapToResponse(payment);
+        }
+
+        public async Task<PaymentResponse> UpdatePaymentStatusAsync(Guid id, string statusString, string? transactionId = null)
+        {
+            if (!Enum.TryParse<PaymentStatus>(statusString, true, out var status))
+                throw new ArgumentException("Invalid payment status");
+
+            return await UpdatePaymentStatusAsync(id, status, transactionId);
         }
 
         public async Task<VnPayCreatePaymentResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request)
@@ -102,7 +117,7 @@ namespace Services.Implementations
             // Update payment with transaction ID if successful
             if (response.Success)
             {
-                await UpdatePaymentStatusAsync(payment.Id, "Processing", txnRef);
+                await UpdatePaymentStatusAsync(payment.Id, PaymentStatus.Processing, txnRef);
             }
 
             return response;
@@ -133,8 +148,8 @@ namespace Services.Implementations
                 return false;
 
             var status = callback.vnp_ResponseCode == "00" && callback.vnp_TransactionStatus == "00"
-                ? "Completed"
-                : "Failed";
+                ? PaymentStatus.Completed
+                : PaymentStatus.Failed;
 
             await UpdatePaymentStatusAsync(paymentId, status, callback.vnp_TransactionNo);
 
@@ -147,10 +162,10 @@ namespace Services.Implementations
             {
                 Id = payment.Id,
                 OrderId = payment.OrderId,
-                PaymentMethod = payment.PaymentMethod,
+                PaymentMethod = payment.PaymentMethod.ToString(),
                 Amount = payment.Amount,
                 TransactionId = payment.TransactionId,
-                Status = payment.Status,
+                Status = payment.Status.ToString(),
                 CreatedAt = payment.CreatedAt
             };
         }

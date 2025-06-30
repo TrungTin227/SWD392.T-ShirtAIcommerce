@@ -1,10 +1,10 @@
 ﻿using BusinessObjects.Orders;
+using BusinessObjects.Products;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace BusinessObjects.Entities.Payments
+namespace BusinessObjects.Payments
 {
-    // KHÔNG kế thừa BaseEntity - dữ liệu giao dịch, chỉ cần created_at
     public class Payment
     {
         [Key]
@@ -15,7 +15,7 @@ namespace BusinessObjects.Entities.Payments
 
         [Required]
         [MaxLength(50)]
-        public string PaymentMethod { get; set; } = string.Empty; // MoMo, ZaloPay, VNPAY, COD
+        public PaymentMethod PaymentMethod { get; set; } // VNPAY, COD
 
         [Required]
         [Column(TypeName = "decimal(12,2)")]
@@ -24,10 +24,7 @@ namespace BusinessObjects.Entities.Payments
         [MaxLength(255)]
         public string? TransactionId { get; set; }
 
-        [Required]
-        [MaxLength(20)]
-        public string Status { get; set; } = "Pending";
-
+        public PaymentStatus Status { get; set; } = PaymentStatus.Unpaid;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation properties

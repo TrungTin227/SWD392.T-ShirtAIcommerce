@@ -1,8 +1,10 @@
-﻿namespace DTOs.Cart
+﻿using BusinessObjects.Products; // Add this using
+
+namespace DTOs.Cart
 {
     public class CartItemQueryDto
     {
-        // === Pagination Properties (theo pattern OrderFilterRequest) ===
+        // === Pagination Properties ===
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 10;
         public string? SortBy { get; set; } = "CreatedAt";
@@ -14,8 +16,11 @@
         public Guid? ProductId { get; set; }
         public Guid? CustomDesignId { get; set; }
         public Guid? ProductVariantId { get; set; }
-        public string? SelectedColor { get; set; }
-        public string? SelectedSize { get; set; }
+
+        // Use enums for filter
+        public ProductColor? SelectedColor { get; set; }
+        public ProductSize? SelectedSize { get; set; }
+
         public int? MinQuantity { get; set; }
         public int? MaxQuantity { get; set; }
         public decimal? MinUnitPrice { get; set; }

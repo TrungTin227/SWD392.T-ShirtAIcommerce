@@ -13,8 +13,8 @@ namespace DTOs.Product
         public int Quantity { get; set; }
         public Guid? CategoryId { get; set; }
         public string? CategoryName { get; set; }
-        public string? Material { get; set; }
-        public string? Season { get; set; }
+        public ProductMaterial Material { get; set; }
+        public ProductSeason Season { get; set; }
         public decimal Weight { get; set; }
         public string? Dimensions { get; set; }
         public string? MetaTitle { get; set; }
@@ -27,8 +27,8 @@ namespace DTOs.Product
         public bool IsFeatured { get; set; }
         public bool IsBestseller { get; set; }
         public decimal DiscountPercentage { get; set; }
-        public List<string>? AvailableColors { get; set; }
-        public List<string>? AvailableSizes { get; set; }
+        public List<ProductColor>? AvailableColors { get; set; }
+        public List<ProductSize>? AvailableSizes { get; set; }
         public string? Images { get; set; }
         public ProductStatus Status { get; set; }
         public DateTime CreatedAt { get; set; }

@@ -1,11 +1,11 @@
 ﻿using BusinessObjects.Identity;
 using BusinessObjects.Coupons;
 using BusinessObjects.Shipping;
-using BusinessObjects.Entities.Payments;
 using BusinessObjects.Reviews;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using BusinessObjects.Products;
+using BusinessObjects.Payments;
 
 namespace BusinessObjects.Orders
 {

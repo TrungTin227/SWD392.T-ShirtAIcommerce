@@ -19,8 +19,8 @@ namespace Services.Extensions
 
         public static bool IsRefundable(this Order order)
         {
-            return order.PaymentStatus == PaymentStatus.Paid &&
-                   (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Returned);
+            return (order.PaymentStatus == PaymentStatus.Completed || order.PaymentStatus == PaymentStatus.Completed)
+     && (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Returned);
         }
 
         public static decimal GetFinalTotal(this Order order)

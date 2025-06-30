@@ -1,4 +1,5 @@
-﻿using DTOs.OrderItem;
+﻿using BusinessObjects.Products;
+using DTOs.OrderItem;
 
 namespace DTOs.Orders
 {
@@ -12,8 +13,8 @@ namespace DTOs.Orders
         public decimal DiscountAmount { get; set; }
         public decimal TaxAmount { get; set; }
         public decimal RefundAmount { get; set; }
-        public string Status { get; set; } = string.Empty;
-        public string PaymentStatus { get; set; } = string.Empty;
+        public OrderStatus Status { get; set; }
+        public PaymentStatus PaymentStatus { get; set; }
         public string ShippingAddress { get; set; } = string.Empty;
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;

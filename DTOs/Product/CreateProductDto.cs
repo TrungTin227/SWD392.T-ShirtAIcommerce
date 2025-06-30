@@ -28,8 +28,12 @@ namespace DTOs.Product
         public int Quantity { get; set; } = 0;
 
         public Guid? CategoryId { get; set; }
-        public ProductMaterial? Material { get; set; }
-        public ProductSeason? Season { get; set; }
+
+        [Required(ErrorMessage = "Chất liệu là bắt buộc")]
+        public ProductMaterial Material { get; set; }
+
+        [Required(ErrorMessage = "Mùa là bắt buộc")]
+        public ProductSeason Season { get; set; }
 
         [Range(0.01, 999.99, ErrorMessage = "Trọng lượng phải từ 0.01 đến 999.99 kg")]
         public decimal Weight { get; set; } = 0.5m;
@@ -59,8 +63,8 @@ namespace DTOs.Product
         [Range(0, 100, ErrorMessage = "Phần trăm giảm giá từ 0-100")]
         public decimal DiscountPercentage { get; set; } = 0;
 
-        public List<string>? AvailableColors { get; set; }
-        public List<string>? AvailableSizes { get; set; }
+        public List<ProductColor>? AvailableColors { get; set; }
+        public List<ProductSize>? AvailableSizes { get; set; }
         public string? Images { get; set; }
         public ProductStatus Status { get; set; } = ProductStatus.Active;
     }
