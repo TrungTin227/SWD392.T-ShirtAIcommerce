@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Coupons;
+using BusinessObjects.Products;
 using DTOs.Coupons;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;

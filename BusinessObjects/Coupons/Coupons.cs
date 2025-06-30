@@ -1,24 +1,12 @@
 ﻿using BusinessObjects.Identity;
 using BusinessObjects.Orders;
+using BusinessObjects.Products;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BusinessObjects.Coupons
 {
-    public enum CouponType
-    {
-        Percentage,
-        FixedAmount,
-        FreeShipping
-    }
-
-    public enum CouponStatus
-    {
-        Active,
-        Inactive,
-        Expired,
-        Used
-    }
+    
 
     public class Coupon : BaseEntity
     {

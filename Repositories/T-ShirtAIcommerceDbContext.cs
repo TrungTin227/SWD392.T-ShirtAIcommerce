@@ -66,9 +66,29 @@ namespace Repositories
                       .WithMany(u => u.StaffDesigns)
                       .HasForeignKey(cd => cd.StaffId)
                       .OnDelete(DeleteBehavior.SetNull);
+                entity.Property(cd => cd.Status)
+              .HasConversion<string>()
+              .HasMaxLength(50);
+
+                entity.Property(cd => cd.Size)
+                      .HasConversion<string>()
+                      .HasMaxLength(20);
+
+                entity.Property(cd => cd.LogoPosition)
+                      .HasConversion<string>()
+                      .HasMaxLength(20);
+
+                // --- Hai enum mới cần thêm ---
+                entity.Property(cd => cd.ShirtType)
+                      .HasConversion<string>()
+                      .HasMaxLength(50);
+
+                entity.Property(cd => cd.BaseColor)
+                      .HasConversion<string>()
+                      .HasMaxLength(50);
             });
 
-            // Order relationships - FIX lỗi multiple foreign key
+                        // Order relationships - FIX lỗi multiple foreign key
             modelBuilder.Entity<Order>(entity =>
             {
                 entity.HasOne(o => o.User)
@@ -119,6 +139,13 @@ namespace Repositories
 
             modelBuilder.Entity<ShippingMethod>().Property(e => e.Fee).HasColumnType("decimal(12,2)");
             modelBuilder.Entity<ShippingMethod>().Property(e => e.FreeShippingThreshold).HasColumnType("decimal(12,2)");
+            modelBuilder.Entity<ShippingMethod>(entity =>
+            {
+                entity.Property(e => e.Name)
+                      .HasConversion<string>()        // chuyển enum thành string
+                      .HasMaxLength(50)               // varchar(50)
+                      .IsUnicode(false);              // nếu muốn varchar không unicode
+            });
 
             // Unique indexes
             modelBuilder.Entity<Order>().HasIndex(e => e.OrderNumber).IsUnique();
@@ -152,9 +179,40 @@ namespace Repositories
             modelBuilder.Entity<Review>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<Coupon>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<ShippingMethod>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<Product>(entity =>
+            {
+                // Status
+                entity.Property(e => e.Status)
+                      .HasConversion<string>()
+                      .HasMaxLength(50);
+
+                // Material
+                entity.Property(e => e.Material)
+                      .HasConversion<string>()
+                      .HasMaxLength(100);
+
+                // Season
+                entity.Property(e => e.Season)
+                      .HasConversion<string>()
+                      .HasMaxLength(50);
+            });
+
+            // === ProductVariant enum → string ===
+            modelBuilder.Entity<ProductVariant>(entity =>
+            {
+                // Color
+                entity.Property(e => e.Color)
+                      .HasConversion<string>()
+                      .HasMaxLength(50);
+
+                // Size
+                entity.Property(e => e.Size)
+                      .HasConversion<string>()
+                      .HasMaxLength(20);
+            });
+
         }
 
-        // ✅ FIXED: Auto audit cho BaseEntity với thread-safe operations
         public override int SaveChanges()
         {
             if (_disposed) throw new ObjectDisposedException(nameof(T_ShirtAIcommerceContext));
@@ -171,7 +229,6 @@ namespace Repositories
             return await base.SaveChangesAsync(cancellationToken);
         }
 
-        // ✅ FIXED: Thread-safe audit field updates với dispose check
         private void UpdateAuditFields()
         {
             if (_disposed) return;
@@ -213,7 +270,6 @@ namespace Repositories
             }
         }
 
-        // ✅ FIXED: Null-safe HttpContextAccessor handling
         private Guid? GetCurrentUserId()
         {
             if (_disposed) return null;
@@ -241,7 +297,6 @@ namespace Repositories
             }
         }
 
-        // ✅ FIXED: Safe method to reset context state
         public void ResetChangeTracker()
         {
             if (_disposed) return;
@@ -256,7 +311,6 @@ namespace Repositories
             }
         }
 
-        // ✅ FIXED: Safe method to check if context has pending changes
         public bool HasPendingChanges()
         {
             if (_disposed) return false;
@@ -271,7 +325,6 @@ namespace Repositories
             }
         }
 
-        // ✅ FIXED: Override Dispose to ensure proper cleanup order
         public override void Dispose()
         {
             if (_disposed) return;
@@ -295,7 +348,6 @@ namespace Repositories
             }
         }
 
-        // ✅ FIXED: Override DisposeAsync for proper async cleanup order
         public override async ValueTask DisposeAsync()
         {
             if (_disposed) return;

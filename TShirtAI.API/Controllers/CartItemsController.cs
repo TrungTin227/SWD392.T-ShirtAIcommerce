@@ -222,28 +222,43 @@ namespace WebAPI.Controllers
         /// <summary>
         /// Thêm sản phẩm vào giỏ hàng
         /// </summary>
+        // ... các using như cũ
+
         [HttpPost]
         [ServiceFilter(typeof(ValidateModelAttribute))]
         public async Task<ActionResult<CartItemDto>> AddToCart([FromBody] CreateCartItemDto createDto)
         {
             try
             {
-                // 🔒 Tự động lấy UserId từ current user
                 var userId = _currentUserService.GetUserId();
                 var sessionId = HttpContext.Session.Id;
 
-                // 🔒 Tạo internal DTO với UserId/SessionId được set tự động
+                // Truy vấn giá từ Product hoặc ProductVariant:
+                decimal unitPrice = 0;
+                if (createDto.ProductVariantId.HasValue)
+                {
+                    unitPrice = await _cartItemService.GetUnitPriceFromProductVariant(createDto.ProductVariantId.Value);
+                }
+                else if (createDto.ProductId.HasValue)
+                {
+                    unitPrice = await _cartItemService.GetUnitPriceFromProduct(createDto.ProductId.Value);
+                }
+                else
+                {
+                    return BadRequest(new ErrorResponse { Message = "Không xác định được sản phẩm để lấy giá" });
+                }
+
                 var internalCreateDto = new InternalCreateCartItemDto
                 {
                     UserId = userId,
-                    SessionId = userId.HasValue ? null : sessionId, // Nếu có user thì không dùng session
+                    SessionId = userId.HasValue ? null : sessionId,
                     ProductId = createDto.ProductId,
                     CustomDesignId = createDto.CustomDesignId,
                     ProductVariantId = createDto.ProductVariantId,
                     SelectedColor = createDto.SelectedColor,
                     SelectedSize = createDto.SelectedSize,
                     Quantity = createDto.Quantity,
-                    UnitPrice = createDto.UnitPrice
+                    UnitPrice = unitPrice // Gán giá tự truy vấn
                 };
 
                 var result = await _cartItemService.AddToCartAsync(internalCreateDto);
@@ -263,7 +278,6 @@ namespace WebAPI.Controllers
                 });
             }
         }
-
         /// <summary>
         /// Cập nhật sản phẩm trong giỏ hàng
         /// </summary>

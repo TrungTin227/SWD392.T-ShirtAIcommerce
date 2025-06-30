@@ -97,47 +97,52 @@ namespace Services.Implementations
 
         public async Task<ShippingMethodDTO?> UpdateShippingMethodAsync(Guid id, UpdateShippingMethodRequest request)
         {
+            // Bắt đầu transaction
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                var existingShippingMethod = await _shippingMethodRepository.GetByIdAsync(id);
-                if (existingShippingMethod == null)
+                // 1. Lấy bản ghi hiện tại
+                var existing = await _shippingMethodRepository.GetByIdAsync(id);
+                if (existing == null)
                 {
                     _logger.LogWarning("Shipping method with id {Id} not found", id);
                     return null;
                 }
 
-                // Validate unique name if name is being updated
-                if (!string.IsNullOrEmpty(request.Name) &&
-                    request.Name != existingShippingMethod.Name &&
-                    await _shippingMethodRepository.IsNameExistsAsync(request.Name, id))
+                // 2. Kiểm tra unique name (enum) nếu có thay đổi
+                if (request.Name != existing.Name
+                    && await _shippingMethodRepository.IsNameExistsAsync(request.Name.ToString(), id))
                 {
                     _logger.LogWarning("Shipping method with name {Name} already exists", request.Name);
                     return null;
                 }
 
-                // Update fields using extension method
-                existingShippingMethod.UpdateFromRequest(request);
+                // 3. Cập nhật các field còn lại
+                existing.UpdateFromRequest(request);
 
-                // Validate delivery days range after update
-                if (!existingShippingMethod.IsDeliveryDaysValid())
+                // 4. Validate business rule về delivery days
+                if (!existing.IsDeliveryDaysValid())
                 {
-                    _logger.LogWarning("Min delivery days cannot be greater than max delivery days");
+                    _logger.LogWarning("Min delivery days cannot be greater than max delivery days for id {Id}", id);
                     return null;
                 }
 
-                var updatedShippingMethod = await UpdateAsync(existingShippingMethod);
+                // 5. Áp dụng thay đổi và commit
+                var updated = await UpdateAsync(existing);
                 await _unitOfWork.CommitTransactionAsync();
 
-                return updatedShippingMethod.ToDTO();
+                // 6. Trả về DTO
+                return updated.ToDTO();
             }
             catch (Exception ex)
             {
+                // Rollback nếu có lỗi
                 await _unitOfWork.RollbackTransactionAsync();
                 _logger.LogError(ex, "Error updating shipping method {Id} with {@Request}", id, request);
                 return null;
             }
         }
+
 
         public async Task<bool> DeleteShippingMethodAsync(Guid id)
         {

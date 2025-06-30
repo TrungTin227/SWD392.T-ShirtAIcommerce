@@ -20,12 +20,6 @@ namespace BusinessObjects.Cart
         public Guid? CustomDesignId { get; set; }
         public Guid? ProductVariantId { get; set; }
 
-        [MaxLength(50)]
-        public string? SelectedColor { get; set; }
-
-        [MaxLength(20)]
-        public string? SelectedSize { get; set; }
-
         [Required(ErrorMessage = "Số lượng là bắt buộc")]
         [Range(1, 100, ErrorMessage = "Số lượng từ 1-100")]
         public int Quantity { get; set; } = 1;

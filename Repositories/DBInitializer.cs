@@ -1,5 +1,4 @@
-﻿using BusinessObjects.Common;
-using BusinessObjects.Coupons;
+﻿using BusinessObjects.Coupons;
 using BusinessObjects.Identity;
 using BusinessObjects.Products;
 using BusinessObjects.Shipping;
@@ -349,48 +348,49 @@ namespace Repositories
                 if (tshirtCategory != null)
                 {
                     products.AddRange(new[]
-                    {
-                        new Product
-                        {
-                            Name = "Basic Cotton T-Shirt White",
-                            Description = "100% cotton basic t-shirt in white color. Perfect for custom designs.",
-                            Price = 150000,
-                            SalePrice = 120000,
-                            Sku = "TSHIRT-WHITE-001",
-                            Quantity = 100,
-                            CategoryId = tshirtCategory.Id,
-                            Material = "Cotton",
-                            Season = "All Season",
-                            AvailableColors = "[\"White\", \"Black\", \"Navy\", \"Gray\", \"Red\"]",
-                            AvailableSizes = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-                            Images = "[\"/images/products/tshirt-white-1.jpg\", \"/images/products/tshirt-white-2.jpg\"]",
-                            Status = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow,
-                            CreatedBy = adminUser.Id,
-                            UpdatedBy = adminUser.Id
-                        },
-                        new Product
-                        {
-                            Name = "Basic Cotton T-Shirt Black",
-                            Description = "100% cotton basic t-shirt in black color. Classic and versatile.",
-                            Price = 150000,
-                            SalePrice = 120000,
-                            Sku = "TSHIRT-BLACK-002",
-                            Quantity = 100,
-                            CategoryId = tshirtCategory.Id,
-                            Material = "Cotton",
-                            Season = "All Season",
-                            AvailableColors = "[\"Black\", \"White\", \"Navy\", \"Gray\", \"Red\"]",
-                            AvailableSizes = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-                            Images = "[\"/images/products/tshirt-black-1.jpg\", \"/images/products/tshirt-black-2.jpg\"]",
-                            Status = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow,
-                            CreatedBy = adminUser.Id,
-                            UpdatedBy = adminUser.Id
-                        }
-                    });
+{
+    new Product
+    {
+        Name = "Basic Cotton T-Shirt White",
+        Description = "100% cotton basic t-shirt in white color. Perfect for custom designs.",
+        Price = 150000,
+        SalePrice = 120000,
+        Sku = "TSHIRT-WHITE-001",
+        Quantity = 100,
+        CategoryId = tshirtCategory.Id,
+        Material = ProductMaterial.Cotton100,
+        Season = ProductSeason.AllSeason,
+        // Sử dụng thuộc tính JSON thay vì List
+        AvailableColorsJson = "[\"White\", \"Black\", \"Navy\", \"Gray\", \"Red\"]",
+        AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
+        Images = "[\"/images/products/tshirt-white-1.jpg\", \"/images/products/tshirt-white-2.jpg\"]",
+        Status = ProductStatus.Active,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        CreatedBy = adminUser.Id,
+        UpdatedBy = adminUser.Id
+    },
+    new Product
+    {
+        Name = "Basic Cotton T-Shirt Black",
+        Description = "100% cotton basic t-shirt in black color. Classic and versatile.",
+        Price = 150000,
+        SalePrice = 120000,
+        Sku = "TSHIRT-BLACK-002",
+        Quantity = 100,
+        CategoryId = tshirtCategory.Id,
+        Material = ProductMaterial.Cotton100,
+        Season = ProductSeason.AllSeason,
+        AvailableColorsJson = "[\"Black\", \"White\", \"Navy\", \"Gray\", \"Red\"]",
+        AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
+        Images = "[\"/images/products/tshirt-black-1.jpg\", \"/images/products/tshirt-black-2.jpg\"]",
+        Status = ProductStatus.Active,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        CreatedBy = adminUser.Id,
+        UpdatedBy = adminUser.Id
+    }
+});
                 }
 
                 // Polo products
@@ -399,27 +399,27 @@ namespace Repositories
                 {
                     products.AddRange(new[]
                     {
-                        new Product
-                        {
-                            Name = "Classic Polo Shirt Blue",
-                            Description = "Cotton blend polo shirt with ribbed collar. Professional and comfortable.",
-                            Price = 220000,
-                            SalePrice = 180000,
-                            Sku = "POLO-BLUE-001",
-                            Quantity = 80,
-                            CategoryId = poloCategory.Id,
-                            Material = "Cotton Blend",
-                            Season = "All Season",
-                            AvailableColors = "[\"Blue\", \"White\", \"Black\", \"Navy\", \"Gray\"]",
-                            AvailableSizes = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-                            Images = "[\"/images/products/polo-blue-1.jpg\", \"/images/products/polo-blue-2.jpg\"]",
-                            Status = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow,
-                            CreatedBy = adminUser.Id,
-                            UpdatedBy = adminUser.Id
-                        }
-                    });
+        new Product
+        {
+            Name = "Classic Polo Shirt Blue",
+            Description = "Cotton blend polo shirt with ribbed collar. Professional and comfortable.",
+            Price = 220000,
+            SalePrice = 180000,
+            Sku = "POLO-BLUE-001",
+            Quantity = 80,
+            CategoryId = poloCategory.Id,
+            Material = ProductMaterial.CottonPolyester,
+            Season = ProductSeason.AllSeason,
+            AvailableColorsJson = "[\"Blue\", \"White\", \"Black\", \"Navy\", \"Gray\"]",
+            AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
+            Images = "[\"/images/products/polo-blue-1.jpg\", \"/images/products/polo-blue-2.jpg\"]",
+            Status = ProductStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            CreatedBy = adminUser.Id,
+            UpdatedBy = adminUser.Id
+        }
+    });
                 }
 
                 // Hoodie products
@@ -428,27 +428,27 @@ namespace Repositories
                 {
                     products.AddRange(new[]
                     {
-                        new Product
-                        {
-                            Name = "Premium Hoodie Gray",
-                            Description = "Premium fleece hoodie with front pockets. Perfect for cold weather.",
-                            Price = 350000,
-                            SalePrice = 300000,
-                            Sku = "HOODIE-GRAY-001",
-                            Quantity = 50,
-                            CategoryId = hoodieCategory.Id,
-                            Material = "Fleece",
-                            Season = "Winter",
-                            AvailableColors = "[\"Gray\", \"Black\", \"Navy\", \"White\"]",
-                            AvailableSizes = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-                            Images = "[\"/images/products/hoodie-gray-1.jpg\", \"/images/products/hoodie-gray-2.jpg\"]",
-                            Status = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow,
-                            CreatedBy = adminUser.Id,
-                            UpdatedBy = adminUser.Id
-                        }
-                    });
+        new Product
+        {
+            Name = "Premium Hoodie Gray",
+            Description = "Premium fleece hoodie with front pockets. Perfect for cold weather.",
+            Price = 350000,
+            SalePrice = 300000,
+            Sku = "HOODIE-GRAY-001",
+            Quantity = 50,
+            CategoryId = hoodieCategory.Id,
+            Material = ProductMaterial.Cotton100,
+            Season = ProductSeason.Winter,
+            AvailableColorsJson = "[\"Gray\", \"Black\", \"Navy\", \"White\"]",
+            AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
+            Images = "[\"/images/products/hoodie-gray-1.jpg\", \"/images/products/hoodie-gray-2.jpg\"]",
+            Status = ProductStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            CreatedBy = adminUser.Id,
+            UpdatedBy = adminUser.Id
+        }
+    });
                 }
 
                 if (products.Any())
@@ -470,50 +470,50 @@ namespace Repositories
             {
                 var now = DateTime.UtcNow;
                 var shippingMethods = new List<ShippingMethod>
-                {
-                    new ShippingMethod
-                    {
-                        Name = "Standard",
-                        Description = "Vận chuyển tiêu chuẩn (3-7 ngày)",
-                        Fee = 20000,
-                        FreeShippingThreshold = 500000,
-                        EstimatedDays = 5,
-                        MinDeliveryDays = 3,
-                        MaxDeliveryDays = 7,
-                        IsActive = true,
-                        SortOrder = 1,
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    },
-                    new ShippingMethod
-                    {
-                        Name = "Express",
-                        Description = "Vận chuyển nhanh (1-3 ngày)",
-                        Fee = 50000,
-                        FreeShippingThreshold = 1000000,
-                        EstimatedDays = 2,
-                        MinDeliveryDays = 1,
-                        MaxDeliveryDays = 3,
-                        IsActive = true,
-                        SortOrder = 2,
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    },
-                    new ShippingMethod
-                    {
-                        Name = "Overnight",
-                        Description = "Giao trong ngày (trước 24h)",
-                        Fee = 80000,
-                        FreeShippingThreshold = null,
-                        EstimatedDays = 1,
-                        MinDeliveryDays = 1,
-                        MaxDeliveryDays = 1,
-                        IsActive = true,
-                        SortOrder = 3,
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    }
-                };
+        {
+            new ShippingMethod
+            {
+                Name = ShippingCategory.Standard, // Sử dụng enum
+                Description = "Vận chuyển tiêu chuẩn (3-7 ngày)",
+                Fee = 20000,
+                FreeShippingThreshold = 500000,
+                EstimatedDays = 5,
+                MinDeliveryDays = 3,
+                MaxDeliveryDays = 7,
+                IsActive = true,
+                SortOrder = 1,
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new ShippingMethod
+            {
+                Name = ShippingCategory.Express,
+                Description = "Vận chuyển nhanh (1-3 ngày)",
+                Fee = 50000,
+                FreeShippingThreshold = 1000000,
+                EstimatedDays = 2,
+                MinDeliveryDays = 1,
+                MaxDeliveryDays = 3,
+                IsActive = true,
+                SortOrder = 2,
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new ShippingMethod
+            {
+                Name = ShippingCategory.Overnight,
+                Description = "Giao trong ngày (trước 24h)",
+                Fee = 80000,
+                FreeShippingThreshold = null,
+                EstimatedDays = 1,
+                MinDeliveryDays = 1,
+                MaxDeliveryDays = 1,
+                IsActive = true,
+                SortOrder = 3,
+                CreatedAt = now,
+                UpdatedAt = now
+            }
+        };
 
                 await context.ShippingMethods.AddRangeAsync(shippingMethods);
                 await context.SaveChangesAsync();
@@ -537,7 +537,7 @@ namespace Repositories
                         Code = "WELCOME10",
                         Name = "Giảm 10% cho đơn đầu tiên",
                         Description = "Áp dụng cho khách hàng mới, đơn tối thiểu 200k.",
-                        Type = CouponType.Percentage,
+                        Type = CouponType.Percentage, // Changed to enum
                         Value = 10,
                         MinOrderAmount = 200000,
                         MaxDiscountAmount = 50000,
@@ -545,7 +545,7 @@ namespace Repositories
                         UsageLimitPerUser = 1,
                         StartDate = now,
                         EndDate = now.AddMonths(2),
-                        Status = CouponStatus.Active,
+                        Status = CouponStatus.Active, // Changed to enum
                         IsFirstTimeUserOnly = true,
                         CreatedAt = now,
                         UpdatedAt = now
@@ -555,7 +555,7 @@ namespace Repositories
                         Code = "SUMMER15",
                         Name = "Mùa hè giảm 15%",
                         Description = "Giảm 15% toàn bộ đơn trên 300k, tối đa 80k.",
-                        Type = CouponType.Percentage,
+                        Type = CouponType.Percentage, // Changed to enum
                         Value = 15,
                         MinOrderAmount = 300000,
                         MaxDiscountAmount = 80000,
@@ -563,7 +563,7 @@ namespace Repositories
                         UsageLimitPerUser = 2,
                         StartDate = now,
                         EndDate = now.AddMonths(1),
-                        Status = CouponStatus.Active,
+                        Status = CouponStatus.Active, // Changed to enum
                         CreatedAt = now,
                         UpdatedAt = now
                     },
@@ -572,7 +572,7 @@ namespace Repositories
                         Code = "FREESHIP",
                         Name = "Miễn phí vận chuyển",
                         Description = "Miễn phí vận chuyển cho đơn từ 400k.",
-                        Type = CouponType.FreeShipping,
+                        Type = CouponType.FreeShipping, // Changed to enum
                         Value = 0,
                         MinOrderAmount = 400000,
                         MaxDiscountAmount = null,
@@ -580,7 +580,7 @@ namespace Repositories
                         UsageLimitPerUser = 5,
                         StartDate = now,
                         EndDate = now.AddMonths(3),
-                        Status = CouponStatus.Active,
+                        Status = CouponStatus.Active, // Changed to enum
                         CreatedAt = now,
                         UpdatedAt = now
                     },
@@ -589,7 +589,7 @@ namespace Repositories
                         Code = "VIP25",
                         Name = "Khách hàng thân thiết giảm 25%",
                         Description = "Áp dụng cho khách vip, tối đa giảm 120k.",
-                        Type = CouponType.Percentage,
+                        Type = CouponType.Percentage, // Changed to enum
                         Value = 25,
                         MinOrderAmount = 500000,
                         MaxDiscountAmount = 120000,
@@ -597,7 +597,7 @@ namespace Repositories
                         UsageLimitPerUser = 1,
                         StartDate = now,
                         EndDate = now.AddMonths(6),
-                        Status = CouponStatus.Active,
+                        Status = CouponStatus.Active, // Changed to enum
                         CreatedAt = now,
                         UpdatedAt = now
                     },
@@ -606,7 +606,7 @@ namespace Repositories
                         Code = "AI2025",
                         Name = "Giảm 50k đơn trên 250k",
                         Description = "Áp dụng cho tất cả, không giới hạn số lượng.",
-                        Type = CouponType.FixedAmount,
+                        Type = CouponType.FixedAmount, // Changed to enum
                         Value = 50000,
                         MinOrderAmount = 250000,
                         MaxDiscountAmount = null,
@@ -614,7 +614,7 @@ namespace Repositories
                         UsageLimitPerUser = null,
                         StartDate = now,
                         EndDate = now.AddDays(45),
-                        Status = CouponStatus.Active,
+                        Status = CouponStatus.Active, // Changed to enum
                         CreatedAt = now,
                         UpdatedAt = now
                     }

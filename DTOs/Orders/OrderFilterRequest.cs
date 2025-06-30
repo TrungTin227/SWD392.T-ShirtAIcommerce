@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Orders;
+﻿using BusinessObjects.Products;
 
 namespace DTOs.Orders
 {

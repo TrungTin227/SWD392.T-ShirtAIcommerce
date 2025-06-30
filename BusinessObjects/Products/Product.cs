@@ -6,17 +6,10 @@ using BusinessObjects.Reviews;
 using BusinessObjects.Wishlists;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace BusinessObjects.Products
 {
-    public enum ProductStatus
-    {
-        Active,
-        Inactive,
-        OutOfStock,
-        Discontinued
-    }
-
     public class Product : BaseEntity
     {
         [Key]
@@ -48,11 +41,11 @@ namespace BusinessObjects.Products
 
         public Guid? CategoryId { get; set; }
 
-        [MaxLength(100)]
-        public string? Material { get; set; }
+        [Required]
+        public ProductMaterial Material { get; set; }
 
-        [MaxLength(50)]
-        public string? Season { get; set; }
+        [Required]
+        public ProductSeason Season { get; set; }
 
         // Thuộc tính mới cho e-commerce
         [Range(0.01, 999.99, ErrorMessage = "Trọng lượng phải từ 0.01 đến 999.99 kg")]
@@ -91,9 +84,27 @@ namespace BusinessObjects.Products
         [Column(TypeName = "decimal(5,2)")]
         public decimal DiscountPercentage { get; set; } = 0;
 
-        // JSON arrays
-        public string? AvailableColors { get; set; } // JSON: ["Red", "Blue", "White"]
-        public string? AvailableSizes { get; set; } // JSON: ["S", "M", "L", "XL"]
+        [NotMapped]
+        public List<ProductColor> AvailableColors { get; set; } = new(); // JSON: ["Red", "Blue", "White"]
+        [NotMapped]
+        public List<ProductSize> AvailableSizes { get; set; } = new(); // JSON: ["S", "M", "L", "XL"]
+        [Column("AvailableColors", TypeName = "text")]
+        public string AvailableColorsJson
+        {
+            get => JsonSerializer.Serialize(AvailableColors);
+            set => AvailableColors = string.IsNullOrWhiteSpace(value)
+                    ? new List<ProductColor>()
+                    : JsonSerializer.Deserialize<List<ProductColor>>(value)!;
+        }
+
+        [Column("AvailableSizes", TypeName = "text")]
+        public string AvailableSizesJson
+        {
+            get => JsonSerializer.Serialize(AvailableSizes);
+            set => AvailableSizes = string.IsNullOrWhiteSpace(value)
+                    ? new List<ProductSize>()
+                    : JsonSerializer.Deserialize<List<ProductSize>>(value)!;
+        }
         public string? Images { get; set; } // JSON array of image URLs
 
         [Required]

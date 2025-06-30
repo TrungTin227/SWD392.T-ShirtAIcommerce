@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Shipping;
+﻿using BusinessObjects.Products;
+using BusinessObjects.Shipping;
 using DTOs.Shipping;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;
@@ -18,8 +19,10 @@ namespace Repositories.Implementations
             var query = _dbSet.AsQueryable();
 
             // Apply filters
-            if (!string.IsNullOrEmpty(filter.Name))
-                query = query.Where(sm => sm.Name.Contains(filter.Name));
+            if (Enum.TryParse<ShippingCategory>(filter.Name, true, out var category))
+            {
+                query = query.Where(sm => sm.Name == category);
+            }
 
             if (filter.IsActive.HasValue)
                 query = query.Where(sm => sm.IsActive == filter.IsActive.Value);
@@ -85,8 +88,10 @@ namespace Repositories.Implementations
 
         public async Task<bool> IsNameExistsAsync(string name, Guid? excludeId = null)
         {
-            var query = _dbSet.Where(sm => sm.Name.ToLower() == name.ToLower());
+            if (!Enum.TryParse<ShippingCategory>(name, true, out var category))
+                return false;
 
+            var query = _dbSet.Where(sm => sm.Name == category);
             if (excludeId.HasValue)
                 query = query.Where(sm => sm.Id != excludeId.Value);
 

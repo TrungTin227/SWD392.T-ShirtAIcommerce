@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Coupons;
+﻿using BusinessObjects.Products;
 
 namespace DTOs.Coupons
 {

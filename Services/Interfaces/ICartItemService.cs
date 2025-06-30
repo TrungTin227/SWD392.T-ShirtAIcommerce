@@ -18,5 +18,7 @@ namespace Services.Interfaces
         Task<ApiResult<bool>> MergeGuestCartToUserAsync(string sessionId, Guid userId);
         Task<ApiResult<int>> GetCartItemCountAsync(Guid? userId, string? sessionId);
         Task<ApiResult<decimal>> GetCartTotalAsync(Guid? userId, string? sessionId);
+        Task<decimal> GetUnitPriceFromProduct(Guid productId);
+        Task<decimal> GetUnitPriceFromProductVariant(Guid productVariantId);
     }
 }

@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Orders;
+using BusinessObjects.Products;
 using DTOs.Common;
 using DTOs.OrderItem;
 using DTOs.Orders;
@@ -791,7 +792,9 @@ namespace Services.Implementations
                 UserName = order.User?.UserName ?? "",
                 AssignedStaffName = order.AssignedStaff?.UserName ?? "",
                 CouponCode = order.Coupon?.Code ?? "",
-                ShippingMethodName = order.ShippingMethod?.Name ?? "",
+                ShippingMethodName = order.ShippingMethod != null
+                    ? order.ShippingMethod.Name.ToString()
+                    : string.Empty,
                 OrderItems = order.OrderItems?.Select(ConvertToOrderItemDto).ToList() ?? new List<OrderItemDto>()
             };
         }

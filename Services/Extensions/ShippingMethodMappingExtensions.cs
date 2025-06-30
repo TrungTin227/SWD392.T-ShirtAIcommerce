@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Shipping;
+﻿using BusinessObjects.Products;
+using BusinessObjects.Shipping;
 using DTOs.Common;
 using DTOs.Shipping;
 using Repositories.Helpers;
@@ -35,7 +36,7 @@ namespace Services.Extensions
             return new ShippingMethodDTO
             {
                 Id = shippingMethod.Id,
-                Name = shippingMethod.Name,
+                Name = shippingMethod.Name.ToString(),
                 Description = shippingMethod.Description,
                 Fee = shippingMethod.Fee,
                 FreeShippingThreshold = shippingMethod.FreeShippingThreshold,
@@ -64,10 +65,15 @@ namespace Services.Extensions
         /// </summary>
         public static ShippingMethod ToEntity(this CreateShippingMethodRequest request)
         {
+            if (!Enum.TryParse<ShippingCategory>(request.Name, ignoreCase: true, out var category))
+            {
+                throw new ArgumentException($"Invalid shipping category: {request.Name}");
+            }
+
             return new ShippingMethod
             {
                 Id = Guid.NewGuid(),
-                Name = request.Name,
+                Name = category,
                 Description = request.Description,
                 Fee = request.Fee,
                 FreeShippingThreshold = request.FreeShippingThreshold,
@@ -84,9 +90,10 @@ namespace Services.Extensions
         /// </summary>
         public static void UpdateFromRequest(this ShippingMethod entity, UpdateShippingMethodRequest request)
         {
-            if (!string.IsNullOrEmpty(request.Name))
-                entity.Name = request.Name;
-
+            if (Enum.TryParse<ShippingCategory>(request.Name.ToString(), true, out var category))
+            {
+                entity.Name = category;
+            }
             if (request.Description != null)
                 entity.Description = request.Description;
 

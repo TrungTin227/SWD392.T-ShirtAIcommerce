@@ -1,5 +1,6 @@
 ﻿using BusinessObjects.Identity;
 using BusinessObjects.Orders;
+using BusinessObjects.Products;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -10,9 +11,8 @@ namespace BusinessObjects.Shipping
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        [Required(ErrorMessage = "Tên phương thức vận chuyển là bắt buộc")]
-        [MaxLength(100)]
-        public string Name { get; set; } = string.Empty;
+        [Required]
+        public ShippingCategory Name { get; set; } 
 
         [MaxLength(500)]
         public string? Description { get; set; }

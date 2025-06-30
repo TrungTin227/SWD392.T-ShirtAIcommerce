@@ -14,12 +14,10 @@ namespace BusinessObjects.Products
         public Guid ProductId { get; set; }
 
         [Required(ErrorMessage = "Màu sắc là bắt buộc")]
-        [MaxLength(50)]
-        public string Color { get; set; } = string.Empty;
+        public ProductColor Color { get; set; }
 
         [Required(ErrorMessage = "Kích thước là bắt buộc")]
-        [MaxLength(20)]
-        public string Size { get; set; } = string.Empty;
+        public ProductSize Size { get; set; }
 
         [Required(ErrorMessage = "SKU biến thể là bắt buộc")]
         [MaxLength(100)]
@@ -43,7 +41,6 @@ namespace BusinessObjects.Products
         // Navigation properties
         [ForeignKey("ProductId")]
         public virtual Product Product { get; set; } = null!;
-
         public virtual ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
     }

@@ -26,11 +26,11 @@ namespace DTOs.Product
 
         public Guid? CategoryId { get; set; }
 
-        [MaxLength(100)]
-        public string? Material { get; set; }
+        [Required]
+        public ProductMaterial Material { get; set; }
 
-        [MaxLength(50)]
-        public string? Season { get; set; }
+        [Required]
+        public ProductSeason Season { get; set; }
 
         [Range(0.01, 999.99, ErrorMessage = "Trọng lượng phải từ 0.01 đến 999.99 kg")]
         public decimal? Weight { get; set; }
@@ -60,8 +60,8 @@ namespace DTOs.Product
         [Range(0, 100, ErrorMessage = "Phần trăm giảm giá từ 0-100")]
         public decimal? DiscountPercentage { get; set; }
 
-        public string? AvailableColors { get; set; }
-        public string? AvailableSizes { get; set; }
+        public List<string>? AvailableColors { get; set; }
+        public List<string>? AvailableSizes { get; set; }
         public string? Images { get; set; }
         public ProductStatus? Status { get; set; }
     }

@@ -51,12 +51,6 @@ namespace Repositories.Implementations
                     ? query.Where(x => x.Quantity > 0)
                     : query.Where(x => x.Quantity == 0);
 
-            if (!string.IsNullOrWhiteSpace(filter.Material))
-                query = query.Where(x => x.Material != null && x.Material.Contains(filter.Material));
-
-            if (!string.IsNullOrWhiteSpace(filter.Season))
-                query = query.Where(x => x.Season != null && x.Season.Contains(filter.Season));
-
             if (filter.CreatedFrom.HasValue)
                 query = query.Where(x => x.CreatedAt >= filter.CreatedFrom.Value);
 

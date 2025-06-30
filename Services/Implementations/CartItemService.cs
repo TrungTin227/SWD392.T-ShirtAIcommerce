@@ -132,8 +132,7 @@ namespace Services.Implementations
                 // Check if item already exists in cart
                 var existingItem = await _cartItemRepository.FindExistingCartItemAsync(
                     createDto.UserId, createDto.SessionId, createDto.ProductId,
-                    createDto.CustomDesignId, createDto.ProductVariantId,
-                    createDto.SelectedColor, createDto.SelectedSize);
+                    createDto.CustomDesignId, createDto.ProductVariantId);
 
                 CartItem cartItem;
                 if (existingItem != null)
@@ -295,6 +294,36 @@ namespace Services.Implementations
             {
                 return ApiResult<decimal>.Failure("Lỗi khi tính tổng giỏ hàng", ex);
             }
+        }
+
+        public async Task<decimal> GetUnitPriceFromProduct(Guid productId)
+        {
+            var product = await _cartItemRepository.GetProductByIdAsync(productId);
+            if (product == null)
+                throw new Exception("Không tìm thấy sản phẩm");
+
+            // Giả sử ưu tiên SalePrice, nếu không có thì lấy Price
+            return product.SalePrice ?? product.Price;
+        }
+
+        public async Task<decimal> GetUnitPriceFromProductVariant(Guid productVariantId)
+        {
+            var productVariant = await _cartItemRepository.GetProductVariantByIdAsync(productVariantId);
+            if (productVariant == null)
+                throw new Exception("Không tìm thấy biến thể sản phẩm");
+
+            // Lấy product gốc
+            var product = await _cartItemRepository.GetProductByIdAsync(productVariant.ProductId);
+            if (product == null)
+                throw new Exception("Không tìm thấy sản phẩm gốc của biến thể");
+
+            // Ưu tiên SalePrice nếu có, không có thì lấy Price
+            decimal basePrice = product.SalePrice ?? product.Price;
+
+            // Áp dụng điều chỉnh giá
+            decimal finalPrice = basePrice + (productVariant.PriceAdjustment ?? 0);
+
+            return finalPrice;
         }
 
         #region Private Helper Methods

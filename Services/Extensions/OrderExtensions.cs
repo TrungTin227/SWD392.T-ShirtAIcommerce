@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Orders;
+using BusinessObjects.Products;
 
 namespace Services.Extensions
 {

@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Orders;
+using BusinessObjects.Products;
 using DTOs.Orders;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;

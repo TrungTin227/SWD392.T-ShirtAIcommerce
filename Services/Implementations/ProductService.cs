@@ -361,8 +361,8 @@ namespace Services.Implements
                 Quantity = product.Quantity,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,
-                Material = product.Material,
-                Season = product.Season,
+                Material = product.Material.ToString(),
+                Season = product.Season.ToString(),
                 Weight = product.Weight,
                 Dimensions = product.Dimensions,
                 MetaTitle = product.MetaTitle,
@@ -375,8 +375,12 @@ namespace Services.Implements
                 IsFeatured = product.IsFeatured,
                 IsBestseller = product.IsBestseller,
                 DiscountPercentage = product.DiscountPercentage,
-                AvailableColors = product.AvailableColors,
-                AvailableSizes = product.AvailableSizes,
+                AvailableColors = product.AvailableColors
+                        .Select(c => c.ToString())
+                        .ToList(),
+                AvailableSizes = product.AvailableSizes
+                        .Select(s => s.ToString())
+                        .ToList(),
                 Images = product.Images,
                 Status = product.Status,
                 CreatedAt = product.CreatedAt,
@@ -398,8 +402,8 @@ namespace Services.Implements
                 Sku = dto.Sku,
                 Quantity = dto.Quantity,
                 CategoryId = dto.CategoryId,
-                Material = dto.Material,
-                Season = dto.Season,
+                Material = dto.Material.Value,
+                Season = dto.Season.Value,
                 Weight = dto.Weight,
                 Dimensions = dto.Dimensions,
                 MetaTitle = dto.MetaTitle,
@@ -410,8 +414,15 @@ namespace Services.Implements
                 IsFeatured = dto.IsFeatured,
                 IsBestseller = dto.IsBestseller,
                 DiscountPercentage = dto.DiscountPercentage,
-                AvailableColors = dto.AvailableColors,
-                AvailableSizes = dto.AvailableSizes,
+                AvailableColors = dto.AvailableColors?
+    .Select(name => Enum.Parse<ProductColor>(name, ignoreCase: true))
+    .ToList()
+    ?? new List<ProductColor>(),
+
+                AvailableSizes = dto.AvailableSizes?
+    .Select(name => Enum.Parse<ProductSize>(name, ignoreCase: true))
+    .ToList()
+    ?? new List<ProductSize>(),
                 Images = dto.Images,
                 Status = dto.Status
             };
@@ -440,11 +451,11 @@ namespace Services.Implements
             if (dto.CategoryId.HasValue)
                 product.CategoryId = dto.CategoryId;
 
-            if (!string.IsNullOrWhiteSpace(dto.Material))
-                product.Material = dto.Material;
+            if (!string.IsNullOrWhiteSpace(dto.Material.ToString()))
+                product.Material = Enum.Parse<ProductMaterial>(dto.Material.ToString(), true);
 
-            if (!string.IsNullOrWhiteSpace(dto.Season))
-                product.Season = dto.Season;
+            if (!string.IsNullOrWhiteSpace(dto.Season.ToString()))
+                product.Season = Enum.Parse<ProductSeason>(dto.Season.ToString(), true);
 
             if (dto.Weight.HasValue)
                 product.Weight = dto.Weight.Value;
@@ -477,10 +488,14 @@ namespace Services.Implements
                 product.DiscountPercentage = dto.DiscountPercentage.Value;
 
             if (dto.AvailableColors != null)
-                product.AvailableColors = dto.AvailableColors;
+                product.AvailableColors = dto.AvailableColors
+                                              .Select(name => Enum.Parse<ProductColor>(name, true))
+                                              .ToList();
 
             if (dto.AvailableSizes != null)
-                product.AvailableSizes = dto.AvailableSizes;
+                product.AvailableSizes = dto.AvailableSizes
+                                             .Select(name => Enum.Parse<ProductSize>(name, true))
+                                             .ToList();
 
             if (dto.Images != null)
                 product.Images = dto.Images;

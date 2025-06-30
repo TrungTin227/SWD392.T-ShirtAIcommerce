@@ -17,8 +17,6 @@ namespace Services.Helpers.Mappers
                 ProductId = entity.ProductId,
                 CustomDesignId = entity.CustomDesignId,
                 ProductVariantId = entity.ProductVariantId,
-                SelectedColor = entity.SelectedColor,
-                SelectedSize = entity.SelectedSize,
                 Quantity = entity.Quantity,
                 UnitPrice = entity.UnitPrice,
                 TotalPrice = entity.TotalPrice,
@@ -43,8 +41,6 @@ namespace Services.Helpers.Mappers
                 ProductId = dto.ProductId,
                 CustomDesignId = dto.CustomDesignId,
                 ProductVariantId = dto.ProductVariantId,
-                SelectedColor = dto.SelectedColor,
-                SelectedSize = dto.SelectedSize,
                 Quantity = dto.Quantity,
                 UnitPrice = dto.UnitPrice,
                 CreatedAt = DateTime.UtcNow,
@@ -55,8 +51,6 @@ namespace Services.Helpers.Mappers
         }
         public static void UpdateEntity(CartItem entity, UpdateCartItemDto dto)
         {
-            entity.SelectedColor = dto.SelectedColor;
-            entity.SelectedSize = dto.SelectedSize;
             entity.Quantity = dto.Quantity;
             entity.UnitPrice = dto.UnitPrice;
             entity.UpdatedAt = DateTime.UtcNow;

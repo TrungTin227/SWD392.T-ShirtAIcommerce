@@ -5,29 +5,10 @@ using BusinessObjects.Entities.Payments;
 using BusinessObjects.Reviews;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using BusinessObjects.Products;
 
 namespace BusinessObjects.Orders
 {
-    public enum OrderStatus
-    {
-        Pending,
-        Confirmed,
-        Processing,
-        Shipping,
-        Delivered,
-        Cancelled,
-        Returned
-    }
-
-    public enum PaymentStatus
-    {
-        Unpaid,
-        Paid,
-        PartiallyPaid,
-        Refunded,
-        PartiallyRefunded
-    }
-
     public class Order : BaseEntity
     {
         [Key]

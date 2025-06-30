@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Cart;
+using BusinessObjects.Products;
 using DTOs.Cart;
 using Repositories.Helpers;
 using Repositories.WorkSeeds.Interfaces;
@@ -11,7 +12,7 @@ namespace Repositories.Interfaces
         Task<IEnumerable<CartItem>> GetUserCartItemsAsync(Guid userId);
         Task<IEnumerable<CartItem>> GetSessionCartItemsAsync(string sessionId);
         Task<CartItem?> GetWithDetailsAsync(Guid id);
-        Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productId, Guid? customDesignId, Guid? productVariantId, string? selectedColor, string? selectedSize);
+        Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productId, Guid? customDesignId, Guid? productVariantId);
         Task<bool> ClearUserCartAsync(Guid userId);
         Task<bool> ClearSessionCartAsync(string sessionId);
         Task<decimal> GetCartTotalAsync(Guid? userId, string? sessionId);
@@ -20,5 +21,7 @@ namespace Repositories.Interfaces
         Task<bool> ValidateProductExistsAsync(Guid productId);
         Task<bool> ValidateCustomDesignExistsAsync(Guid customDesignId);
         Task<bool> ValidateProductVariantExistsAsync(Guid productVariantId);
+        Task<Product?> GetProductByIdAsync(Guid productId);
+        Task<ProductVariant?> GetProductVariantByIdAsync(Guid productVariantId);
     }
 }

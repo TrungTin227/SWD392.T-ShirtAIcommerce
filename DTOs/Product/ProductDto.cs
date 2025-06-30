@@ -27,8 +27,8 @@ namespace DTOs.Product
         public bool IsFeatured { get; set; }
         public bool IsBestseller { get; set; }
         public decimal DiscountPercentage { get; set; }
-        public string? AvailableColors { get; set; }
-        public string? AvailableSizes { get; set; }
+        public List<string>? AvailableColors { get; set; }
+        public List<string>? AvailableSizes { get; set; }
         public string? Images { get; set; }
         public ProductStatus Status { get; set; }
         public DateTime CreatedAt { get; set; }

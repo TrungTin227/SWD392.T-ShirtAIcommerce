@@ -70,16 +70,14 @@ namespace Repositories.Implementations
                 ci => ci.ProductVariant);
         }
 
-        public async Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productId, Guid? customDesignId, Guid? productVariantId, string? selectedColor, string? selectedSize)
+        public async Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productId, Guid? customDesignId, Guid? productVariantId)
         {
             Expression<Func<CartItem, bool>> predicate = ci =>
                 ci.UserId == userId &&
                 ci.SessionId == sessionId &&
                 ci.ProductId == productId &&
                 ci.CustomDesignId == customDesignId &&
-                ci.ProductVariantId == productVariantId &&
-                ci.SelectedColor == selectedColor &&
-                ci.SelectedSize == selectedSize;
+                ci.ProductVariantId == productVariantId;
 
             return await FirstOrDefaultAsync(predicate);
         }
@@ -162,7 +160,7 @@ namespace Repositories.Implementations
                 // Tìm item tương tự trong cart của user
                 var existingUserItem = await FindExistingCartItemAsync(
                     userId, null, guestItem.ProductId, guestItem.CustomDesignId,
-                    guestItem.ProductVariantId, guestItem.SelectedColor, guestItem.SelectedSize);
+                    guestItem.ProductVariantId);
 
                 if (existingUserItem != null)
                 {
@@ -202,6 +200,16 @@ namespace Repositories.Implementations
             return await _context.Set<ProductVariant>().AnyAsync(pv => pv.Id == productVariantId);
         }
 
+        public async Task<Product?> GetProductByIdAsync(Guid productId)
+        {
+            return await _context.Set<Product>().FirstOrDefaultAsync(p => p.Id == productId && !p.IsDeleted);
+        }
+
+        public async Task<ProductVariant?> GetProductVariantByIdAsync(Guid productVariantId)
+        {
+            return await _context.Set<ProductVariant>().FirstOrDefaultAsync(pv => pv.Id == productVariantId);
+        }
+
         #region Private Helper Methods
 
         private static Expression<Func<CartItem, bool>>? BuildFilterPredicate(CartItemQueryDto query)
@@ -222,13 +230,6 @@ namespace Repositories.Implementations
 
             if (query.ProductVariantId.HasValue)
                 predicate = CombinePredicates(predicate, ci => ci.ProductVariantId == query.ProductVariantId.Value);
-
-            if (!string.IsNullOrEmpty(query.SelectedColor))
-                predicate = CombinePredicates(predicate, ci => ci.SelectedColor == query.SelectedColor);
-
-            if (!string.IsNullOrEmpty(query.SelectedSize))
-                predicate = CombinePredicates(predicate, ci => ci.SelectedSize == query.SelectedSize);
-
             if (query.MinQuantity.HasValue)
                 predicate = CombinePredicates(predicate, ci => ci.Quantity >= query.MinQuantity.Value);
 
@@ -251,9 +252,7 @@ namespace Repositories.Implementations
             {
                 predicate = CombinePredicates(predicate, ci =>
                     (ci.Product != null && ci.Product.Name.Contains(query.Search)) ||
-                    (ci.CustomDesign != null && ci.CustomDesign.DesignName.Contains(query.Search)) ||
-                    (ci.SelectedColor != null && ci.SelectedColor.Contains(query.Search)) ||
-                    (ci.SelectedSize != null && ci.SelectedSize.Contains(query.Search)));
+                    (ci.CustomDesign != null && ci.CustomDesign.DesignName.Contains(query.Search)));
             }
 
             return predicate;
@@ -269,8 +268,6 @@ namespace Repositories.Implementations
                 "quantity" => q => query.IsDescending ? q.OrderByDescending(ci => ci.Quantity) : q.OrderBy(ci => ci.Quantity),
                 "unitprice" => q => query.IsDescending ? q.OrderByDescending(ci => ci.UnitPrice) : q.OrderBy(ci => ci.UnitPrice),
                 "totalprice" => q => query.IsDescending ? q.OrderByDescending(ci => ci.TotalPrice) : q.OrderBy(ci => ci.TotalPrice),
-                "selectedcolor" => q => query.IsDescending ? q.OrderByDescending(ci => ci.SelectedColor) : q.OrderBy(ci => ci.SelectedColor),
-                "selectedsize" => q => query.IsDescending ? q.OrderByDescending(ci => ci.SelectedSize) : q.OrderBy(ci => ci.SelectedSize),
                 "createdat" => q => query.IsDescending ? q.OrderByDescending(ci => ci.CreatedAt) : q.OrderBy(ci => ci.CreatedAt),
                 _ => q => query.IsDescending ? q.OrderByDescending(ci => ci.CreatedAt) : q.OrderBy(ci => ci.CreatedAt)
             };
