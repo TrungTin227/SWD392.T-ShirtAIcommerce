@@ -15,6 +15,9 @@ namespace Services.Implementations
     public class OrderService : BaseService<Order, Guid>, IOrderService
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IUserAddressService _userAddressService;
+        private readonly ICouponService _couponService;
+        private readonly IShippingMethodService _shippingMethodService;
         private readonly ILogger<OrderService> _logger;
 
         public OrderService(
@@ -22,10 +25,16 @@ namespace Services.Implementations
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
             ICurrentTime currentTime,
+            IUserAddressService userAddressService,
+            ICouponService couponService,
+            IShippingMethodService shippingMethodService,
             ILogger<OrderService> logger)
             : base(repository, currentUserService, unitOfWork, currentTime)
         {
             _orderRepository = repository;
+            _userAddressService = userAddressService;
+            _couponService = couponService;
+            _shippingMethodService = shippingMethodService;
             _logger = logger;
         }
 
@@ -80,6 +89,8 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
+                _logger.LogInformation("Creating order with request {@Request}", request);
+
                 // Validate order items
                 if (request.OrderItems == null || !request.OrderItems.Any())
                 {
@@ -93,22 +104,35 @@ namespace Services.Implementations
                     {
                         throw new ArgumentException("Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: ProductId, CustomDesignId, hoặc ProductVariantId");
                     }
+                    
+                    if (!item.UnitPrice.HasValue || item.UnitPrice <= 0)
+                    {
+                        throw new ArgumentException("Giá sản phẩm phải lớn hơn 0");
+                    }
+                    
+                    if (!item.Quantity.HasValue || item.Quantity <= 0)
+                    {
+                        throw new ArgumentException("Số lượng sản phẩm phải lớn hơn 0");
+                    }
                 }
-
-                // Generate order number
-                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
-
-                // Calculate totals
-                var subtotal = request.OrderItems.Sum(item => item.UnitPrice * item.Quantity);
-                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
-                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
-                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
                 var userId = createdBy ?? _currentUserService.GetUserId();
                 if (!userId.HasValue)
                 {
                     throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
                 }
+
+                // Resolve shipping address
+                var (shippingAddress, receiverName, receiverPhone) = await ResolveShippingAddressAsync(request, userId.Value);
+
+                // Generate order number
+                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
+
+                // Calculate totals
+                var subtotal = request.OrderItems.Sum(item => item.UnitPrice.Value * item.Quantity.Value);
+                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
+                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
+                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
                 // Create order
                 var order = new Order
@@ -122,9 +146,9 @@ namespace Services.Implementations
                     TaxAmount = taxAmount,
                     Status = OrderStatus.Pending,
                     PaymentStatus = PaymentStatus.Unpaid,
-                    ShippingAddress = request.ShippingAddress,
-                    ReceiverName = request.ReceiverName,
-                    ReceiverPhone = request.ReceiverPhone,
+                    ShippingAddress = shippingAddress,
+                    ReceiverName = receiverName,
+                    ReceiverPhone = receiverPhone,
                     CustomerNotes = request.CustomerNotes,
                     CouponId = request.CouponId,
                     ShippingMethodId = request.ShippingMethodId,
@@ -143,12 +167,12 @@ namespace Services.Implementations
                         ProductId = itemRequest.ProductId,
                         CustomDesignId = itemRequest.CustomDesignId,
                         ProductVariantId = itemRequest.ProductVariantId,
-                        ItemName = itemRequest.ItemName,
-                        SelectedColor = itemRequest.SelectedColor,
-                        SelectedSize = itemRequest.SelectedSize,
-                        Quantity = itemRequest.Quantity,
-                        UnitPrice = itemRequest.UnitPrice,
-                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice, itemRequest.Quantity),
+                        ItemName = itemRequest.ItemName ?? "Sản phẩm",
+                        SelectedColor = itemRequest.SelectedColor?.ToString(),
+                        SelectedSize = itemRequest.SelectedSize?.ToString(),
+                        Quantity = itemRequest.Quantity.Value,
+                        UnitPrice = itemRequest.UnitPrice.Value,
+                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice.Value, itemRequest.Quantity.Value),
                         CreatedAt = DateTime.UtcNow,
                         CreatedBy = userId.Value
                     };
@@ -159,6 +183,7 @@ namespace Services.Implementations
                 var createdOrder = await CreateAsync(order);
                 await transaction.CommitAsync();
 
+                _logger.LogInformation("Order created successfully with ID {OrderId}", createdOrder.Id);
                 return ConvertToOrderDTO(createdOrder);
             }
             catch (Exception ex)
@@ -669,6 +694,57 @@ namespace Services.Implementations
             {
                 _logger.LogWarning(ex, "Error calculating discount and tax, using defaults");
                 return (0, subtotal * 0.1m);
+            }
+        }
+
+        private async Task<(string shippingAddress, string receiverName, string receiverPhone)> ResolveShippingAddressAsync(CreateOrderRequest request, Guid userId)
+        {
+            try
+            {
+                // If UserAddressId is provided, use existing address
+                if (request.UserAddressId.HasValue)
+                {
+                    var addressResult = await _userAddressService.GetUserAddressByIdAsync(request.UserAddressId.Value);
+                    if (addressResult.IsSuccess && addressResult.Data != null)
+                    {
+                        var address = addressResult.Data;
+                        return (address.FullAddress, address.ReceiverName, address.Phone);
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Địa chỉ được chọn không tồn tại hoặc không thuộc về người dùng");
+                    }
+                }
+
+                // If NewAddress is provided, create new address and use it
+                if (request.NewAddress != null)
+                {
+                    var createAddressResult = await _userAddressService.CreateUserAddressAsync(request.NewAddress);
+                    if (createAddressResult.IsSuccess && createAddressResult.Data != null)
+                    {
+                        var address = createAddressResult.Data;
+                        return (address.FullAddress, address.ReceiverName, address.Phone);
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Không thể tạo địa chỉ mới: " + (createAddressResult.Message ?? "Lỗi không xác định"));
+                    }
+                }
+
+                // If neither is provided, try to get default address
+                var defaultAddressResult = await _userAddressService.GetDefaultAddressAsync();
+                if (defaultAddressResult.IsSuccess && defaultAddressResult.Data != null)
+                {
+                    var address = defaultAddressResult.Data;
+                    return (address.FullAddress, address.ReceiverName, address.Phone);
+                }
+
+                throw new ArgumentException("Không tìm thấy địa chỉ giao hàng. Vui lòng chọn địa chỉ có sẵn hoặc tạo địa chỉ mới.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resolving shipping address for user {UserId}", userId);
+                throw;
             }
         }
         private OrderDTO ConvertToOrderDTO(Order order)

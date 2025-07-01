@@ -54,5 +54,8 @@ namespace DTOs.Orders
 
         [Range(1, int.MaxValue)]
         public int? Quantity { get; set; }
+
+        [Range(0.01, double.MaxValue, ErrorMessage = "Giá sản phẩm phải lớn hơn 0")]
+        public decimal? UnitPrice { get; set; }
     }
 }
