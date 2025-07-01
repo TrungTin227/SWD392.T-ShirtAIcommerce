@@ -146,6 +146,9 @@ namespace Services.Implementations
                     item.OrderId = order.Id;
                 }
 
+                // Final business rule validation
+                await ValidateOrderBusinessRulesAsync(order);
+
                 var createdOrder = await CreateAsync(order);
                 await transaction.CommitAsync();
 
@@ -208,8 +211,8 @@ namespace Services.Implementations
                 if (request.ShippingMethodId.HasValue)
                 {
                     order.ShippingMethodId = request.ShippingMethodId;
-                    // Recalculate shipping fee if method changed
-                    order.ShippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, order.TotalAmount);
+                    // Recalculate all totals if shipping method changed
+                    await RecalculateOrderTotalsAsync(order);
                 }
 
                 // ❌ Loại bỏ những dòng này vì không còn trong UpdateOrderRequest:
@@ -649,22 +652,34 @@ namespace Services.Implementations
 
         private async Task<decimal> CalculateShippingFeeAsync(Guid? shippingMethodId, decimal subtotal)
         {
-            if (!shippingMethodId.HasValue) return 0;
+            if (!shippingMethodId.HasValue) 
+            {
+                // Default shipping fee when no method is selected
+                return subtotal >= 500000m ? 0 : 25000m;
+            }
 
             try
             {
-                // TODO: Implement proper shipping fee calculation
-                // For now, return a default fee
+                // TODO: Implement proper shipping fee calculation based on shipping method
+                // This should fetch the shipping method and calculate based on its rules
                 var defaultFee = 25000m;
+                var expressFee = 50000m;
+                var freightFee = 15000m;
 
-                // Free shipping for orders over 500,000 VND
-                if (subtotal >= 500000m) return 0;
+                // Free shipping for orders over 500,000 VND (except express)
+                if (subtotal >= 500000m)
+                {
+                    // Still charge for express shipping even with free shipping threshold
+                    return shippingMethodId.ToString().Contains("express", StringComparison.OrdinalIgnoreCase) ? expressFee : 0;
+                }
 
+                // For now, return based on a simple rule
+                // In real implementation, this should query the ShippingMethod table
                 return defaultFee;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error calculating shipping fee, using default");
+                _logger.LogWarning(ex, "Error calculating shipping fee for method {ShippingMethodId}, using default", shippingMethodId);
                 return 25000m; // Default shipping fee
             }
         }
@@ -770,6 +785,7 @@ namespace Services.Implementations
             {
                 // TODO: Implement cart item processing
                 // Should fetch cart item details and get price from there
+                _logger.LogInformation("Processing order item from cart {CartItemId}", itemRequest.CartItemId);
                 throw new NotImplementedException("Xử lý từ giỏ hàng chưa được triển khai đầy đủ");
             }
             else
@@ -778,6 +794,23 @@ namespace Services.Implementations
                 // TODO: Implement product price lookup from ProductId/CustomDesignId/ProductVariantId
                 // For now, use a default price
                 unitPrice = 100000m; // Default price
+                
+                // Try to get item name from product if not provided
+                if (string.IsNullOrEmpty(itemRequest.ItemName))
+                {
+                    if (itemRequest.ProductId.HasValue)
+                    {
+                        itemName = $"Product-{itemRequest.ProductId}";
+                    }
+                    else if (itemRequest.CustomDesignId.HasValue)
+                    {
+                        itemName = $"CustomDesign-{itemRequest.CustomDesignId}";
+                    }
+                    else if (itemRequest.ProductVariantId.HasValue)
+                    {
+                        itemName = $"ProductVariant-{itemRequest.ProductVariantId}";
+                    }
+                }
             }
 
             var orderItem = new OrderItem
@@ -797,6 +830,89 @@ namespace Services.Implementations
             };
 
             return (orderItem, orderItem.TotalPrice);
+        }
+
+        private async Task<bool> ValidateOrderBusinessRulesAsync(Order order)
+        {
+            try
+            {
+                // Validate minimum order amount
+                if (order.TotalAmount <= 0)
+                {
+                    throw new ArgumentException("Tổng giá trị đơn hàng phải lớn hơn 0");
+                }
+
+                // Validate order items
+                if (!order.OrderItems.Any())
+                {
+                    throw new ArgumentException("Đơn hàng phải có ít nhất một sản phẩm");
+                }
+
+                // Validate each order item
+                foreach (var item in order.OrderItems)
+                {
+                    if (item.Quantity <= 0)
+                    {
+                        throw new ArgumentException($"Số lượng sản phẩm '{item.ItemName}' phải lớn hơn 0");
+                    }
+
+                    if (item.UnitPrice < 0)
+                    {
+                        throw new ArgumentException($"Giá sản phẩm '{item.ItemName}' không thể âm");
+                    }
+                }
+
+                // Validate shipping address
+                if (string.IsNullOrWhiteSpace(order.ShippingAddress))
+                {
+                    throw new ArgumentException("Địa chỉ giao hàng là bắt buộc");
+                }
+
+                if (string.IsNullOrWhiteSpace(order.ReceiverName))
+                {
+                    throw new ArgumentException("Tên người nhận là bắt buộc");
+                }
+
+                if (string.IsNullOrWhiteSpace(order.ReceiverPhone))
+                {
+                    throw new ArgumentException("Số điện thoại người nhận là bắt buộc");
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Business rule validation failed for order");
+                throw;
+            }
+        }
+
+        private async Task RecalculateOrderTotalsAsync(Order order)
+        {
+            try
+            {
+                // Recalculate subtotal from order items
+                var subtotal = order.OrderItems?.Sum(item => item.TotalPrice) ?? 0;
+                
+                // Recalculate shipping fee
+                order.ShippingFee = await CalculateShippingFeeAsync(order.ShippingMethodId, subtotal);
+                
+                // Recalculate discount and tax
+                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(order.CouponId, subtotal);
+                order.DiscountAmount = discountAmount;
+                order.TaxAmount = taxAmount;
+                
+                // Update total amount
+                order.TotalAmount = subtotal + order.ShippingFee + order.TaxAmount - order.DiscountAmount;
+                
+                _logger.LogInformation("Recalculated order totals for order {OrderId}: Subtotal={Subtotal}, Shipping={Shipping}, Tax={Tax}, Discount={Discount}, Total={Total}", 
+                    order.Id, subtotal, order.ShippingFee, order.TaxAmount, order.DiscountAmount, order.TotalAmount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error recalculating order totals for order {OrderId}", order.Id);
+                throw;
+            }
         }
 
         private async Task ValidateOrderRequestAsync(CreateOrderRequest request, Guid userId)
