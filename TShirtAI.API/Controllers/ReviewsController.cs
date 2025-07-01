@@ -1,7 +1,7 @@
-using BusinessObjects.Reviews;
+using DTOs.Reviews;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Repositories.WorkSeeds.Interfaces;
-using WebAPI.Middlewares;
+using Services.Interfaces;
 
 namespace WebAPI.Controllers
 {
@@ -9,49 +9,118 @@ namespace WebAPI.Controllers
     [Route("api/[controller]")]
     public class ReviewsController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReviewService _reviewService;
 
-        public ReviewsController(IUnitOfWork unitOfWork)
+        public ReviewsController(IReviewService reviewService)
         {
-            _unitOfWork = unitOfWork;
+            _reviewService = reviewService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> GetReviews([FromQuery] ReviewFilterDto filter)
         {
-            var repo = _unitOfWork.GetRepository<Review, Guid>();
-            var items = await repo.GetAllAsync();
-            return Ok(items);
+            var result = await _reviewService.GetReviewsAsync(filter);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("{id:guid}")]
+        public async Task<IActionResult> GetReviewById(Guid id)
+        {
+            var result = await _reviewService.GetByIdAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("product/{productId:guid}")]
+        public async Task<IActionResult> GetProductReviews(Guid productId)
+        {
+            var result = await _reviewService.GetProductReviewsAsync(productId);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("product/{productId:guid}/stats")]
+        public async Task<IActionResult> GetProductReviewStats(Guid productId)
+        {
+            var result = await _reviewService.GetProductReviewStatsAsync(productId);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("product/{productId:guid}/summary")]
+        public async Task<IActionResult> GetProductReviewSummary(Guid productId)
+        {
+            var result = await _reviewService.GetProductReviewSummaryAsync(productId);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("user/{userId:guid}")]
+        [Authorize]
+        public async Task<IActionResult> GetUserReviews(Guid userId)
+        {
+            var result = await _reviewService.GetUserReviewsAsync(userId);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("pending")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<IActionResult> GetPendingReviews()
+        {
+            var result = await _reviewService.GetPendingReviewsAsync();
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<IActionResult> Post([FromBody] Review review)
+        [Authorize]
+        public async Task<IActionResult> CreateReview([FromBody] CreateReviewDto createDto)
         {
-            var repo = _unitOfWork.GetRepository<Review, Guid>();
-            await repo.AddAsync(review);
-            await _unitOfWork.SaveChangesAsync();
-            return CreatedAtAction(nameof(Get), new { id = review.Id }, review);
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _reviewService.CreateReviewAsync(createDto);
+            return result.IsSuccess ? CreatedAtAction(nameof(GetReviewById), new { id = result.Data?.Id }, result) : BadRequest(result);
         }
 
-        [HttpPut("{id}")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<IActionResult> Put(Guid id, [FromBody] Review review)
+        [HttpPut("{id:guid}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateReview(Guid id, [FromBody] UpdateReviewDto updateDto)
         {
-            if (id != review.Id) return BadRequest();
-            var repo = _unitOfWork.GetRepository<Review, Guid>();
-            await repo.UpdateAsync(review);
-            await _unitOfWork.SaveChangesAsync();
-            return NoContent();
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _reviewService.UpdateReviewAsync(id, updateDto);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(Guid id)
+        [HttpPut("{id:guid}/admin")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<IActionResult> AdminUpdateReview(Guid id, [FromBody] AdminUpdateReviewDto updateDto)
         {
-            var repo = _unitOfWork.GetRepository<Review, Guid>();
-            await repo.SoftDeleteAsync(id);
-            await _unitOfWork.SaveChangesAsync();
-            return NoContent();
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _reviewService.AdminUpdateReviewAsync(id, updateDto);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpDelete("{id:guid}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteReview(Guid id)
+        {
+            var result = await _reviewService.DeleteReviewAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("{id:guid}/helpful")]
+        public async Task<IActionResult> MarkReviewHelpful(Guid id, [FromBody] bool isHelpful)
+        {
+            var result = await _reviewService.MarkReviewHelpfulAsync(id, isHelpful);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("can-review/{userId:guid}/{productId:guid}")]
+        [Authorize]
+        public async Task<IActionResult> CanUserReviewProduct(Guid userId, Guid productId)
+        {
+            var result = await _reviewService.CanUserReviewProductAsync(userId, productId);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
     }
 }
