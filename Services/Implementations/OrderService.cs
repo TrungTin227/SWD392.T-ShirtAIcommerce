@@ -15,6 +15,9 @@ namespace Services.Implementations
     public class OrderService : BaseService<Order, Guid>, IOrderService
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IUserAddressService _userAddressService;
+        private readonly ICouponService _couponService;
+        private readonly IShippingMethodService _shippingMethodService;
         private readonly ILogger<OrderService> _logger;
 
         public OrderService(
@@ -22,10 +25,16 @@ namespace Services.Implementations
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
             ICurrentTime currentTime,
+            IUserAddressService userAddressService,
+            ICouponService couponService,
+            IShippingMethodService shippingMethodService,
             ILogger<OrderService> logger)
             : base(repository, currentUserService, unitOfWork, currentTime)
         {
             _orderRepository = repository;
+            _userAddressService = userAddressService;
+            _couponService = couponService;
+            _shippingMethodService = shippingMethodService;
             _logger = logger;
         }
 
@@ -80,6 +89,8 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
+                _logger.LogInformation("Creating order with request {@Request}", request);
+
                 // Validate order items
                 if (request.OrderItems == null || !request.OrderItems.Any())
                 {
@@ -93,22 +104,76 @@ namespace Services.Implementations
                     {
                         throw new ArgumentException("Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: ProductId, CustomDesignId, hoặc ProductVariantId");
                     }
+                    
+                    if (!item.UnitPrice.HasValue || item.UnitPrice <= 0)
+                    {
+                        throw new ArgumentException("Giá sản phẩm phải lớn hơn 0");
+                    }
+                    
+                    if (!item.Quantity.HasValue || item.Quantity <= 0)
+                    {
+                        throw new ArgumentException("Số lượng sản phẩm phải lớn hơn 0");
+                    }
                 }
-
-                // Generate order number
-                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
-
-                // Calculate totals
-                var subtotal = request.OrderItems.Sum(item => item.UnitPrice * item.Quantity);
-                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
-                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
-                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
                 var userId = createdBy ?? _currentUserService.GetUserId();
                 if (!userId.HasValue)
                 {
                     throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
                 }
+
+                // Resolve shipping address
+                var (shippingAddress, receiverName, receiverPhone) = await ResolveShippingAddressAsync(request, userId.Value);
+
+                // Validate coupon if provided
+                if (request.CouponId.HasValue)
+                {
+                    var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (!couponResult.IsSuccess || couponResult.Data == null)
+                    {
+                        throw new ArgumentException("Mã giảm giá không tồn tại");
+                    }
+
+                    var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, 0, userId.Value); // We'll validate with actual amount later
+                    if (!validationResult.IsSuccess || !validationResult.Data)
+                    {
+                        throw new ArgumentException("Mã giảm giá không hợp lệ: " + (validationResult.Message ?? ""));
+                    }
+                }
+
+                // Validate shipping method if provided
+                if (request.ShippingMethodId.HasValue)
+                {
+                    var shippingMethodValidation = await _shippingMethodService.ValidateShippingMethodAsync(request.ShippingMethodId.Value);
+                    if (!shippingMethodValidation.IsSuccess)
+                    {
+                        throw new ArgumentException("Phương thức vận chuyển không hợp lệ: " + (shippingMethodValidation.Message ?? ""));
+                    }
+                }
+
+                // Generate order number
+                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
+
+                // Calculate totals
+                var subtotal = request.OrderItems.Sum(item => item.UnitPrice.Value * item.Quantity.Value);
+                
+                // Re-validate coupon with actual subtotal
+                if (request.CouponId.HasValue)
+                {
+                    var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (couponResult.IsSuccess && couponResult.Data != null)
+                    {
+                        var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, subtotal, userId.Value);
+                        if (!validationResult.IsSuccess || !validationResult.Data)
+                        {
+                            throw new ArgumentException("Mã giảm giá không áp dụng được cho đơn hàng này: " + (validationResult.Message ?? ""));
+                        }
+                    }
+                }
+                
+                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
+                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
+                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
                 // Create order
                 var order = new Order
@@ -122,9 +187,9 @@ namespace Services.Implementations
                     TaxAmount = taxAmount,
                     Status = OrderStatus.Pending,
                     PaymentStatus = PaymentStatus.Unpaid,
-                    ShippingAddress = request.ShippingAddress,
-                    ReceiverName = request.ReceiverName,
-                    ReceiverPhone = request.ReceiverPhone,
+                    ShippingAddress = shippingAddress,
+                    ReceiverName = receiverName,
+                    ReceiverPhone = receiverPhone,
                     CustomerNotes = request.CustomerNotes,
                     CouponId = request.CouponId,
                     ShippingMethodId = request.ShippingMethodId,
@@ -143,12 +208,12 @@ namespace Services.Implementations
                         ProductId = itemRequest.ProductId,
                         CustomDesignId = itemRequest.CustomDesignId,
                         ProductVariantId = itemRequest.ProductVariantId,
-                        ItemName = itemRequest.ItemName,
-                        SelectedColor = itemRequest.SelectedColor,
-                        SelectedSize = itemRequest.SelectedSize,
-                        Quantity = itemRequest.Quantity,
-                        UnitPrice = itemRequest.UnitPrice,
-                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice, itemRequest.Quantity),
+                        ItemName = itemRequest.ItemName ?? "Sản phẩm",
+                        SelectedColor = itemRequest.SelectedColor?.ToString(),
+                        SelectedSize = itemRequest.SelectedSize?.ToString(),
+                        Quantity = itemRequest.Quantity.Value,
+                        UnitPrice = itemRequest.UnitPrice.Value,
+                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice.Value, itemRequest.Quantity.Value),
                         CreatedAt = DateTime.UtcNow,
                         CreatedBy = userId.Value
                     };
@@ -159,6 +224,7 @@ namespace Services.Implementations
                 var createdOrder = await CreateAsync(order);
                 await transaction.CommitAsync();
 
+                _logger.LogInformation("Order created successfully with ID {OrderId}", createdOrder.Id);
                 return ConvertToOrderDTO(createdOrder);
             }
             catch (Exception ex)
@@ -206,14 +272,41 @@ namespace Services.Implementations
 
                 if (request.CouponId.HasValue)
                 {
+                    // Validate the new coupon before applying
+                    var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (!couponResult.IsSuccess || couponResult.Data == null)
+                    {
+                        throw new ArgumentException("Mã giảm giá không tồn tại");
+                    }
+
+                    // Validate coupon eligibility
+                    var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, order.TotalAmount, order.UserId);
+                    if (!validationResult.IsSuccess || !validationResult.Data)
+                    {
+                        throw new ArgumentException("Mã giảm giá không hợp lệ hoặc không áp dụng được: " + (validationResult.Message ?? ""));
+                    }
+
                     order.CouponId = request.CouponId;
                     // Recalculate discount and total if coupon changed
                     var (discountAmount, _) = await CalculateDiscountAndTaxAsync(request.CouponId, order.TotalAmount);
                     order.DiscountAmount = discountAmount;
                 }
+                else if (request.CouponId == null && order.CouponId.HasValue)
+                {
+                    // Remove coupon if explicitly set to null
+                    order.CouponId = null;
+                    order.DiscountAmount = 0;
+                }
 
                 if (request.ShippingMethodId.HasValue)
                 {
+                    // Validate shipping method exists and is active
+                    var shippingMethodValidation = await _shippingMethodService.ValidateShippingMethodAsync(request.ShippingMethodId.Value);
+                    if (!shippingMethodValidation.IsSuccess)
+                    {
+                        throw new ArgumentException("Phương thức vận chuyển không hợp lệ: " + (shippingMethodValidation.Message ?? ""));
+                    }
+
                     order.ShippingMethodId = request.ShippingMethodId;
                     // Recalculate shipping fee if method changed
                     order.ShippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, order.TotalAmount);
@@ -332,6 +425,7 @@ namespace Services.Implementations
 
         public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 if (string.IsNullOrWhiteSpace(reason))
@@ -339,7 +433,7 @@ namespace Services.Implementations
                     throw new ArgumentException("Lý do hủy đơn hàng là bắt buộc");
                 }
 
-                var order = await _orderRepository.GetByIdAsync(orderId);
+                var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
                 if (order == null || order.IsDeleted)
                 {
                     throw new ArgumentException("Đơn hàng không tồn tại");
@@ -350,14 +444,47 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Không thể hủy đơn hàng đã giao hoặc đã hủy");
                 }
 
+                _logger.LogInformation("Cancelling order {OrderId} with reason: {Reason}", orderId, reason);
+
+                // Cancel the order in repository
                 var result = await _orderRepository.CancelOrderAsync(orderId, reason.Trim(), cancelledBy);
+                
                 if (result)
-                    await _unitOfWork.SaveChangesAsync();
+                {
+                    // Handle coupon rollback if order used a coupon
+                    if (order.CouponId.HasValue)
+                    {
+                        try
+                        {
+                            // Note: The actual coupon usage rollback would depend on how the CouponService tracks usage
+                            // This is a placeholder for the actual implementation
+                            _logger.LogInformation("Order {OrderId} used coupon {CouponId}, consider implementing rollback logic", 
+                                orderId, order.CouponId);
+                            
+                            // TODO: Implement coupon usage rollback if needed
+                            // await _couponService.RollbackCouponUsageAsync(order.CouponId.Value, order.UserId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to rollback coupon usage for order {OrderId}, coupon {CouponId}", 
+                                orderId, order.CouponId);
+                            // Don't fail the entire operation for coupon rollback issues
+                        }
+                    }
+
+                    await transaction.CommitAsync();
+                    _logger.LogInformation("Order {OrderId} cancelled successfully", orderId);
+                }
+                else
+                {
+                    await transaction.RollbackAsync();
+                }
 
                 return result;
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error cancelling order {OrderId}", orderId);
                 throw;
             }
@@ -633,19 +760,21 @@ namespace Services.Implementations
 
             try
             {
-                // TODO: Implement proper shipping fee calculation
-                // For now, return a default fee
+                // Use ShippingMethodService to calculate the shipping fee
+                var shippingFee = await _shippingMethodService.CalculateShippingFeeAsync(shippingMethodId.Value, subtotal);
+                return shippingFee;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error calculating shipping fee for method {ShippingMethodId}, using default", shippingMethodId);
+                
+                // Fallback logic
                 var defaultFee = 25000m;
 
                 // Free shipping for orders over 500,000 VND
                 if (subtotal >= 500000m) return 0;
 
                 return defaultFee;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error calculating shipping fee, using default");
-                return 25000m; // Default shipping fee
             }
         }
 
@@ -658,9 +787,30 @@ namespace Services.Implementations
 
                 if (couponId.HasValue)
                 {
-                    // TODO: Implement proper coupon discount calculation
-                    // For now, apply a simple percentage discount
-                    discountAmount = subtotal * 0.05m; // 5% discount
+                    // Get coupon details first
+                    var couponResult = await _couponService.GetByIdAsync(couponId.Value);
+                    if (couponResult.IsSuccess && couponResult.Data != null)
+                    {
+                        // Validate coupon
+                        var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, subtotal);
+                        if (validationResult.IsSuccess && validationResult.Data)
+                        {
+                            // Calculate discount
+                            var discountResult = await _couponService.CalculateDiscountAsync(couponResult.Data.Code, subtotal);
+                            if (discountResult.IsSuccess)
+                            {
+                                discountAmount = discountResult.Data;
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Coupon validation failed for coupon {CouponId}: {Message}", couponId, validationResult.Message);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Coupon not found or invalid for coupon {CouponId}", couponId);
+                    }
                 }
 
                 return (discountAmount, taxAmount);
@@ -669,6 +819,57 @@ namespace Services.Implementations
             {
                 _logger.LogWarning(ex, "Error calculating discount and tax, using defaults");
                 return (0, subtotal * 0.1m);
+            }
+        }
+
+        private async Task<(string shippingAddress, string receiverName, string receiverPhone)> ResolveShippingAddressAsync(CreateOrderRequest request, Guid userId)
+        {
+            try
+            {
+                // If UserAddressId is provided, use existing address
+                if (request.UserAddressId.HasValue)
+                {
+                    var addressResult = await _userAddressService.GetUserAddressByIdAsync(request.UserAddressId.Value);
+                    if (addressResult.IsSuccess && addressResult.Data != null)
+                    {
+                        var address = addressResult.Data;
+                        return (address.FullAddress, address.ReceiverName, address.Phone);
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Địa chỉ được chọn không tồn tại hoặc không thuộc về người dùng");
+                    }
+                }
+
+                // If NewAddress is provided, create new address and use it
+                if (request.NewAddress != null)
+                {
+                    var createAddressResult = await _userAddressService.CreateUserAddressAsync(request.NewAddress);
+                    if (createAddressResult.IsSuccess && createAddressResult.Data != null)
+                    {
+                        var address = createAddressResult.Data;
+                        return (address.FullAddress, address.ReceiverName, address.Phone);
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Không thể tạo địa chỉ mới: " + (createAddressResult.Message ?? "Lỗi không xác định"));
+                    }
+                }
+
+                // If neither is provided, try to get default address
+                var defaultAddressResult = await _userAddressService.GetDefaultAddressAsync();
+                if (defaultAddressResult.IsSuccess && defaultAddressResult.Data != null)
+                {
+                    var address = defaultAddressResult.Data;
+                    return (address.FullAddress, address.ReceiverName, address.Phone);
+                }
+
+                throw new ArgumentException("Không tìm thấy địa chỉ giao hàng. Vui lòng chọn địa chỉ có sẵn hoặc tạo địa chỉ mới.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resolving shipping address for user {UserId}", userId);
+                throw;
             }
         }
         private OrderDTO ConvertToOrderDTO(Order order)

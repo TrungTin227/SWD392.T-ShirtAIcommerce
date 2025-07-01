@@ -1,8 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using DTOs.Orders.Validation;
 using DTOs.UserAddressDTOs.Request;
 
 namespace DTOs.Orders
 {
+    [ValidAddressSelection]
     public class CreateOrderRequest
     {
         /// <summary>
@@ -23,6 +25,7 @@ namespace DTOs.Orders
 
         [Required(ErrorMessage = "Sản phẩm trong đơn hàng là bắt buộc")]
         [MinLength(1, ErrorMessage = "Đơn hàng phải có ít nhất 1 sản phẩm")]
+        [ValidOrderItems]
         public List<CreateOrderItemRequest> OrderItems { get; set; } = new();
 
         /// <summary>
@@ -33,6 +36,7 @@ namespace DTOs.Orders
         /// </summary>
     }
 
+    [AtLeastOneProduct]
     public class CreateOrderItemRequest
     {
         /// <summary>
@@ -54,5 +58,8 @@ namespace DTOs.Orders
 
         [Range(1, int.MaxValue)]
         public int? Quantity { get; set; }
+
+        [Range(0.01, double.MaxValue, ErrorMessage = "Giá sản phẩm phải lớn hơn 0")]
+        public decimal? UnitPrice { get; set; }
     }
 }

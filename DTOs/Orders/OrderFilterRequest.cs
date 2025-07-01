@@ -26,4 +26,11 @@ namespace DTOs.Orders
         public Guid? CouponId { get; set; }
         public Guid? ShippingMethodId { get; set; }
     }
+
+    /// <summary>
+    /// Alias for OrderFilterRequest for backward compatibility
+    /// </summary>
+    public class OrderFilterDto : OrderFilterRequest
+    {
+    }
 }
