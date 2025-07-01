@@ -134,6 +134,9 @@ namespace WebAPI.Extensions
             services.AddScoped<IPaymentRepository, PaymentRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IProductRepository, ProductRepository>();
+            services.AddScoped<IReviewRepository, ReviewRepository>();
+            services.AddScoped<ICustomDesignRepository, CustomDesignRepository>();
+            services.AddScoped<IWishlistRepository, WishlistRepository>();
 
             services.AddScoped<ICurrentTime, CurrentTime>();
             services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -151,6 +154,10 @@ namespace WebAPI.Extensions
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<IProductService, ProductService>();
+            services.AddScoped<IReviewService, ReviewService>();
+            services.AddScoped<ICustomDesignService, CustomDesignService>();
+            services.AddScoped<IWishlistService, WishlistService>();
+            services.AddScoped<IFileUploadService, FileUploadService>();
 
             // === 7. Email & Quartz ===
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
