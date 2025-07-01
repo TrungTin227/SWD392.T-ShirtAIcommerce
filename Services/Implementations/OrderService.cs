@@ -89,26 +89,39 @@ namespace Services.Implementations
                 // Validate each order item has at least one product reference
                 foreach (var item in request.OrderItems)
                 {
-                    if (!item.ProductId.HasValue && !item.CustomDesignId.HasValue && !item.ProductVariantId.HasValue)
+                    if (!item.CartItemId.HasValue && !item.ProductId.HasValue && !item.CustomDesignId.HasValue && !item.ProductVariantId.HasValue)
                     {
-                        throw new ArgumentException("Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: ProductId, CustomDesignId, hoặc ProductVariantId");
+                        throw new ArgumentException("Mỗi sản phẩm trong đơn hàng phải có CartItemId hoặc ít nhất một trong các ID: ProductId, CustomDesignId, ProductVariantId");
                     }
                 }
-
-                // Generate order number
-                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
-
-                // Calculate totals
-                var subtotal = request.OrderItems.Sum(item => item.UnitPrice * item.Quantity);
-                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
-                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
-                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
                 var userId = createdBy ?? _currentUserService.GetUserId();
                 if (!userId.HasValue)
                 {
                     throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
                 }
+
+                // Handle address - either use existing or create new
+                var (shippingAddress, receiverName, receiverPhone) = await HandleOrderAddressAsync(request, userId.Value);
+
+                // Generate order number
+                var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
+
+                // Process order items and calculate prices
+                var orderItems = new List<OrderItem>();
+                decimal subtotal = 0;
+
+                foreach (var itemRequest in request.OrderItems)
+                {
+                    var (orderItem, itemPrice) = await ProcessOrderItemAsync(itemRequest, userId.Value);
+                    orderItems.Add(orderItem);
+                    subtotal += itemPrice;
+                }
+
+                // Calculate totals
+                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
+                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
+                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
                 // Create order
                 var order = new Order
@@ -122,38 +135,21 @@ namespace Services.Implementations
                     TaxAmount = taxAmount,
                     Status = OrderStatus.Pending,
                     PaymentStatus = PaymentStatus.Unpaid,
-                    ShippingAddress = request.ShippingAddress,
-                    ReceiverName = request.ReceiverName,
-                    ReceiverPhone = request.ReceiverPhone,
+                    ShippingAddress = shippingAddress,
+                    ReceiverName = receiverName,
+                    ReceiverPhone = receiverPhone,
                     CustomerNotes = request.CustomerNotes,
                     CouponId = request.CouponId,
                     ShippingMethodId = request.ShippingMethodId,
                     CreatedAt = DateTime.UtcNow,
                     CreatedBy = userId.Value,
-                    OrderItems = new List<OrderItem>()
+                    OrderItems = orderItems
                 };
 
-                // Create order items
-                foreach (var itemRequest in request.OrderItems)
+                // Update order IDs for all items
+                foreach (var item in orderItems)
                 {
-                    var orderItem = new OrderItem
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderId = order.Id,
-                        ProductId = itemRequest.ProductId,
-                        CustomDesignId = itemRequest.CustomDesignId,
-                        ProductVariantId = itemRequest.ProductVariantId,
-                        ItemName = itemRequest.ItemName,
-                        SelectedColor = itemRequest.SelectedColor,
-                        SelectedSize = itemRequest.SelectedSize,
-                        Quantity = itemRequest.Quantity,
-                        UnitPrice = itemRequest.UnitPrice,
-                        TotalPrice = OrderItemBusinessLogic.CalculateTotalPrice(itemRequest.UnitPrice, itemRequest.Quantity),
-                        CreatedAt = DateTime.UtcNow,
-                        CreatedBy = userId.Value
-                    };
-
-                    order.OrderItems.Add(orderItem);
+                    item.OrderId = order.Id;
                 }
 
                 var createdOrder = await CreateAsync(order);
@@ -658,7 +654,7 @@ namespace Services.Implementations
 
                 if (couponId.HasValue)
                 {
-                    // TODO: Implement proper coupon discount calculation
+                    // TODO: Implement proper coupon discount calculation with ICouponService
                     // For now, apply a simple percentage discount
                     discountAmount = subtotal * 0.05m; // 5% discount
                 }
@@ -670,6 +666,73 @@ namespace Services.Implementations
                 _logger.LogWarning(ex, "Error calculating discount and tax, using defaults");
                 return (0, subtotal * 0.1m);
             }
+        }
+
+        private async Task<(string shippingAddress, string receiverName, string receiverPhone)> HandleOrderAddressAsync(CreateOrderRequest request, Guid userId)
+        {
+            if (request.UserAddressId.HasValue)
+            {
+                // Use existing address
+                // TODO: Inject IUserAddressRepository and fetch the address
+                // For now, throw an exception to indicate this needs implementation
+                throw new NotImplementedException("Sử dụng địa chỉ đã lưu chưa được triển khai đầy đủ");
+            }
+            else if (request.NewAddress != null)
+            {
+                // Use new address from request
+                var shippingAddress = $"{request.NewAddress.DetailAddress}, {request.NewAddress.Ward}, {request.NewAddress.District}, {request.NewAddress.Province}";
+                if (!string.IsNullOrEmpty(request.NewAddress.PostalCode))
+                {
+                    shippingAddress += $", {request.NewAddress.PostalCode}";
+                }
+                return (shippingAddress, request.NewAddress.ReceiverName, request.NewAddress.Phone);
+            }
+            else
+            {
+                // Try to load default address
+                // TODO: Inject IUserAddressRepository and fetch default address
+                // For now, throw an exception to indicate address is required
+                throw new ArgumentException("Phải cung cấp địa chỉ giao hàng hoặc chọn địa chỉ đã lưu");
+            }
+        }
+
+        private async Task<(OrderItem orderItem, decimal itemPrice)> ProcessOrderItemAsync(CreateOrderItemRequest itemRequest, Guid userId)
+        {
+            decimal unitPrice = 0;
+            string itemName = itemRequest.ItemName ?? "Unknown Item";
+            int quantity = itemRequest.Quantity ?? 1;
+
+            if (itemRequest.CartItemId.HasValue)
+            {
+                // TODO: Implement cart item processing
+                // Should fetch cart item details and get price from there
+                throw new NotImplementedException("Xử lý từ giỏ hàng chưa được triển khai đầy đủ");
+            }
+            else
+            {
+                // Direct product order - need to calculate price
+                // TODO: Implement product price lookup from ProductId/CustomDesignId/ProductVariantId
+                // For now, use a default price
+                unitPrice = 100000m; // Default price
+            }
+
+            var orderItem = new OrderItem
+            {
+                Id = Guid.NewGuid(),
+                ProductId = itemRequest.ProductId,
+                CustomDesignId = itemRequest.CustomDesignId,
+                ProductVariantId = itemRequest.ProductVariantId,
+                ItemName = itemName,
+                SelectedColor = itemRequest.SelectedColor?.ToString(),
+                SelectedSize = itemRequest.SelectedSize?.ToString(),
+                Quantity = quantity,
+                UnitPrice = unitPrice,
+                TotalPrice = unitPrice * quantity,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = userId
+            };
+
+            return (orderItem, orderItem.TotalPrice);
         }
         private OrderDTO ConvertToOrderDTO(Order order)
         {
