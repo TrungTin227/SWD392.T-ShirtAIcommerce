@@ -1,9 +1,9 @@
-﻿using DTOs.Common;
+﻿using BusinessObjects.Products;
+using DTOs.Common;
 using DTOs.Orders;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
-using System.ComponentModel.DataAnnotations;
 using WebAPI.Middlewares;
 
 namespace WebAPI.Controllers
@@ -33,22 +33,7 @@ namespace WebAPI.Controllers
         [HttpGet]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<PagedResponse<OrderDTO>>> GetOrders([FromQuery] OrderFilterRequest filter)
-        {
-            try
-            {
-                var result = await _orderService.GetOrdersAsync(filter);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting orders with filter {@Filter}", filter);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy danh sách đơn hàng",
-                    Details = ex.Message
-                });
-            }
-        }
+            => await ExecuteAsync(() => _orderService.GetOrdersAsync(filter), "Error getting orders with filter {@Filter}", filter);
 
         /// <summary>
         /// Lấy danh sách đơn hàng của người dùng hiện tại
@@ -56,24 +41,10 @@ namespace WebAPI.Controllers
         [HttpGet("my-orders")]
         public async Task<ActionResult<IEnumerable<OrderDTO>>> GetMyOrders()
         {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                if (!userId.HasValue)
-                    return Unauthorized(new ErrorResponse { Message = "Người dùng chưa đăng nhập" });
+            var userId = GetCurrentUserIdOrUnauthorized();
+            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
 
-                var orders = await _orderService.GetUserOrdersAsync(userId.Value);
-                return Ok(orders);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting user orders");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy danh sách đơn hàng",
-                    Details = ex.Message
-                });
-            }
+            return await ExecuteAsync(() => _orderService.GetUserOrdersAsync(userId.Value), "Error getting user orders");
         }
 
         /// <summary>
@@ -82,30 +53,15 @@ namespace WebAPI.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<OrderDTO>> GetOrder(Guid id)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 var order = await _orderService.GetOrderByIdAsync(id);
-                if (order == null)
-                    return NotFound(new ErrorResponse { Message = "Không tìm thấy đơn hàng" });
+                if (order == null) return NotFound(ErrorResponse("Không tìm thấy đơn hàng"));
 
-                // Check if user owns the order or is admin/staff
-                var userId = _currentUserService.GetUserId();
-                var isAdmin = User.IsInRole("Admin") || User.IsInRole("Staff");
-
-                if (!isAdmin && (!userId.HasValue || order.UserId != userId.Value))
-                    return Forbid();
+                if (!CanAccessOrder(order.UserId)) return Forbid();
 
                 return Ok(order);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting order {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy thông tin đơn hàng",
-                    Details = ex.Message
-                });
-            }
+            }, "Error getting order {OrderId}", id);
         }
 
         /// <summary>
@@ -115,28 +71,16 @@ namespace WebAPI.Controllers
         [ServiceFilter(typeof(ValidateModelAttribute))]
         public async Task<ActionResult<OrderDTO>> CreateOrder([FromBody] CreateOrderRequest request)
         {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                if (!userId.HasValue)
-                    return Unauthorized(new ErrorResponse { Message = "Người dùng chưa đăng nhập" });
+            var userId = GetCurrentUserIdOrUnauthorized();
+            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
 
+            return await ExecuteAsync(async () =>
+            {
                 var order = await _orderService.CreateOrderAsync(request, userId);
-
-                if (order == null)
-                    return BadRequest(new ErrorResponse { Message = "Không thể tạo đơn hàng" });
-
-                return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating order {@Request}", request);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi tạo đơn hàng",
-                    Details = ex.Message
-                });
-            }
+                return order == null
+                    ? BadRequest(ErrorResponse("Không thể tạo đơn hàng"))
+                    : CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
+            }, "Error creating order {@Request}", request);
         }
 
         /// <summary>
@@ -146,25 +90,19 @@ namespace WebAPI.Controllers
         [ServiceFilter(typeof(ValidateModelAttribute))]
         public async Task<ActionResult<OrderDTO>> UpdateOrder(Guid id, [FromBody] UpdateOrderRequest request)
         {
-            try
+            var userId = GetCurrentUserIdOrUnauthorized();
+            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
+
+            return await ExecuteAsync(async () =>
             {
-                var userId = _currentUserService.GetUserId();
+                if (!IsAdminOrStaff() && !await _orderService.IsOrderOwnedByUserAsync(id, userId.Value))
+                    return Forbid();
+
                 var order = await _orderService.UpdateOrderAsync(id, request, userId);
-
-                if (order == null)
-                    return NotFound(new ErrorResponse { Message = "Không tìm thấy đơn hàng để cập nhật" });
-
-                return Ok(order);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating order {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi cập nhật đơn hàng",
-                    Details = ex.Message
-                });
-            }
+                return order == null
+                    ? NotFound(ErrorResponse("Không tìm thấy đơn hàng để cập nhật"))
+                    : Ok(order);
+            }, "Error updating order {OrderId}", id);
         }
 
         /// <summary>
@@ -174,113 +112,51 @@ namespace WebAPI.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult> DeleteOrder(Guid id)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 var userId = _currentUserService.GetUserId();
                 var result = await _orderService.DeleteOrderAsync(id, userId);
-
-                if (!result)
-                    return NotFound(new ErrorResponse { Message = "Không tìm thấy đơn hàng để xóa" });
-
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting order {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi xóa đơn hàng",
-                    Details = ex.Message
-                });
-            }
+                return result ? NoContent() : NotFound(ErrorResponse("Không tìm thấy đơn hàng để xóa"));
+            }, "Error deleting order {OrderId}", id);
         }
 
-        /// <summary>
-        /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)
-        /// </summary>
-        [HttpPatch("{id}/status")]
-        [Authorize(Roles = "Admin,Staff")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<ActionResult> UpdateOrderStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
-        {
-            try
+            /// <summary>
+            /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)
+            /// </summary>
+            [HttpPatch("{id}/status")]
+            [Authorize(Roles = "Admin,Staff")]
+            public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
             {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
                 var userId = _currentUserService.GetUserId();
                 var result = await _orderService.UpdateOrderStatusAsync(id, request.Status, userId);
 
-                if (!result)
-                    return BadRequest(new ErrorResponse { Message = "Không thể cập nhật trạng thái đơn hàng" });
+                if (result)
+                    return Ok(new { Message = "Cập nhật trạng thái thành công" });
 
-                return Ok(new { Message = "Cập nhật trạng thái thành công" });
+                return BadRequest(new { Error = "Không thể cập nhật trạng thái đơn hàng" });
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating order status {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi cập nhật trạng thái",
-                    Details = ex.Message
-                });
-            }
-        }
 
-        /// <summary>
-        /// Cập nhật trạng thái thanh toán (Chỉ Admin/Staff)
-        /// </summary>
-        [HttpPatch("{id}/payment-status")]
-        [Authorize(Roles = "Admin,Staff")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<ActionResult> UpdatePaymentStatus(Guid id, [FromBody] UpdatePaymentStatusRequest request)
-        {
-            try
+            /// <summary>
+            /// Cập nhật trạng thái thanh toán (Chỉ Admin/Staff)
+            /// </summary>
+            [HttpPatch("{id}/payment-status")]
+            [Authorize(Roles = "Admin,Staff")]
+            public async Task<IActionResult> UpdatePaymentStatus(Guid id, [FromBody] UpdatePaymentStatusRequest request)
             {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
                 var userId = _currentUserService.GetUserId();
                 var result = await _orderService.UpdatePaymentStatusAsync(id, request.PaymentStatus, userId);
 
-                if (!result)
-                    return BadRequest(new ErrorResponse { Message = "Không thể cập nhật trạng thái thanh toán" });
+                if (result)
+                    return Ok(new { Message = "Cập nhật trạng thái thanh toán thành công" });
 
-                return Ok(new { Message = "Cập nhật trạng thái thanh toán thành công" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating payment status {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi cập nhật trạng thái thanh toán",
-                    Details = ex.Message
-                });
-            }
-        }
-
-        /// <summary>
-        /// Phân công đơn hàng cho nhân viên (Chỉ Admin)
-        /// </summary>
-        [HttpPatch("{id}/assign-staff")]
-        [Authorize(Roles = "Admin")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<ActionResult> AssignStaff(Guid id, [FromBody] AssignStaffRequest request)
-        {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                var result = await _orderService.AssignOrderToStaffAsync(id, request.StaffId, userId);
-
-                if (!result)
-                    return BadRequest(new ErrorResponse { Message = "Không thể phân công đơn hàng" });
-
-                return Ok(new { Message = "Phân công nhân viên thành công" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error assigning staff to order {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi phân công nhân viên",
-                    Details = ex.Message
-                });
-            }
-        }
+                return BadRequest(new { Error = "Không thể cập nhật trạng thái thanh toán" });
+            }           
 
         /// <summary>
         /// Hủy đơn hàng (User hoặc Admin/Staff)
@@ -289,142 +165,46 @@ namespace WebAPI.Controllers
         [ServiceFilter(typeof(ValidateModelAttribute))]
         public async Task<ActionResult> CancelOrder(Guid id, [FromBody] CancelOrderRequest request)
         {
-            try
+            var userId = GetCurrentUserIdOrUnauthorized();
+            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
+
+            return await ExecuteAsync(async () =>
             {
-                // Check if user owns the order or is admin/staff
-                var userId = _currentUserService.GetUserId();
-                var isAdmin = User.IsInRole("Admin") || User.IsInRole("Staff");
-
-                if (!isAdmin)
-                {
-                    var isOwner = await _orderService.IsOrderOwnedByUserAsync(id, userId ?? Guid.Empty);
-                    if (!isOwner)
-                        return Forbid();
-                }
-
-                var result = await _orderService.CancelOrderAsync(id, request.Reason, userId);
-
-                if (!result)
-                    return BadRequest(new ErrorResponse { Message = "Không thể hủy đơn hàng" });
-
-                return Ok(new { Message = "Hủy đơn hàng thành công" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error cancelling order {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi hủy đơn hàng",
-                    Details = ex.Message
-                });
-            }
-        }
-
-        /// <summary>
-        /// Lấy danh sách đơn hàng được phân công cho nhân viên
-        /// </summary>
-        [HttpGet("staff/{staffId}")]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<ActionResult<IEnumerable<OrderDTO>>> GetStaffOrders(Guid staffId)
-        {
-            try
-            {
-                // Staff can only see their own orders, Admin can see all
-                var currentUserId = _currentUserService.GetUserId();
-                var isAdmin = User.IsInRole("Admin");
-
-                if (!isAdmin && currentUserId != staffId)
+                if (!IsAdminOrStaff() && !await _orderService.IsOrderOwnedByUserAsync(id, userId.Value))
                     return Forbid();
 
-                var orders = await _orderService.GetStaffOrdersAsync(staffId);
-                return Ok(orders);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting staff orders for {StaffId}", staffId);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy danh sách đơn hàng",
-                    Details = ex.Message
-                });
-            }
+                var result = await _orderService.CancelOrderAsync(id, request.Reason, userId);
+                return result
+                    ? Ok(new { Message = "Hủy đơn hàng thành công" })
+                    : BadRequest(ErrorResponse("Không thể hủy đơn hàng"));
+            }, "Error cancelling order {OrderId}", id);
         }
-
-        /// <summary>
-        /// Cập nhật mã vận đơn (Admin/Staff)
-        /// </summary>
-        [HttpPatch("{id}/tracking")]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<ActionResult> UpdateTrackingNumber(Guid id, [FromBody] UpdateTrackingRequest request)
-        {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                var result = await _orderService.UpdateTrackingNumberAsync(id, request.TrackingNumber, userId);
-
-                if (!result)
-                    return BadRequest(new ErrorResponse { Message = "Không thể cập nhật mã vận đơn" });
-
-                return Ok(new { Message = "Cập nhật mã vận đơn thành công" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating tracking number for order {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi cập nhật mã vận đơn",
-                    Details = ex.Message
-                });
-            }
-        }
-
+            
         /// <summary>
         /// Cập nhật trạng thái hàng loạt (Chỉ Admin)
         /// </summary>
         [HttpPatch("bulk-update-status")]
         [Authorize(Roles = "Admin")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<ActionResult<BatchOperationResultDTO>> BulkUpdateStatus([FromBody] BulkUpdateStatusRequest request)
+        public async Task<IActionResult> BulkUpdateStatus([FromBody] BulkUpdateStatusRequest request)
         {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                var result = await _orderService.BulkUpdateStatusAsync(request.OrderIds, request.Status, userId);
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in bulk update status operation");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi cập nhật hàng loạt",
-                    Details = ex.Message
-                });
-            }
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+            var currentUserId = _currentUserService.GetUserId();
+            var result = await _orderService
+                .BulkUpdateStatusAsync(request.OrderIds, request.Status, currentUserId);
+            return Ok(result);
         }
+
 
         /// <summary>
         /// Lấy thống kê trạng thái đơn hàng (Admin/Staff)
         /// </summary>
         [HttpGet("statistics/status-counts")]
         [Authorize(Roles = "Admin,Staff")]
-        public async Task<ActionResult<Dictionary<string, int>>> GetOrderStatusCounts()
+        public async Task<ActionResult<Dictionary<OrderStatus, int>>> GetOrderStatusCounts()
         {
-            try
-            {
-                var counts = await _orderService.GetOrderStatusCountsAsync();
-                return Ok(counts);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting order status counts");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy thống kê",
-                    Details = ex.Message
-                });
-            }
+            var result = await _orderService.GetOrderStatusCountsAsync();
+            return Ok(result);
         }
 
         /// <summary>
@@ -433,22 +213,7 @@ namespace WebAPI.Controllers
         [HttpGet("recent")]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<IEnumerable<OrderDTO>>> GetRecentOrders([FromQuery] int limit = 10)
-        {
-            try
-            {
-                var orders = await _orderService.GetRecentOrdersAsync(limit);
-                return Ok(orders);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting recent orders");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy danh sách đơn hàng gần đây",
-                    Details = ex.Message
-                });
-            }
-        }
+            => await ExecuteAsync(() => _orderService.GetRecentOrdersAsync(limit), "Error getting recent orders");
 
         /// <summary>
         /// Lấy dữ liệu đơn hàng cho báo cáo (Admin)
@@ -456,24 +221,9 @@ namespace WebAPI.Controllers
         [HttpGet("analytics")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<OrderDTO>>> GetOrdersForAnalytics(
-            [FromQuery] DateTime fromDate,
-            [FromQuery] DateTime toDate)
-        {
-            try
-            {
-                var orders = await _orderService.GetOrdersForAnalyticsAsync(fromDate, toDate);
-                return Ok(orders);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting orders for analytics");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy dữ liệu phân tích",
-                    Details = ex.Message
-                });
-            }
-        }
+            [FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
+            => await ExecuteAsync(() => _orderService.GetOrdersForAnalyticsAsync(fromDate, toDate),
+                "Error getting orders for analytics");
 
         /// <summary>
         /// Tính tổng tiền đơn hàng
@@ -481,62 +231,81 @@ namespace WebAPI.Controllers
         [HttpGet("{id}/total")]
         public async Task<ActionResult<decimal>> CalculateOrderTotal(Guid id)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                // Check if user owns the order or is admin/staff
                 var userId = _currentUserService.GetUserId();
-                var isAdmin = User.IsInRole("Admin") || User.IsInRole("Staff");
-
-                if (!isAdmin)
-                {
-                    var isOwner = await _orderService.IsOrderOwnedByUserAsync(id, userId ?? Guid.Empty);
-                    if (!isOwner)
-                        return Forbid();
-                }
+                if (!IsAdminOrStaff() && !await _orderService.IsOrderOwnedByUserAsync(id, userId ?? Guid.Empty))
+                    return Forbid();
 
                 var total = await _orderService.CalculateOrderTotalAsync(id);
                 return Ok(total);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error calculating order total {OrderId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi tính tổng tiền",
-                    Details = ex.Message
-                });
-            }
+            }, "Error calculating order total {OrderId}", id);
+        }
+       
+        #region Helper Methods
+
+        private Guid? GetCurrentUserIdOrUnauthorized()
+            => _currentUserService.GetUserId();
+
+        private bool IsAdminOrStaff()
+            => User.IsInRole("Admin") || User.IsInRole("Staff");
+
+        private bool CanAccessOrder(Guid orderUserId)
+        {
+            if (IsAdminOrStaff()) return true;
+            var userId = _currentUserService.GetUserId();
+            return userId.HasValue && orderUserId == userId.Value;
         }
 
-        /// <summary>
-        /// Tạo mã đơn hàng mới (Admin/Staff)
-        /// </summary>
-        [HttpGet("generate-order-number")]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<ActionResult<string>> GenerateOrderNumber()
+        private static ErrorResponse ErrorResponse(string message)
+            => new() { Message = message };
+
+        private async Task<ActionResult<T>> ExecuteAsync<T>(Func<Task<T>> operation, string errorMessage, params object[] args)
         {
             try
             {
-                var orderNumber = await _orderService.GenerateOrderNumberAsync();
-                return Ok(orderNumber);
+                var result = await operation();
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, errorMessage, args);
+                return BadRequest(ErrorResponse(ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, errorMessage, args);
+                return BadRequest(ErrorResponse(ex.Message));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error generating order number");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi tạo mã đơn hàng",
-                    Details = ex.Message
-                });
+                _logger.LogError(ex, errorMessage, args);
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi xử lý yêu cầu"));
             }
         }
-    }
 
-    // Additional DTO for tracking update
-    public class UpdateTrackingRequest
-    {
-        [Required(ErrorMessage = "Mã vận đơn là bắt buộc")]
-        [MaxLength(100, ErrorMessage = "Mã vận đơn không được vượt quá 100 ký tự")]
-        public string TrackingNumber { get; set; } = string.Empty;
+        private async Task<ActionResult> ExecuteAsync(Func<Task<ActionResult>> operation, string errorMessage, params object[] args)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, errorMessage, args);
+                return BadRequest(ErrorResponse(ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, errorMessage, args);
+                return BadRequest(ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, errorMessage, args);
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi xử lý yêu cầu"));
+            }
+        }       
+        #endregion
     }
 }

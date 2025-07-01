@@ -20,12 +20,6 @@ namespace DTOs.Orders
 
         public Guid? CouponId { get; set; }
         public Guid? ShippingMethodId { get; set; }
-        public DateTime? EstimatedDeliveryDate { get; set; }
-
-        [MaxLength(100, ErrorMessage = "Mã vận đơn không được vượt quá 100 ký tự")]
-        public string? TrackingNumber { get; set; }
-
-        public Guid? AssignedStaffId { get; set; }
     }
 
     public class UpdateOrderStatusRequest
@@ -46,19 +40,6 @@ namespace DTOs.Orders
         public string? Notes { get; set; }
     }
 
-    public class BulkUpdateStatusRequest
-    {
-        [Required(ErrorMessage = "Danh sách ID đơn hàng là bắt buộc")]
-        [MinLength(1, ErrorMessage = "Phải có ít nhất 1 đơn hàng")]
-        public List<Guid> OrderIds { get; set; } = new();
-
-        [Required(ErrorMessage = "Trạng thái là bắt buộc")]
-        public OrderStatus Status { get; set; }
-
-        [MaxLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự")]
-        public string? Notes { get; set; }
-    }
-
     public class AssignStaffRequest
     {
         [Required(ErrorMessage = "ID nhân viên là bắt buộc")]
@@ -73,5 +54,18 @@ namespace DTOs.Orders
         [Required(ErrorMessage = "Lý do hủy đơn hàng là bắt buộc")]
         [MaxLength(500, ErrorMessage = "Lý do không được vượt quá 500 ký tự")]
         public string Reason { get; set; } = string.Empty;
+    }
+
+    public class BulkUpdateStatusRequest
+    {
+        [Required(ErrorMessage = "Danh sách ID đơn hàng là bắt buộc")]
+        [MinLength(1, ErrorMessage = "Phải có ít nhất 1 đơn hàng")]
+        public List<Guid> OrderIds { get; set; } = new();
+
+        [Required(ErrorMessage = "Trạng thái là bắt buộc")]
+        public OrderStatus Status { get; set; }
+
+        [MaxLength(500, ErrorMessage = "Ghi chú không được vượt quá 500 ký tự")]
+        public string? Notes { get; set; }
     }
 }

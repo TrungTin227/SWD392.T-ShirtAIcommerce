@@ -1,6 +1,6 @@
 ﻿namespace Repositories.Commons
 {
-    public record ApiResult<T>
+    public class ApiResult<T>
     {
         public bool IsSuccess { get; init; }
         public T? Data { get; init; }

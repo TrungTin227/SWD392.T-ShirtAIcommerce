@@ -266,8 +266,12 @@ namespace Repositories.Implementations
             order.Status = OrderStatus.Cancelled;
             order.CancellationReason = reason;
             order.UpdatedAt = DateTime.UtcNow;
+
             if (cancelledBy.HasValue)
                 order.UpdatedBy = cancelledBy.Value;
+
+            if (order.PaymentStatus == PaymentStatus.Completed)
+                order.PaymentStatus = PaymentStatus.Refunded;
 
             return true;
         }

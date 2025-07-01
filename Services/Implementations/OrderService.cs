@@ -191,7 +191,7 @@ namespace Services.Implementations
                     throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
                 }
 
-                // Update fields if provided
+                // ✅ Chỉ cập nhật các trường có trong UpdateOrderRequest
                 if (!string.IsNullOrWhiteSpace(request.ShippingAddress))
                     order.ShippingAddress = request.ShippingAddress.Trim();
 
@@ -219,14 +219,10 @@ namespace Services.Implementations
                     order.ShippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, order.TotalAmount);
                 }
 
-                if (request.EstimatedDeliveryDate.HasValue)
-                    order.EstimatedDeliveryDate = request.EstimatedDeliveryDate;
-
-                if (!string.IsNullOrWhiteSpace(request.TrackingNumber))
-                    order.TrackingNumber = request.TrackingNumber.Trim();
-
-                if (request.AssignedStaffId.HasValue)
-                    order.AssignedStaffId = request.AssignedStaffId;
+                // ❌ Loại bỏ những dòng này vì không còn trong UpdateOrderRequest:
+                // - EstimatedDeliveryDate
+                // - TrackingNumber 
+                // - AssignedStaffId
 
                 // Update audit fields
                 order.UpdatedAt = DateTime.UtcNow;
@@ -451,7 +447,6 @@ namespace Services.Implementations
                             continue;
                         }
 
-                        // Nếu muốn cho phép set bất kỳ trạng thái thì bỏ kiểm tra chuyển đổi
                         var success = await _orderRepository.UpdateOrderStatusAsync(orderId, status, updatedBy);
                         if (success)
                         {
@@ -521,6 +516,7 @@ namespace Services.Implementations
                 return result;
             }
         }
+
         public async Task<decimal> CalculateOrderTotalAsync(Guid orderId)
         {
             try
@@ -546,6 +542,7 @@ namespace Services.Implementations
                 return string.Empty;
             }
         }
+
         public async Task<Dictionary<OrderStatus, int>> GetOrderStatusCountsAsync()
         {
             try
@@ -674,23 +671,6 @@ namespace Services.Implementations
                 return (0, subtotal * 0.1m);
             }
         }
-
-        private static bool IsValidStatusTransition(OrderStatus currentStatus, OrderStatus newStatus)
-        {
-            // Define valid status transitions
-            return currentStatus switch
-            {
-                OrderStatus.Pending => newStatus is OrderStatus.Confirmed or OrderStatus.Cancelled,
-                OrderStatus.Confirmed => newStatus is OrderStatus.Processing or OrderStatus.Cancelled,
-                OrderStatus.Processing => newStatus is OrderStatus.Shipping or OrderStatus.Cancelled,
-                OrderStatus.Shipping => newStatus is OrderStatus.Delivered or OrderStatus.Returned,
-                OrderStatus.Delivered => newStatus is OrderStatus.Returned,
-                OrderStatus.Cancelled => false, // Cannot change from cancelled
-                OrderStatus.Returned => false, // Cannot change from returned
-                _ => false
-            };
-        }
-
         private OrderDTO ConvertToOrderDTO(Order order)
         {
             if (order == null) return null;
