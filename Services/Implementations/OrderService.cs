@@ -125,11 +125,52 @@ namespace Services.Implementations
                 // Resolve shipping address
                 var (shippingAddress, receiverName, receiverPhone) = await ResolveShippingAddressAsync(request, userId.Value);
 
+                // Validate coupon if provided
+                if (request.CouponId.HasValue)
+                {
+                    var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (!couponResult.IsSuccess || couponResult.Data == null)
+                    {
+                        throw new ArgumentException("Mã giảm giá không tồn tại");
+                    }
+
+                    var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, 0, userId.Value); // We'll validate with actual amount later
+                    if (!validationResult.IsSuccess || !validationResult.Data)
+                    {
+                        throw new ArgumentException("Mã giảm giá không hợp lệ: " + (validationResult.Message ?? ""));
+                    }
+                }
+
+                // Validate shipping method if provided
+                if (request.ShippingMethodId.HasValue)
+                {
+                    var shippingMethodValidation = await _shippingMethodService.ValidateShippingMethodAsync(request.ShippingMethodId.Value);
+                    if (!shippingMethodValidation.IsSuccess)
+                    {
+                        throw new ArgumentException("Phương thức vận chuyển không hợp lệ: " + (shippingMethodValidation.Message ?? ""));
+                    }
+                }
+
                 // Generate order number
                 var orderNumber = await _orderRepository.GenerateOrderNumberAsync();
 
                 // Calculate totals
                 var subtotal = request.OrderItems.Sum(item => item.UnitPrice.Value * item.Quantity.Value);
+                
+                // Re-validate coupon with actual subtotal
+                if (request.CouponId.HasValue)
+                {
+                    var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (couponResult.IsSuccess && couponResult.Data != null)
+                    {
+                        var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, subtotal, userId.Value);
+                        if (!validationResult.IsSuccess || !validationResult.Data)
+                        {
+                            throw new ArgumentException("Mã giảm giá không áp dụng được cho đơn hàng này: " + (validationResult.Message ?? ""));
+                        }
+                    }
+                }
+                
                 var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
                 var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
                 var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
@@ -231,14 +272,41 @@ namespace Services.Implementations
 
                 if (request.CouponId.HasValue)
                 {
+                    // Validate the new coupon before applying
+                    var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (!couponResult.IsSuccess || couponResult.Data == null)
+                    {
+                        throw new ArgumentException("Mã giảm giá không tồn tại");
+                    }
+
+                    // Validate coupon eligibility
+                    var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, order.TotalAmount, order.UserId);
+                    if (!validationResult.IsSuccess || !validationResult.Data)
+                    {
+                        throw new ArgumentException("Mã giảm giá không hợp lệ hoặc không áp dụng được: " + (validationResult.Message ?? ""));
+                    }
+
                     order.CouponId = request.CouponId;
                     // Recalculate discount and total if coupon changed
                     var (discountAmount, _) = await CalculateDiscountAndTaxAsync(request.CouponId, order.TotalAmount);
                     order.DiscountAmount = discountAmount;
                 }
+                else if (request.CouponId == null && order.CouponId.HasValue)
+                {
+                    // Remove coupon if explicitly set to null
+                    order.CouponId = null;
+                    order.DiscountAmount = 0;
+                }
 
                 if (request.ShippingMethodId.HasValue)
                 {
+                    // Validate shipping method exists and is active
+                    var shippingMethodValidation = await _shippingMethodService.ValidateShippingMethodAsync(request.ShippingMethodId.Value);
+                    if (!shippingMethodValidation.IsSuccess)
+                    {
+                        throw new ArgumentException("Phương thức vận chuyển không hợp lệ: " + (shippingMethodValidation.Message ?? ""));
+                    }
+
                     order.ShippingMethodId = request.ShippingMethodId;
                     // Recalculate shipping fee if method changed
                     order.ShippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, order.TotalAmount);
@@ -357,6 +425,7 @@ namespace Services.Implementations
 
         public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 if (string.IsNullOrWhiteSpace(reason))
@@ -364,7 +433,7 @@ namespace Services.Implementations
                     throw new ArgumentException("Lý do hủy đơn hàng là bắt buộc");
                 }
 
-                var order = await _orderRepository.GetByIdAsync(orderId);
+                var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
                 if (order == null || order.IsDeleted)
                 {
                     throw new ArgumentException("Đơn hàng không tồn tại");
@@ -375,14 +444,47 @@ namespace Services.Implementations
                     throw new InvalidOperationException("Không thể hủy đơn hàng đã giao hoặc đã hủy");
                 }
 
+                _logger.LogInformation("Cancelling order {OrderId} with reason: {Reason}", orderId, reason);
+
+                // Cancel the order in repository
                 var result = await _orderRepository.CancelOrderAsync(orderId, reason.Trim(), cancelledBy);
+                
                 if (result)
-                    await _unitOfWork.SaveChangesAsync();
+                {
+                    // Handle coupon rollback if order used a coupon
+                    if (order.CouponId.HasValue)
+                    {
+                        try
+                        {
+                            // Note: The actual coupon usage rollback would depend on how the CouponService tracks usage
+                            // This is a placeholder for the actual implementation
+                            _logger.LogInformation("Order {OrderId} used coupon {CouponId}, consider implementing rollback logic", 
+                                orderId, order.CouponId);
+                            
+                            // TODO: Implement coupon usage rollback if needed
+                            // await _couponService.RollbackCouponUsageAsync(order.CouponId.Value, order.UserId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to rollback coupon usage for order {OrderId}, coupon {CouponId}", 
+                                orderId, order.CouponId);
+                            // Don't fail the entire operation for coupon rollback issues
+                        }
+                    }
+
+                    await transaction.CommitAsync();
+                    _logger.LogInformation("Order {OrderId} cancelled successfully", orderId);
+                }
+                else
+                {
+                    await transaction.RollbackAsync();
+                }
 
                 return result;
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error cancelling order {OrderId}", orderId);
                 throw;
             }
@@ -658,19 +760,21 @@ namespace Services.Implementations
 
             try
             {
-                // TODO: Implement proper shipping fee calculation
-                // For now, return a default fee
+                // Use ShippingMethodService to calculate the shipping fee
+                var shippingFee = await _shippingMethodService.CalculateShippingFeeAsync(shippingMethodId.Value, subtotal);
+                return shippingFee;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error calculating shipping fee for method {ShippingMethodId}, using default", shippingMethodId);
+                
+                // Fallback logic
                 var defaultFee = 25000m;
 
                 // Free shipping for orders over 500,000 VND
                 if (subtotal >= 500000m) return 0;
 
                 return defaultFee;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error calculating shipping fee, using default");
-                return 25000m; // Default shipping fee
             }
         }
 
@@ -683,9 +787,30 @@ namespace Services.Implementations
 
                 if (couponId.HasValue)
                 {
-                    // TODO: Implement proper coupon discount calculation
-                    // For now, apply a simple percentage discount
-                    discountAmount = subtotal * 0.05m; // 5% discount
+                    // Get coupon details first
+                    var couponResult = await _couponService.GetByIdAsync(couponId.Value);
+                    if (couponResult.IsSuccess && couponResult.Data != null)
+                    {
+                        // Validate coupon
+                        var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, subtotal);
+                        if (validationResult.IsSuccess && validationResult.Data)
+                        {
+                            // Calculate discount
+                            var discountResult = await _couponService.CalculateDiscountAsync(couponResult.Data.Code, subtotal);
+                            if (discountResult.IsSuccess)
+                            {
+                                discountAmount = discountResult.Data;
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Coupon validation failed for coupon {CouponId}: {Message}", couponId, validationResult.Message);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Coupon not found or invalid for coupon {CouponId}", couponId);
+                    }
                 }
 
                 return (discountAmount, taxAmount);
