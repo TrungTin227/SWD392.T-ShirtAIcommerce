@@ -25,6 +25,9 @@ namespace Services.Interfaces
         Task<ApiResult<IEnumerable<CartItemDto>>> GetCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
         Task<ApiResult<bool>> ClearCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
         Task<ApiResult<IEnumerable<CartItem>>> GetCartItemsForCheckoutAsync(Guid? userId, string? sessionId);
-
+        /// <summary>
+        /// Kiểm tra cart có thể checkout không
+        /// </summary>
+        Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutAsync(Guid? userId, string? sessionId);
     }
 }

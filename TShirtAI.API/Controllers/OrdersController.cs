@@ -83,43 +83,6 @@ namespace WebAPI.Controllers
             }, "Error creating order {@Request}", request);
         }
 
-        /// <summary>
-        /// Cập nhật thông tin đơn hàng (user)
-        /// </summary>
-        [HttpPut("{id}")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<ActionResult<OrderDTO>> UpdateOrder(Guid id, [FromBody] UpdateOrderRequest request)
-        {
-            var userId = GetCurrentUserIdOrUnauthorized();
-            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
-
-            return await ExecuteAsync(async () =>
-            {
-                if (!IsAdminOrStaff() && !await _orderService.IsOrderOwnedByUserAsync(id, userId.Value))
-                    return Forbid();
-
-                var order = await _orderService.UpdateOrderAsync(id, request, userId);
-                return order == null
-                    ? NotFound(ErrorResponse("Không tìm thấy đơn hàng để cập nhật"))
-                    : Ok(order);
-            }, "Error updating order {OrderId}", id);
-        }
-
-        /// <summary>
-        /// Xóa đơn hàng (soft delete, chỉ Admin)
-        /// </summary>
-        [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
-        public async Task<ActionResult> DeleteOrder(Guid id)
-        {
-            return await ExecuteAsync(async () =>
-            {
-                var userId = _currentUserService.GetUserId();
-                var result = await _orderService.DeleteOrderAsync(id, userId);
-                return result ? NoContent() : NotFound(ErrorResponse("Không tìm thấy đơn hàng để xóa"));
-            }, "Error deleting order {OrderId}", id);
-        }
-
             /// <summary>
             /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)
             /// </summary>
@@ -138,25 +101,6 @@ namespace WebAPI.Controllers
 
                 return BadRequest(new { Error = "Không thể cập nhật trạng thái đơn hàng" });
             }
-
-            /// <summary>
-            /// Cập nhật trạng thái thanh toán (Chỉ Admin/Staff)
-            /// </summary>
-            [HttpPatch("{id}/payment-status")]
-            [Authorize(Roles = "Admin,Staff")]
-            public async Task<IActionResult> UpdatePaymentStatus(Guid id, [FromBody] UpdatePaymentStatusRequest request)
-            {
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
-
-                var userId = _currentUserService.GetUserId();
-                var result = await _orderService.UpdatePaymentStatusAsync(id, request.PaymentStatus, userId);
-
-                if (result)
-                    return Ok(new { Message = "Cập nhật trạng thái thanh toán thành công" });
-
-                return BadRequest(new { Error = "Không thể cập nhật trạng thái thanh toán" });
-            }           
 
         /// <summary>
         /// Hủy đơn hàng (User hoặc Admin/Staff)
@@ -179,51 +123,68 @@ namespace WebAPI.Controllers
                     : BadRequest(ErrorResponse("Không thể hủy đơn hàng"));
             }, "Error cancelling order {OrderId}", id);
         }
-            
         /// <summary>
-        /// Cập nhật trạng thái hàng loạt (Chỉ Admin)
+        /// Cập nhật đơn hàng (User có thể cập nhật một số thông tin)
         /// </summary>
-        [HttpPatch("bulk-update-status")]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> BulkUpdateStatus([FromBody] BulkUpdateStatusRequest request)
+        [HttpPut("{id}")]
+        [ServiceFilter(typeof(ValidateModelAttribute))]
+        public async Task<ActionResult<OrderDTO>> UpdateOrder(Guid id, [FromBody] UpdateOrderRequest request)
+        {
+            var userId = GetCurrentUserIdOrUnauthorized();
+            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
+
+            return await ExecuteAsync(async () =>
+            {
+                if (!IsAdminOrStaff() && !await _orderService.IsOrderOwnedByUserAsync(id, userId.Value))
+                    return Forbid();
+
+                var order = await _orderService.UpdateOrderAsync(id, request, userId);
+                return order == null
+                    ? NotFound(ErrorResponse("Không tìm thấy đơn hàng để cập nhật"))
+                    : Ok(order);
+            }, "Error updating order {OrderId}", id);
+        }
+
+        /// <summary>
+        /// Cập nhật trạng thái thanh toán (Admin/Staff)
+        /// </summary>
+        [HttpPatch("{id}/payment-status")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<IActionResult> UpdatePaymentStatus(Guid id, [FromBody] UpdatePaymentStatusRequest request)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-            var currentUserId = _currentUserService.GetUserId();
-            var result = await _orderService
-                .BulkUpdateStatusAsync(request.OrderIds, request.Status, currentUserId);
-            return Ok(result);
+
+            var userId = _currentUserService.GetUserId();
+            var result = await _orderService.UpdatePaymentStatusAsync(id, request.PaymentStatus, userId);
+
+            if (result)
+                return Ok(new { Message = "Cập nhật trạng thái thanh toán thành công" });
+
+            return BadRequest(new { Error = "Không thể cập nhật trạng thái thanh toán" });
         }
 
-
         /// <summary>
-        /// Lấy thống kê trạng thái đơn hàng (Admin/Staff)
+        /// Lấy thống kê đơn hàng theo trạng thái (Admin/Staff)
         /// </summary>
         [HttpGet("statistics/status-counts")]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<Dictionary<OrderStatus, int>>> GetOrderStatusCounts()
         {
-            var result = await _orderService.GetOrderStatusCountsAsync();
-            return Ok(result);
+            return await ExecuteAsync(() => _orderService.GetOrderStatusCountsAsync(),
+                "Error getting order status counts");
         }
 
         /// <summary>
-        /// Lấy danh sách đơn hàng gần đây (Admin/Staff)
+        /// Lấy đơn hàng gần đây (Admin/Staff)
         /// </summary>
         [HttpGet("recent")]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<IEnumerable<OrderDTO>>> GetRecentOrders([FromQuery] int limit = 10)
-            => await ExecuteAsync(() => _orderService.GetRecentOrdersAsync(limit), "Error getting recent orders");
-
-        /// <summary>
-        /// Lấy dữ liệu đơn hàng cho báo cáo (Admin)
-        /// </summary>
-        [HttpGet("analytics")]
-        [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<IEnumerable<OrderDTO>>> GetOrdersForAnalytics(
-            [FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
-            => await ExecuteAsync(() => _orderService.GetOrdersForAnalyticsAsync(fromDate, toDate),
-                "Error getting orders for analytics");
+        {
+            return await ExecuteAsync(() => _orderService.GetRecentOrdersAsync(limit),
+                "Error getting recent orders");
+        }
 
         /// <summary>
         /// Tính tổng tiền đơn hàng
@@ -241,7 +202,7 @@ namespace WebAPI.Controllers
                 return Ok(total);
             }, "Error calculating order total {OrderId}", id);
         }
-       
+
         #region Helper Methods
 
         private Guid? GetCurrentUserIdOrUnauthorized()

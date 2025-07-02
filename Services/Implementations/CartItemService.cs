@@ -430,6 +430,178 @@ namespace Services.Implementations
             }
         }
 
+        public async Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutAsync(Guid? userId, string? sessionId)
+        {
+            try
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<CartValidationDto>.Failure("Phải có userId hoặc sessionId");
+
+                // Get cart items
+                IEnumerable<CartItem> cartItems;
+                if (userId.HasValue)
+                {
+                    cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId.Value);
+                }
+                else
+                {
+                    cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
+                }
+
+                var validationResult = new CartValidationDto
+                {
+                    TotalItems = cartItems.Count(),
+                    Items = new List<CartItemValidationDto>()
+                };
+
+                if (!cartItems.Any())
+                {
+                    validationResult.Errors.Add("Giỏ hàng trống");
+                    validationResult.IsValid = false;
+                    validationResult.Summary = "Giỏ hàng trống, không thể checkout";
+                    return ApiResult<CartValidationDto>.Success(validationResult);
+                }
+
+                decimal totalAmount = 0;
+                var allValid = true;
+
+                foreach (var cartItem in cartItems)
+                {
+                    var itemValidation = await ValidateCartItemAsync(cartItem);
+                    validationResult.Items.Add(itemValidation);
+
+                    if (!itemValidation.IsAvailable)
+                    {
+                        allValid = false;
+                        validationResult.Errors.Add($"Sản phẩm '{itemValidation.ProductName}' không còn khả dụng");
+                    }
+
+                    if (itemValidation.HasStockIssue)
+                    {
+                        allValid = false;
+                        validationResult.Errors.Add($"Sản phẩm '{itemValidation.ProductName}' không đủ hàng");
+                    }
+
+                    if (itemValidation.HasPriceChange)
+                    {
+                        var priceChangeMsg = itemValidation.PriceDifference > 0
+                            ? $"Sản phẩm '{itemValidation.ProductName}' đã tăng giá {itemValidation.PriceDifference:C}"
+                            : $"Sản phẩm '{itemValidation.ProductName}' đã giảm giá {Math.Abs(itemValidation.PriceDifference):C}";
+
+                        // Price changes are warnings, not errors
+                        if (itemValidation.WarningMessage == null)
+                            itemValidation.WarningMessage = priceChangeMsg;
+                    }
+
+                    // Calculate total with current prices
+                    totalAmount += itemValidation.CurrentPrice * itemValidation.Quantity;
+                }
+
+                validationResult.TotalAmount = totalAmount;
+                validationResult.IsValid = allValid;
+
+                // Generate summary
+                if (validationResult.IsValid)
+                {
+                    if (validationResult.HasPriceChanges)
+                    {
+                        validationResult.Summary = "Giỏ hàng hợp lệ nhưng có thay đổi giá. Vui lòng xem lại trước khi checkout.";
+                    }
+                    else
+                    {
+                        validationResult.Summary = "Giỏ hàng hợp lệ và sẵn sàng checkout.";
+                    }
+                }
+                else
+                {
+                    validationResult.Summary = $"Giỏ hàng có {validationResult.Errors.Count} lỗi cần khắc phục.";
+                }
+
+                return ApiResult<CartValidationDto>.Success(validationResult);
+            }
+            catch (Exception ex)
+            {
+                return ApiResult<CartValidationDto>.Failure("Lỗi khi kiểm tra giỏ hàng", ex);
+            }
+        }
+
+        public async Task<ApiResult<bool>> UpdateCartPricesAsync(Guid? userId, string? sessionId)
+        {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<bool>.Failure("Phải có userId hoặc sessionId");
+
+                // Get cart items
+                IEnumerable<CartItem> cartItems;
+                if (userId.HasValue)
+                {
+                    cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId.Value);
+                }
+                else
+                {
+                    cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
+                }
+
+                if (!cartItems.Any())
+                    return ApiResult<bool>.Success(true, "Giỏ hàng trống, không có gì để cập nhật");
+
+                var updatedCount = 0;
+                var errors = new List<string>();
+
+                foreach (var cartItem in cartItems)
+                {
+                    try
+                    {
+                        decimal currentPrice = await GetCurrentPriceForCartItem(cartItem);
+
+                        if (currentPrice != cartItem.UnitPrice)
+                        {
+                            var oldPrice = cartItem.UnitPrice;
+                            cartItem.UnitPrice = currentPrice;
+                            cartItem.UpdatedAt = _currentTime.GetVietnamTime();
+
+                            await UpdateAsync(cartItem);
+                            updatedCount++;
+
+                            // Log price change
+                            _logger?.LogInformation(
+                                "Updated cart item {CartItemId} price from {OldPrice} to {NewPrice} for user {UserId}/session {SessionId}",
+                                cartItem.Id, oldPrice, currentPrice, userId, sessionId);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        var productName = GetProductNameFromCartItem(cartItem);
+                        var errorMsg = $"Không thể cập nhật giá cho sản phẩm '{productName}': {ex.Message}";
+                        errors.Add(errorMsg);
+
+                        _logger?.LogError(ex, "Error updating price for cart item {CartItemId}", cartItem.Id);
+                    }
+                }
+
+                if (errors.Any())
+                {
+                    await transaction.RollbackAsync();
+                    return ApiResult<bool>.Failure($"Có lỗi khi cập nhật giá: {string.Join(", ", errors)}");
+                }
+
+                await transaction.CommitAsync();
+
+                var message = updatedCount > 0
+                    ? $"Đã cập nhật giá cho {updatedCount} sản phẩm trong giỏ hàng"
+                    : "Tất cả giá sản phẩm đã là mới nhất";
+
+                return ApiResult<bool>.Success(true, message);
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return ApiResult<bool>.Failure("Lỗi khi cập nhật giá giỏ hàng", ex);
+            }
+        }
+
         #region Private Helper Methods
 
         private async Task<ApiResult<CartItemDto>> ValidateCreateCartItemAsync(InternalCreateCartItemDto createDto)
@@ -501,6 +673,147 @@ namespace Services.Implementations
         private static decimal CalculateEstimatedTax(decimal subtotal)
         {
             return subtotal * 0.1m; // 10% VAT
+        }
+        private async Task<CartItemValidationDto> ValidateCartItemAsync(CartItem cartItem)
+        {
+            var validation = new CartItemValidationDto
+            {
+                CartItemId = cartItem.Id,
+                CartPrice = cartItem.UnitPrice,
+                Quantity = cartItem.Quantity,
+                IsAvailable = true,
+                HasStockIssue = false,
+                HasPriceChange = false
+            };
+
+            try
+            {
+                // Get current price and product info
+                validation.CurrentPrice = await GetCurrentPriceForCartItem(cartItem);
+                validation.ProductName = GetProductNameFromCartItem(cartItem);
+                validation.VariantInfo = GetVariantInfoFromCartItem(cartItem);
+
+                // Check price changes
+                if (Math.Abs(validation.CurrentPrice - validation.CartPrice) > 0.01m) // Allow for small floating point differences
+                {
+                    validation.HasPriceChange = true;
+                }
+
+                // Check product availability
+                if (cartItem.ProductId.HasValue)
+                {
+                    var product = await _cartItemRepository.GetProductByIdAsync(cartItem.ProductId.Value);
+                    if (product == null || product.IsDeleted)
+                    {
+                        validation.IsAvailable = false;
+                        validation.ErrorMessage = "Sản phẩm không còn tồn tại";
+                        return validation;
+                    }
+
+                    // You can add more product availability checks here
+                    // For example: product.IsActive, product.Status, etc.
+                }
+
+                // Check variant availability
+                if (cartItem.ProductVariantId.HasValue)
+                {
+                    var variant = await _cartItemRepository.GetProductVariantByIdAsync(cartItem.ProductVariantId.Value);
+                    if (variant == null)
+                    {
+                        validation.IsAvailable = false;
+                        validation.ErrorMessage = "Biến thể sản phẩm không còn tồn tại";
+                        return validation;
+                    }
+
+                    // You can add stock checking here if implemented
+                    // if (variant.StockQuantity < cartItem.Quantity)
+                    // {
+                    //     validation.HasStockIssue = true;
+                    //     validation.ErrorMessage = $"Chỉ còn {variant.StockQuantity} sản phẩm trong kho";
+                    // }
+                }
+
+                // Check custom design availability
+                if (cartItem.CustomDesignId.HasValue)
+                {
+                    var customDesignExists = await _cartItemRepository.ValidateCustomDesignExistsAsync(cartItem.CustomDesignId.Value);
+                    if (!customDesignExists)
+                    {
+                        validation.IsAvailable = false;
+                        validation.ErrorMessage = "Thiết kế tùy chỉnh không còn tồn tại";
+                        return validation;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                validation.IsAvailable = false;
+                validation.ErrorMessage = $"Lỗi khi kiểm tra sản phẩm: {ex.Message}";
+            }
+
+            return validation;
+        }
+
+        private async Task<decimal> GetCurrentPriceForCartItem(CartItem cartItem)
+        {
+            try
+            {
+                if (cartItem.ProductVariantId.HasValue)
+                {
+                    return await GetUnitPriceFromProductVariant(cartItem.ProductVariantId.Value);
+                }
+                else if (cartItem.ProductId.HasValue)
+                {
+                    return await GetUnitPriceFromProduct(cartItem.ProductId.Value);
+                }
+                else if (cartItem.CustomDesignId.HasValue)
+                {
+                    // Assuming custom designs have a price method
+                    // You might need to implement this in your repository
+                    // For now, return the current cart price as fallback
+                    return cartItem.UnitPrice;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Cart item không có product, variant, hoặc custom design ID");
+                }
+            }
+            catch (Exception)
+            {
+                // If we can't get current price, return cart price to avoid breaking the flow
+                return cartItem.UnitPrice;
+            }
+        }
+
+        private string GetProductNameFromCartItem(CartItem cartItem)
+        {
+            if (cartItem.Product != null)
+                return cartItem.Product.Name;
+
+            if (cartItem.CustomDesign != null)
+                return cartItem.CustomDesign.DesignName;
+
+            if (cartItem.ProductVariant?.Product != null)
+                return cartItem.ProductVariant.Product.Name;
+
+            return "Sản phẩm không xác định";
+        }
+
+        private string? GetVariantInfoFromCartItem(CartItem cartItem)
+        {
+            if (cartItem.ProductVariant != null)
+            {
+                return $"{cartItem.ProductVariant.Color} - {cartItem.ProductVariant.Size}";
+            }
+
+            if (cartItem.SelectedColor.HasValue || cartItem.SelectedSize.HasValue)
+            {
+                var colorInfo = cartItem.SelectedColor?.ToString() ?? "";
+                var sizeInfo = cartItem.SelectedSize?.ToString() ?? "";
+                return $"{colorInfo} - {sizeInfo}".Trim(' ', '-');
+            }
+
+            return null;
         }
 
         #endregion

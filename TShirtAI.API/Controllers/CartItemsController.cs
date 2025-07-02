@@ -28,33 +28,6 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách sản phẩm trong giỏ hàng (Admin/Staff)
-        /// </summary>
-        [HttpGet]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<ActionResult<PagedList<CartItemDto>>> GetCartItems([FromQuery] CartItemQueryDto query)
-        {
-            try
-            {
-                var result = await _cartItemService.GetCartItemsAsync(query);
-
-                if (!result.IsSuccess)
-                    return BadRequest(new ErrorResponse { Message = result.Message });
-
-                return Ok(result.Data);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting cart items with query {@Query}", query);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy danh sách giỏ hàng",
-                    Details = ex.Message
-                });
-            }
-        }
-
-        /// <summary>
         /// Lấy giỏ hàng của người dùng hiện tại
         /// </summary>
         [HttpGet("my-cart")]
@@ -77,7 +50,6 @@ namespace WebAPI.Controllers
                 }
 
                 if (!result.IsSuccess)
-                    return BadRequest(new ErrorResponse { Message = result.Message });
                     return BadRequest(new ErrorResponse { Message = result.Message });
 
                 return Ok(result.Data);
@@ -122,107 +94,9 @@ namespace WebAPI.Controllers
                 });
             }
         }
-
-        /// <summary>
-        /// Lấy số lượng sản phẩm trong giỏ hàng
-        /// </summary>
-        [HttpGet("count")]
-        public async Task<ActionResult<int>> GetCartItemCount()
-        {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                var sessionId = HttpContext.Session.Id;
-
-                var result = await _cartItemService.GetCartItemCountAsync(userId, sessionId);
-
-                if (!result.IsSuccess)
-                    return BadRequest(new ErrorResponse { Message = result.Message });
-
-                return Ok(result.Data);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting cart item count");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi đếm sản phẩm trong giỏ hàng",
-                    Details = ex.Message
-                });
-            }
-        }
-
-        /// <summary>
-        /// Lấy tổng tiền giỏ hàng
-        /// </summary>
-        [HttpGet("total")]
-        public async Task<ActionResult<decimal>> GetCartTotal()
-        {
-            try
-            {
-                var userId = _currentUserService.GetUserId();
-                var sessionId = HttpContext.Session.Id;
-
-                var result = await _cartItemService.GetCartTotalAsync(userId, sessionId);
-
-                if (!result.IsSuccess)
-                    return BadRequest(new ErrorResponse { Message = result.Message });
-
-                return Ok(result.Data);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting cart total");
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi tính tổng giỏ hàng",
-                    Details = ex.Message
-                });
-            }
-        }
-
-        /// <summary>
-        /// Lấy chi tiết sản phẩm trong giỏ hàng
-        /// </summary>
-        [HttpGet("{id}")]
-        public async Task<ActionResult<CartItemDto>> GetCartItem(Guid id)
-        {
-            try
-            {
-                var result = await _cartItemService.GetByIdAsync(id);
-
-                if (!result.IsSuccess)
-                    return BadRequest(new ErrorResponse { Message = result.Message });
-
-                // Check ownership for non-admin users
-                var userId = _currentUserService.GetUserId();
-                var isAdmin = User.IsInRole("Admin") || User.IsInRole("Staff");
-                var sessionId = HttpContext.Session.Id;
-
-                if (!isAdmin)
-                {
-                    var cartItem = result.Data;
-                    if (cartItem.UserId != userId && cartItem.SessionId != sessionId)
-                        return Forbid();
-                }
-
-                return Ok(result.Data);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting cart item {CartItemId}", id);
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Có lỗi xảy ra khi lấy thông tin sản phẩm trong giỏ hàng",
-                    Details = ex.Message
-                });
-            }
-        }
-
         /// <summary>
         /// Thêm sản phẩm vào giỏ hàng
         /// </summary>
-        // ... các using như cũ
 
         [HttpPost]
         [ServiceFilter(typeof(ValidateModelAttribute))]
@@ -258,7 +132,7 @@ namespace WebAPI.Controllers
                     SelectedColor = createDto.SelectedColor,
                     SelectedSize = createDto.SelectedSize,
                     Quantity = createDto.Quantity,
-                    UnitPrice = unitPrice // Gán giá tự truy vấn
+                    UnitPrice = unitPrice
                 };
 
                 var result = await _cartItemService.AddToCartAsync(internalCreateDto);
@@ -266,7 +140,11 @@ namespace WebAPI.Controllers
                 if (!result.IsSuccess)
                     return BadRequest(new ErrorResponse { Message = result.Message });
 
-                return CreatedAtAction(nameof(GetCartItem), new { id = result.Data.Id }, result.Data);
+                // ✅ Thay đổi: Trả về Created với data trực tiếp thay vì CreatedAtAction
+                return Created($"/api/cart/{result.Data.Id}", result.Data);
+
+                // Hoặc đơn giản hơn, chỉ trả về Ok:
+                // return Ok(result.Data);
             }
             catch (Exception ex)
             {
@@ -421,6 +299,34 @@ namespace WebAPI.Controllers
                 return StatusCode(500, new ErrorResponse
                 {
                     Message = "Có lỗi xảy ra khi merge giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+        /// <summary>
+        /// Kiểm tra tính khả dụng của cart trước khi checkout
+        /// </summary>
+        [HttpPost("validate")]
+        public async Task<ActionResult<CartValidationDto>> ValidateCart()
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                var result = await _cartItemService.ValidateCartForCheckoutAsync(userId, sessionId);
+
+                if (!result.IsSuccess)
+                    return BadRequest(new ErrorResponse { Message = result.Message });
+
+                return Ok(result.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating cart");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi kiểm tra giỏ hàng",
                     Details = ex.Message
                 });
             }
