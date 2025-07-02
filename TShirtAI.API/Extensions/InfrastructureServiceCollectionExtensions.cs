@@ -157,7 +157,6 @@ namespace WebAPI.Extensions
             services.AddScoped<IReviewService, ReviewService>();
             services.AddScoped<ICustomDesignService, CustomDesignService>();
             services.AddScoped<IWishlistService, WishlistService>();
-            services.AddScoped<IFileUploadService, FileUploadService>();
 
             // === 7. Email & Quartz ===
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
