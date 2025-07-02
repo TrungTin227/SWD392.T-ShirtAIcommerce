@@ -328,5 +328,22 @@ namespace Services.Implementations
                 return false;
             }
         }
+        public async Task<ApiResult<ShippingMethodDTO>> GetByIdAsync(Guid id)
+        {
+            try
+            {
+                var shippingMethod = await GetShippingMethodByIdAsync(id);
+                if (shippingMethod == null)
+                {
+                    return ApiResult<ShippingMethodDTO>.Failure("Không tìm thấy phương thức vận chuyển");
+                }
+
+                return ApiResult<ShippingMethodDTO>.Success(shippingMethod);
+            }
+            catch (Exception ex)
+            {
+                return ApiResult<ShippingMethodDTO>.Failure("Lỗi khi lấy thông tin phương thức vận chuyển", ex);
+            }
+        }
     }
 }

@@ -94,5 +94,8 @@ namespace BusinessObjects.Orders
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
         public virtual ICollection<Review> Reviews { get; set; } = new List<Review>();
+
+        [NotMapped] // Không lưu vào database
+        public decimal SubtotalAmount => OrderItems?.Sum(oi => oi.TotalPrice) ?? 0;
     }
 }

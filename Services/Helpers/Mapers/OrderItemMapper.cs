@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Orders;
+﻿using BusinessObjects.Cart;
+using BusinessObjects.Orders;
 using DTOs.OrderItem;
 using Repositories.Helpers;
 
@@ -76,6 +77,57 @@ namespace Services.Helpers.Mappers
                 pagedEntities.MetaData.CurrentPage,
                 pagedEntities.MetaData.PageSize
             );
+        }
+        public static OrderItem CartItemToOrderItem(CartItem cartItem, Guid orderId)
+        {
+            var orderItem = new OrderItem
+            {
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                ProductId = cartItem.ProductId,
+                CustomDesignId = cartItem.CustomDesignId,
+                ProductVariantId = cartItem.ProductVariantId,
+                ItemName = GetItemName(cartItem),
+                SelectedColor = GetSelectedColor(cartItem),
+                SelectedSize = GetSelectedSize(cartItem),
+                Quantity = cartItem.Quantity,
+                UnitPrice = cartItem.UnitPrice,
+                TotalPrice = cartItem.TotalPrice
+            };
+
+            return orderItem;
+        }
+
+        public static List<OrderItem> CartItemsToOrderItems(IEnumerable<CartItem> cartItems, Guid orderId)
+        {
+            return cartItems.Select(ci => CartItemToOrderItem(ci, orderId)).ToList();
+        }
+
+        private static string GetItemName(CartItem cartItem)
+        {
+            if (cartItem.Product != null)
+                return cartItem.Product.Name;
+
+            if (cartItem.CustomDesign != null)
+                return cartItem.CustomDesign.DesignName;
+
+            return "Unknown Item";
+        }
+
+        private static string? GetSelectedColor(CartItem cartItem)
+        {
+            if (cartItem.ProductVariant != null)
+                return cartItem.ProductVariant.Color.ToString();
+
+            return null;
+        }
+
+        private static string? GetSelectedSize(CartItem cartItem)
+        {
+            if (cartItem.ProductVariant != null)
+                return cartItem.ProductVariant.Size.ToString();
+
+            return null;
         }
     }
 }

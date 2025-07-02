@@ -8,6 +8,7 @@ namespace DTOs.Orders
         public Guid Id { get; set; }
         public string OrderNumber { get; set; } = string.Empty;
         public Guid UserId { get; set; }
+        public decimal SubtotalAmount { get; set; }
         public decimal TotalAmount { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal DiscountAmount { get; set; }

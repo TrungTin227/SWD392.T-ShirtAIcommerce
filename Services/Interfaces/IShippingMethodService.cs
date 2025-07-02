@@ -17,5 +17,6 @@ namespace Services.Interfaces
         Task<bool> UpdateSortOrderAsync(Guid id, int newSortOrder);
         Task<decimal> CalculateShippingFeeAsync(Guid shippingMethodId, decimal orderAmount);
         Task<ApiResult<string>> ValidateShippingMethodAsync(Guid id);
+        Task<ApiResult<ShippingMethodDTO>> GetByIdAsync(Guid id);
     }
 }

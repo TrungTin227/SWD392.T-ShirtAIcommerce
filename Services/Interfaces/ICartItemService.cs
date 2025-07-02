@@ -1,4 +1,5 @@
-﻿using DTOs.Cart;
+﻿using BusinessObjects.Cart;
+using DTOs.Cart;
 using Repositories.Commons;
 using Repositories.Helpers;
 
@@ -20,5 +21,10 @@ namespace Services.Interfaces
         Task<ApiResult<decimal>> GetCartTotalAsync(Guid? userId, string? sessionId);
         Task<decimal> GetUnitPriceFromProduct(Guid productId);
         Task<decimal> GetUnitPriceFromProductVariant(Guid productVariantId);
+
+        Task<ApiResult<IEnumerable<CartItemDto>>> GetCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
+        Task<ApiResult<bool>> ClearCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
+        Task<ApiResult<IEnumerable<CartItem>>> GetCartItemsForCheckoutAsync(Guid? userId, string? sessionId);
+
     }
 }
