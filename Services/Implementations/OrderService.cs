@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
+using Services.Helpers;
 using Services.Helpers.Mapers;
 using Services.Interfaces;
 
@@ -1031,6 +1032,417 @@ namespace Services.Implementations
                 UnitPrice = orderItem.UnitPrice,
                 TotalPrice = orderItem.TotalPrice
             };
+        }
+
+        #endregion
+
+        #region Enhanced Order Management Methods
+
+        /// <summary>
+        /// Tạo đơn hàng từ giỏ hàng với validation đầy đủ
+        /// </summary>
+        public async Task<OrderDTO?> CreateOrderFromCartAsync(CreateOrderFromCartRequest request, Guid userId)
+        {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                // Validate cart first
+                var validationResult = await ValidateCartForOrderAsync(userId, request.SessionId);
+                if (!validationResult.IsValid)
+                {
+                    _logger.LogWarning("Cart validation failed for user {UserId}: {Errors}", 
+                        userId, string.Join("; ", validationResult.Errors));
+                    return null;
+                }
+
+                // Get cart items
+                var cartItemsResult = await _cartItemService.GetCartItemEntitiesForCheckoutAsync(userId, request.SessionId);
+                if (!cartItemsResult.IsSuccess || !cartItemsResult.Data.Any())
+                {
+                    _logger.LogWarning("No cart items found for user {UserId}", userId);
+                    return null;
+                }
+
+                var cartItems = cartItemsResult.Data.ToList();
+
+                // Filter by selected items if specified
+                if (request.SelectedCartItemIds?.Any() == true)
+                {
+                    cartItems = cartItems.Where(ci => request.SelectedCartItemIds.Contains(ci.Id)).ToList();
+                }
+
+                // Create order
+                var order = new Order
+                {
+                    Id = Guid.NewGuid(),
+                    OrderNumber = await GenerateOrderNumberAsync(),
+                    UserId = userId,
+                    Status = OrderStatus.Pending,
+                    PaymentStatus = PaymentStatus.Unpaid,
+                    ShippingMethodId = request.ShippingMethodId,
+                    CouponId = request.CouponId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    CreatedBy = userId,
+                    UpdatedBy = userId
+                };
+
+                // Calculate totals
+                var subtotal = cartItems.Sum(ci => ci.TotalPrice);
+                
+                // Apply shipping
+                var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
+                
+                // Apply discount and tax
+                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
+
+                order.ShippingFee = shippingFee;
+                order.DiscountAmount = discountAmount;
+                order.TaxAmount = taxAmount;
+                order.TotalAmount = subtotal + shippingFee + taxAmount - discountAmount;
+
+                // Save order
+                var createdOrder = await CreateAsync(order);
+
+                // Create order items
+                var orderItems = new List<OrderItem>();
+                foreach (var cartItem in cartItems)
+                {
+                    var orderItem = OrderItemBusinessLogic.CreateOrderItemFromCartItem(cartItem, createdOrder);
+                    var createdOrderItem = await _orderItemRepository.AddAsync(orderItem);
+                    orderItems.Add(createdOrderItem);
+                }
+
+                // Reserve inventory
+                await ReserveInventoryForOrderAsync(createdOrder.Id);
+
+                // Clear cart items
+                var cartItemIds = cartItems.Select(ci => ci.Id).ToList();
+                await _cartItemService.ClearCartItemsAfterCheckoutAsync(cartItemIds, userId, request.SessionId);
+
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Order {OrderId} created successfully for user {UserId}", 
+                    createdOrder.Id, userId);
+
+                // Convert to DTO
+                var orderDto = ConvertToOrderDTO(createdOrder);
+                orderDto.OrderItems = orderItems.Select(oi => OrderItemMapper.ToDto(oi)).ToList();
+
+                return orderDto;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error creating order from cart for user {UserId}", userId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Validate giỏ hàng trước khi tạo đơn hàng
+        /// </summary>
+        public async Task<OrderValidationResult> ValidateCartForOrderAsync(Guid? userId, string? sessionId)
+        {
+            try
+            {
+                var result = new OrderValidationResult();
+
+                // Get cart validation from cart service
+                var cartValidation = await _cartItemService.ValidateCartForCheckoutDetailedAsync(userId, sessionId);
+                
+                if (!cartValidation.IsSuccess)
+                {
+                    result.Errors.Add(cartValidation.Message);
+                    return result;
+                }
+
+                var cartData = cartValidation.Data;
+                result.IsValid = cartData.IsValid;
+                result.Errors = cartData.Errors;
+                result.Warnings = cartData.Warnings;
+                result.TotalItems = cartData.TotalItems;
+
+                // Map cart items to order items validation
+                result.Items = cartData.Items.Select(ci => new OrderItemValidationDto
+                {
+                    CartItemId = ci.CartItemId,
+                    ProductName = ci.ProductName,
+                    VariantInfo = ci.VariantInfo,
+                    Quantity = ci.Quantity,
+                    UnitPrice = ci.CurrentPrice,
+                    TotalPrice = ci.CurrentPrice * ci.Quantity,
+                    IsAvailable = ci.IsAvailable,
+                    HasStockIssue = ci.HasStockIssue,
+                    HasPriceChange = ci.HasPriceChange,
+                    ErrorMessage = ci.ErrorMessage
+                }).ToList();
+
+                // Calculate estimated totals
+                var subtotal = result.Items.Where(i => i.IsAvailable).Sum(i => i.TotalPrice);
+                result.ShippingFee = await CalculateShippingFeeAsync(null, subtotal);
+                var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(null, subtotal);
+                result.DiscountAmount = discountAmount;
+                result.TaxAmount = taxAmount;
+                result.EstimatedTotal = subtotal + result.ShippingFee + result.TaxAmount - result.DiscountAmount;
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating cart for order");
+                return new OrderValidationResult 
+                { 
+                    IsValid = false, 
+                    Errors = { "Lỗi khi validate giỏ hàng" } 
+                };
+            }
+        }
+
+        /// <summary>
+        /// Reserve inventory cho đơn hàng
+        /// </summary>
+        public async Task<bool> ReserveInventoryForOrderAsync(Guid orderId)
+        {
+            try
+            {
+                // TODO: Implement inventory reservation
+                // This would require proper product repository integration
+                _logger.LogInformation("Inventory reservation for order {OrderId} (placeholder implementation)", orderId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reserving inventory for order {OrderId}", orderId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Release inventory khi hủy đơn hàng
+        /// </summary>
+        public async Task<bool> ReleaseInventoryForOrderAsync(Guid orderId)
+        {
+            try
+            {
+                // TODO: Implement inventory release
+                // This would require proper product repository integration
+                _logger.LogInformation("Inventory release for order {OrderId} (placeholder implementation)", orderId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error releasing inventory for order {OrderId}", orderId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Tính toán lại tổng tiền đơn hàng
+        /// </summary>
+        public async Task<decimal> RecalculateOrderTotalAsync(Guid orderId)
+        {
+            try
+            {
+                var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
+                if (order == null) return 0;
+
+                var subtotal = order.OrderItems.Sum(oi => oi.TotalPrice);
+                var total = subtotal + order.ShippingFee + order.TaxAmount - order.DiscountAmount;
+
+                if (Math.Abs(order.TotalAmount - total) > 0.01m)
+                {
+                    order.TotalAmount = total;
+                    order.UpdatedAt = DateTime.UtcNow;
+                    await UpdateAsync(order);
+                    
+                    _logger.LogInformation("Order total recalculated for {OrderId}: {Total}", orderId, total);
+                }
+
+                return total;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error recalculating order total for {OrderId}", orderId);
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Lấy order analytics nâng cao
+        /// </summary>
+        public async Task<OrderAnalyticsDto> GetOrderAnalyticsAsync(DateTime fromDate, DateTime toDate)
+        {
+            try
+            {
+                var orders = await GetOrdersForAnalyticsAsync(fromDate, toDate);
+                var ordersList = orders.ToList();
+
+                var analytics = new OrderAnalyticsDto
+                {
+                    TotalOrders = ordersList.Count,
+                    TotalRevenue = ordersList.Sum(o => o.TotalAmount),
+                    TotalItems = ordersList.SelectMany(o => o.OrderItems).Sum(oi => oi.Quantity)
+                };
+
+                if (analytics.TotalOrders > 0)
+                {
+                    analytics.AverageOrderValue = analytics.TotalRevenue / analytics.TotalOrders;
+                }
+
+                // Orders by status
+                analytics.OrdersByStatus = ordersList
+                    .GroupBy(o => o.Status.ToString())
+                    .ToDictionary(g => g.Key, g => g.Count());
+
+                // Revenue by status
+                analytics.RevenueByStatus = ordersList
+                    .GroupBy(o => o.Status.ToString())
+                    .ToDictionary(g => g.Key, g => g.Sum(o => o.TotalAmount));
+
+                // Top products (simplified - would need proper product data)
+                analytics.TopProducts = ordersList
+                    .SelectMany(o => o.OrderItems)
+                    .Where(oi => oi.ProductId.HasValue)
+                    .GroupBy(oi => new { oi.ProductId, oi.ItemName })
+                    .Select(g => new TopProductDto
+                    {
+                        ProductId = g.Key.ProductId!.Value,
+                        ProductName = g.Key.ItemName,
+                        QuantitySold = g.Sum(oi => oi.Quantity),
+                        Revenue = g.Sum(oi => oi.TotalPrice)
+                    })
+                    .OrderByDescending(p => p.Revenue)
+                    .Take(10)
+                    .ToList();
+
+                // Daily stats
+                analytics.DailyStats = ordersList
+                    .GroupBy(o => o.CreatedAt.Date)
+                    .Select(g => new DailyOrderStatsDto
+                    {
+                        Date = g.Key,
+                        OrderCount = g.Count(),
+                        Revenue = g.Sum(o => o.TotalAmount),
+                        ItemsSold = g.SelectMany(o => o.OrderItems).Sum(oi => oi.Quantity)
+                    })
+                    .OrderBy(d => d.Date)
+                    .ToList();
+
+                // Calculate trends (simplified)
+                analytics.Trends = CalculateOrderTrends(analytics.DailyStats);
+
+                return analytics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting order analytics");
+                return new OrderAnalyticsDto();
+            }
+        }
+
+        /// <summary>
+        /// Bulk cancel orders
+        /// </summary>
+        public async Task<BatchOperationResultDTO> BulkCancelOrdersAsync(List<Guid> orderIds, string reason, Guid? cancelledBy = null)
+        {
+            var result = new BatchOperationResultDTO
+            {
+                TotalRequested = orderIds?.Count ?? 0,
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
+            };
+
+            if (orderIds == null || !orderIds.Any())
+            {
+                result.Errors.Add(new BatchOperationErrorDTO
+                {
+                    Id = Guid.Empty.ToString(),
+                    ErrorMessage = "Danh sách ID đơn hàng không được để trống"
+                });
+                result.FailureCount = 1;
+                return result;
+            }
+
+            foreach (var orderId in orderIds)
+            {
+                try
+                {
+                    var success = await CancelOrderAsync(orderId, reason, cancelledBy);
+                    if (success)
+                    {
+                        result.SuccessIds.Add(orderId.ToString());
+                        result.SuccessCount++;
+                    }
+                    else
+                    {
+                        result.Errors.Add(new BatchOperationErrorDTO
+                        {
+                            Id = orderId.ToString(),
+                            ErrorMessage = "Không thể hủy đơn hàng"
+                        });
+                        result.FailureCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Errors.Add(new BatchOperationErrorDTO
+                    {
+                        Id = orderId.ToString(),
+                        ErrorMessage = $"Lỗi khi hủy đơn hàng: {ex.Message}"
+                    });
+                    result.FailureCount++;
+                    _logger.LogError(ex, "Error cancelling order {OrderId} in bulk operation", orderId);
+                }
+            }
+
+            return result;
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Tính toán xu hướng đơn hàng
+        /// </summary>
+        private OrderTrendsDto CalculateOrderTrends(List<DailyOrderStatsDto> dailyStats)
+        {
+            var trends = new OrderTrendsDto();
+
+            if (dailyStats.Count < 2)
+            {
+                return trends;
+            }
+
+            var firstHalf = dailyStats.Take(dailyStats.Count / 2).ToList();
+            var secondHalf = dailyStats.Skip(dailyStats.Count / 2).ToList();
+
+            var firstHalfRevenue = firstHalf.Sum(d => d.Revenue);
+            var secondHalfRevenue = secondHalf.Sum(d => d.Revenue);
+
+            if (firstHalfRevenue > 0)
+            {
+                trends.RevenueGrowth = Math.Round(((secondHalfRevenue - firstHalfRevenue) / firstHalfRevenue) * 100, 2);
+            }
+
+            var firstHalfOrders = firstHalf.Sum(d => d.OrderCount);
+            var secondHalfOrders = secondHalf.Sum(d => d.OrderCount);
+
+            if (firstHalfOrders > 0)
+            {
+                trends.OrderCountGrowth = Math.Round(((secondHalfOrders - firstHalfOrders) / (decimal)firstHalfOrders) * 100, 2);
+            }
+
+            // Determine trend direction
+            if (trends.RevenueGrowth > 5)
+                trends.TrendDirection = "Growing";
+            else if (trends.RevenueGrowth < -5)
+                trends.TrendDirection = "Declining";
+            else
+                trends.TrendDirection = "Stable";
+
+            return trends;
         }
 
         #endregion

@@ -44,5 +44,45 @@ namespace Services.Interfaces
         /// </summary>
         Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutDetailedAsync(Guid? userId, string? sessionId);
 
+        /// <summary>
+        /// Cập nhật giá cho tất cả items trong giỏ hàng
+        /// </summary>
+        Task<ApiResult<bool>> UpdateCartPricesAsync(Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Bulk thêm/cập nhật nhiều items vào giỏ hàng
+        /// </summary>
+        Task<ApiResult<List<CartItemDto>>> BulkAddToCartAsync(List<InternalCreateCartItemDto> items, Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Bulk xóa nhiều items khỏi giỏ hàng
+        /// </summary>
+        Task<ApiResult<bool>> BulkRemoveFromCartAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Lấy giỏ hàng đã hết hạn để dọn dẹp
+        /// </summary>
+        Task<ApiResult<List<Guid>>> GetExpiredCartItemsAsync(TimeSpan expirationTime);
+
+        /// <summary>
+        /// Dọn dẹp giỏ hàng đã hết hạn
+        /// </summary>
+        Task<ApiResult<bool>> CleanupExpiredCartItemsAsync(TimeSpan expirationTime);
+
+        /// <summary>
+        /// Khôi phục giỏ hàng cho người dùng
+        /// </summary>
+        Task<ApiResult<List<CartItemDto>>> RecoverAbandonedCartAsync(Guid userId, DateTime fromDate);
+
+        /// <summary>
+        /// Validate tồn kho real-time cho giỏ hàng
+        /// </summary>
+        Task<ApiResult<CartValidationDto>> ValidateCartInventoryAsync(Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Lấy thống kê giỏ hàng
+        /// </summary>
+        Task<ApiResult<CartAnalyticsDto>> GetCartAnalyticsAsync(Guid? userId, string? sessionId);
+
     }
 }
