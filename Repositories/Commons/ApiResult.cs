@@ -78,4 +78,9 @@
                 ? ApiResult<T>.Success(data!, Message)
                 : ApiResult<T>.Failure(Message ?? "Unknown error", Exception);
     }
+    public class SuccessResponse<T>
+    {
+        public T Data { get; set; }
+        public string Message { get; set; }
+    }
 }
