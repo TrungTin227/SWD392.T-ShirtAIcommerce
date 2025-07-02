@@ -73,4 +73,10 @@
         public decimal AverageOrderValueGrowth { get; set; } // Percentage
         public string TrendDirection { get; set; } = "Stable"; // "Growing", "Declining", "Stable"
     }
+
+    public class BulkCancelOrdersRequest
+    {
+        public List<Guid> OrderIds { get; set; } = new();
+        public string Reason { get; set; } = string.Empty;
+    }
 }

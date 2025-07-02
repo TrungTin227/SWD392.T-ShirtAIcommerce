@@ -325,5 +325,235 @@ namespace WebAPI.Controllers
                 });
             }
         }
+
+        #region Enhanced Cart Management Endpoints
+
+        /// <summary>
+        /// Bulk thêm nhiều sản phẩm vào giỏ hàng
+        /// </summary>
+        [HttpPost("bulk")]
+        public async Task<ActionResult<List<CartItemDto>>> BulkAddToCart([FromBody] List<CreateCartItemDto> items)
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                // Convert to internal DTOs
+                var internalItems = items.Select(item => new InternalCreateCartItemDto
+                {
+                    ProductId = item.ProductId,
+                    CustomDesignId = item.CustomDesignId,
+                    ProductVariantId = item.ProductVariantId,
+                    Quantity = item.Quantity,
+                    UserId = userId,
+                    SessionId = sessionId
+                }).ToList();
+
+                var result = await _cartItemService.BulkAddToCartAsync(internalItems, userId, sessionId);
+
+                if (result.IsSuccess)
+                {
+                    return Ok(new SuccessResponse<List<CartItemDto>>
+                    {
+                        Data = result.Data,
+                        Message = result.Message
+                    });
+                }
+
+                return BadRequest(new ErrorResponse { Message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error bulk adding to cart");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi thêm sản phẩm hàng loạt vào giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Bulk xóa nhiều sản phẩm khỏi giỏ hàng
+        /// </summary>
+        [HttpDelete("bulk")]
+        public async Task<ActionResult> BulkRemoveFromCart([FromBody] List<Guid> cartItemIds)
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                var result = await _cartItemService.BulkRemoveFromCartAsync(cartItemIds, userId, sessionId);
+
+                if (result.IsSuccess)
+                {
+                    return Ok(new SuccessResponse<bool>
+                    {
+                        Data = result.Data,
+                        Message = result.Message
+                    });
+                }
+
+                return BadRequest(new ErrorResponse { Message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error bulk removing from cart");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi xóa sản phẩm hàng loạt khỏi giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Lấy thống kê giỏ hàng
+        /// </summary>
+        [HttpGet("analytics")]
+        public async Task<ActionResult<CartAnalyticsDto>> GetCartAnalytics()
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                var result = await _cartItemService.GetCartAnalyticsAsync(userId, sessionId);
+
+                if (result.IsSuccess)
+                {
+                    return Ok(new SuccessResponse<CartAnalyticsDto>
+                    {
+                        Data = result.Data,
+                        Message = "Lấy thống kê giỏ hàng thành công"
+                    });
+                }
+
+                return BadRequest(new ErrorResponse { Message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting cart analytics");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi lấy thống kê giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Khôi phục giỏ hàng đã bỏ rơi
+        /// </summary>
+        [HttpPost("recover")]
+        [Authorize]
+        public async Task<ActionResult<List<CartItemDto>>> RecoverAbandonedCart([FromQuery] int daysBack = 7)
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new ErrorResponse { Message = "Vui lòng đăng nhập để khôi phục giỏ hàng" });
+                }
+
+                var fromDate = DateTime.UtcNow.AddDays(-daysBack);
+                var result = await _cartItemService.RecoverAbandonedCartAsync(userId.Value, fromDate);
+
+                if (result.IsSuccess)
+                {
+                    return Ok(new SuccessResponse<List<CartItemDto>>
+                    {
+                        Data = result.Data,
+                        Message = result.Message
+                    });
+                }
+
+                return BadRequest(new ErrorResponse { Message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error recovering abandoned cart");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi khôi phục giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Validate inventory real-time cho giỏ hàng
+        /// </summary>
+        [HttpPost("validate-inventory")]
+        public async Task<ActionResult<CartValidationDto>> ValidateCartInventory()
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                var result = await _cartItemService.ValidateCartInventoryAsync(userId, sessionId);
+
+                if (result.IsSuccess)
+                {
+                    return Ok(new SuccessResponse<CartValidationDto>
+                    {
+                        Data = result.Data,
+                        Message = "Kiểm tra tồn kho thành công"
+                    });
+                }
+
+                return BadRequest(new ErrorResponse { Message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating cart inventory");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi kiểm tra tồn kho",
+                    Details = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Cập nhật giá cho tất cả items trong giỏ hàng
+        /// </summary>
+        [HttpPost("update-prices")]
+        public async Task<ActionResult> UpdateCartPrices()
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                var result = await _cartItemService.UpdateCartPricesAsync(userId, sessionId);
+
+                if (result.IsSuccess)
+                {
+                    return Ok(new SuccessResponse<bool>
+                    {
+                        Data = result.Data,
+                        Message = result.Message
+                    });
+                }
+
+                return BadRequest(new ErrorResponse { Message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating cart prices");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi cập nhật giá giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+
+        #endregion
     }
 }

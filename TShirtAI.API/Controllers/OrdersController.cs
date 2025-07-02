@@ -267,6 +267,177 @@ namespace WebAPI.Controllers
                 return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi xử lý yêu cầu"));
             }
         }       
+
+        #region Enhanced Order Management Endpoints
+
+        /// <summary>
+        /// Tạo đơn hàng từ giỏ hàng
+        /// </summary>
+        [HttpPost("from-cart")]
+        public async Task<ActionResult<OrderDTO>> CreateOrderFromCart([FromBody] CreateOrderFromCartRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserIdOrUnauthorized();
+                if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
+
+                var result = await _orderService.CreateOrderFromCartAsync(request, userId.Value);
+
+                if (result != null)
+                {
+                    return Ok(result);
+                }
+
+                return BadRequest(ErrorResponse("Không thể tạo đơn hàng từ giỏ hàng"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating order from cart for user {UserId}", _currentUserService.GetUserId());
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi tạo đơn hàng"));
+            }
+        }
+
+        /// <summary>
+        /// Validate giỏ hàng trước khi tạo đơn hàng
+        /// </summary>
+        [HttpPost("validate-cart")]
+        public async Task<ActionResult<OrderValidationResult>> ValidateCartForOrder([FromQuery] string? sessionId = null)
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                if (!userId.HasValue && string.IsNullOrEmpty(sessionId))
+                {
+                    sessionId = HttpContext.Session.Id;
+                }
+
+                var result = await _orderService.ValidateCartForOrderAsync(userId, sessionId);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating cart for order");
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi kiểm tra giỏ hàng"));
+            }
+        }
+
+        /// <summary>
+        /// Tính toán lại tổng tiền đơn hàng
+        /// </summary>
+        [HttpPost("{orderId}/recalculate-total")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<ActionResult<decimal>> RecalculateOrderTotal(Guid orderId)
+        {
+            try
+            {
+                var total = await _orderService.RecalculateOrderTotalAsync(orderId);
+                return Ok(total);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error recalculating order total for {OrderId}", orderId);
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi tính toán lại tổng tiền"));
+            }
+        }
+
+        /// <summary>
+        /// Lấy analytics đơn hàng nâng cao
+        /// </summary>
+        [HttpGet("analytics")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<ActionResult<OrderAnalyticsDto>> GetOrderAnalytics(
+            [FromQuery] DateTime? fromDate = null,
+            [FromQuery] DateTime? toDate = null)
+        {
+            try
+            {
+                var from = fromDate ?? DateTime.UtcNow.AddDays(-30);
+                var to = toDate ?? DateTime.UtcNow;
+
+                var analytics = await _orderService.GetOrderAnalyticsAsync(from, to);
+                return Ok(analytics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting order analytics");
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi lấy thống kê đơn hàng"));
+            }
+        }
+
+        /// <summary>
+        /// Bulk hủy nhiều đơn hàng
+        /// </summary>
+        [HttpPost("bulk-cancel")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<ActionResult<BatchOperationResultDTO>> BulkCancelOrders([FromBody] BulkCancelOrdersRequest request)
+        {
+            try
+            {
+                var cancelledBy = _currentUserService.GetUserId();
+                var result = await _orderService.BulkCancelOrdersAsync(request.OrderIds, request.Reason, cancelledBy);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error bulk cancelling orders");
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi hủy đơn hàng hàng loạt"));
+            }
+        }
+
+        /// <summary>
+        /// Reserve inventory cho đơn hàng
+        /// </summary>
+        [HttpPost("{orderId}/reserve-inventory")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<ActionResult> ReserveInventoryForOrder(Guid orderId)
+        {
+            try
+            {
+                var success = await _orderService.ReserveInventoryForOrderAsync(orderId);
+                
+                if (success)
+                {
+                    return Ok(new { Message = "Reserve inventory thành công" });
+                }
+                
+                return BadRequest(ErrorResponse("Không thể reserve inventory"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reserving inventory for order {OrderId}", orderId);
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi reserve inventory"));
+            }
+        }
+
+        /// <summary>
+        /// Release inventory cho đơn hàng bị hủy
+        /// </summary>
+        [HttpPost("{orderId}/release-inventory")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<ActionResult> ReleaseInventoryForOrder(Guid orderId)
+        {
+            try
+            {
+                var success = await _orderService.ReleaseInventoryForOrderAsync(orderId);
+                
+                if (success)
+                {
+                    return Ok(new { Message = "Release inventory thành công" });
+                }
+                
+                return BadRequest(ErrorResponse("Không thể release inventory"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error releasing inventory for order {OrderId}", orderId);
+                return StatusCode(500, ErrorResponse("Có lỗi xảy ra khi release inventory"));
+            }
+        }
+
+        #endregion
+
         #endregion
     }
 }
