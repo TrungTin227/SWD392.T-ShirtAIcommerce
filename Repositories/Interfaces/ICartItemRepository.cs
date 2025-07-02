@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Cart;
+using BusinessObjects.CustomDesigns;
 using BusinessObjects.Products;
 using DTOs.Cart;
 using Repositories.Helpers;
@@ -23,5 +24,19 @@ namespace Repositories.Interfaces
         Task<bool> ValidateProductVariantExistsAsync(Guid productVariantId);
         Task<Product?> GetProductByIdAsync(Guid productId);
         Task<ProductVariant?> GetProductVariantByIdAsync(Guid productVariantId);
+        /// <summary>
+        /// Lấy cart items của user với đầy đủ navigation properties
+        /// </summary>
+        Task<IEnumerable<CartItem>> GetUserCartItemsWithDetailsAsync(Guid userId);
+
+        /// <summary>
+        /// Lấy cart items của session với đầy đủ navigation properties
+        /// </summary>
+        Task<IEnumerable<CartItem>> GetSessionCartItemsWithDetailsAsync(string sessionId);
+
+        /// <summary>
+        /// Lấy CustomDesign by ID
+        /// </summary>
+        Task<CustomDesign?> GetCustomDesignByIdAsync(Guid customDesignId);
     }
 }

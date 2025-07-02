@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
-using Services.Helpers.Mappers;
+using Services.Helpers.Mapers;
 using Services.Interfaces;
 
 namespace Services.Implementations
@@ -126,43 +126,47 @@ namespace Services.Implementations
 
                 var orderItems = new List<OrderItem>();
 
-                // Process cart items
+                // Process cart items with enhanced validation
                 if (cartItemIds.Any())
                 {
-                    var cartItemsResult = await _cartItemService.GetCartItemsByIdsAsync(cartItemIds, userId, null);
+                    // Step 1: Validate cart before proceeding
+                    var cartValidationResult = await _cartItemService.ValidateCartForCheckoutDetailedAsync(userId, null);
+                    if (!cartValidationResult.IsSuccess || !cartValidationResult.Data.IsValid)
+                    {
+                        var errorMsg = cartValidationResult.Data?.Errors.Any() == true
+                            ? string.Join(", ", cartValidationResult.Data.Errors)
+                            : cartValidationResult.Message;
+                        throw new InvalidOperationException($"Giỏ hàng không hợp lệ: {errorMsg}");
+                    }
+
+                    // Step 2: Get cart item entities with full navigation properties
+                    var cartItemsResult = await _cartItemService.GetCartItemEntitiesForCheckoutAsync(userId, null);
                     if (!cartItemsResult.IsSuccess)
                     {
                         throw new ArgumentException($"Lỗi khi lấy cart items: {cartItemsResult.Message}");
                     }
 
-                    var cartItems = cartItemsResult.Data ?? new List<CartItemDto>();
+                    var cartItems = cartItemsResult.Data?.Where(ci => cartItemIds.Contains(ci.Id)) ?? Enumerable.Empty<CartItem>();
 
-                    // Validate all requested cart items were found
+                    // Step 3: Validate all requested cart items were found
                     if (cartItems.Count() != cartItemIds.Count)
                     {
                         throw new ArgumentException("Một số sản phẩm trong giỏ hàng không tồn tại hoặc không thuộc về bạn");
                     }
 
-                    // Convert CartItems to OrderItems (will add orderId later)
-                    var cartItemEntities = cartItems.Select(dto => new CartItem
+                    // Step 4: Convert CartItems to OrderItems with enhanced mapping
+                    try
                     {
-                        Id = dto.Id,
-                        ProductId = dto.ProductId,
-                        CustomDesignId = dto.CustomDesignId,
-                        ProductVariantId = dto.ProductVariantId,
-                        Quantity = dto.Quantity,
-                        UnitPrice = dto.UnitPrice,
-                        Product = new Product { Name = dto.ProductName ?? "" },
-                        CustomDesign = dto.CustomDesignId.HasValue ? new CustomDesign { DesignName = dto.ProductName ?? "" } : null,
-                        ProductVariant = dto.ProductVariantId.HasValue ? new ProductVariant() : null
-                    });
-
-                    // Will set OrderId after order creation
-                    var cartOrderItems = OrderItemMapper.CartItemsToOrderItems(cartItemEntities, Guid.Empty);
-                    orderItems.AddRange(cartOrderItems);
+                        var cartOrderItems = cartItems.Select(ci => OrderItemMapper.CartItemToOrderItemWithValidation(ci, Guid.Empty)).ToList();
+                        orderItems.AddRange(cartOrderItems);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"Lỗi khi chuyển đổi cart items: {ex.Message}", ex);
+                    }
                 }
 
-                // Process direct items
+                // Process direct items (existing logic)
                 foreach (var directItem in directItems)
                 {
                     // Validate direct item data
@@ -211,7 +215,6 @@ namespace Services.Implementations
                     {
                         throw new ArgumentException("Mã giảm giá không hợp lệ");
                     }
-                    // Calculate discount (implement your discount logic)
                     discountAmount = CalculateDiscount(couponResult.Data, orderItems.Sum(oi => oi.TotalPrice));
                 }
 
@@ -265,21 +268,23 @@ namespace Services.Implementations
                 }
                 await _unitOfWork.SaveChangesAsync();
 
-                // Sau khi save OrderItems, SubtotalAmount sẽ tự động tính được
-                // Nếu cần cập nhật TotalAmount dựa trên SubtotalAmount thực tế:
-                var actualSubtotal = createdOrder.SubtotalAmount; // Computed property
-                createdOrder.TotalAmount = actualSubtotal + shippingFee + taxAmount - discountAmount;
-                await _orderRepository.UpdateAsync(createdOrder);
-                await _unitOfWork.SaveChangesAsync();
-
-                // Clear cart items that were used
+                // Clear cart items that were used - Enhanced with proper error handling
                 if (cartItemIds.Any())
                 {
-                    var clearResult = await _cartItemService.ClearCartItemsByIdsAsync(cartItemIds, userId, null);
-                    if (!clearResult.IsSuccess)
+                    try
                     {
-                        _logger.LogWarning("Failed to clear cart items after order creation: {Message}", clearResult.Message);
-                        // Don't throw here, order was created successfully
+                        var clearResult = await _cartItemService.ClearCartItemsAfterCheckoutAsync(cartItemIds, userId, null);
+                        if (!clearResult.IsSuccess)
+                        {
+                            _logger.LogWarning("Failed to clear cart items after order creation: {Message}", clearResult.Message);
+                            // Consider whether to rollback the entire transaction or just log the warning
+                            // For now, we'll continue since the order was created successfully
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error clearing cart items after successful order creation {OrderId}", createdOrder.Id);
+                        // Don't fail the entire operation since order was created successfully
                     }
                 }
 

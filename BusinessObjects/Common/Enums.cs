@@ -20,7 +20,11 @@ namespace BusinessObjects.Products
         [Description("Ngừng sản xuất")]
         Discontinued
     }
-
+    public enum CustomDesignStatus
+    {
+        Active = 1,
+        Inactive = 0
+    }
     // Enum cho ProductSize (đã có sẵn)
     public enum ProductSize
     {

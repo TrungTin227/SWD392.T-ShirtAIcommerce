@@ -1,5 +1,7 @@
 ﻿using BusinessObjects.Cart;
 using DTOs.Cart;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Repositories.Commons;
 using Repositories.Helpers;
 using Repositories.Interfaces;
@@ -14,185 +16,75 @@ namespace Services.Implementations
     public class CartItemService : BaseService<CartItem, Guid>, ICartItemService
     {
         private readonly ICartItemRepository _cartItemRepository;
+        private readonly ILogger<CartItemService> _logger;
+
 
         public CartItemService(
             ICartItemRepository repository,
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
-            ICurrentTime currentTime)
+            ICurrentTime currentTime,
+            ILogger<CartItemService> logger)
             : base(repository, currentUserService, unitOfWork, currentTime)
         {
             _cartItemRepository = repository;
+            _logger = logger;
         }
+
+        #region Basic CRUD Operations
 
         public async Task<ApiResult<CartItemDto>> GetByIdAsync(Guid id)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 var cartItem = await _cartItemRepository.GetWithDetailsAsync(id);
-                if (cartItem == null)
-                    return ApiResult<CartItemDto>.Failure("Không tìm thấy sản phẩm trong giỏ hàng");
-
-                var cartItemDto = CartItemMapper.ToDto(cartItem);
-                return ApiResult<CartItemDto>.Success(cartItemDto);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<CartItemDto>.Failure("Lỗi khi lấy thông tin sản phẩm trong giỏ hàng", ex);
-            }
-        }
-
-        public async Task<ApiResult<PagedList<CartItemDto>>> GetCartItemsAsync(CartItemQueryDto query)
-        {
-            try
-            {
-                var pagedCartItems = await _cartItemRepository.GetCartItemsAsync(query);
-                var cartItemDtos = CartItemMapper.ToPagedDto(pagedCartItems);
-                return ApiResult<PagedList<CartItemDto>>.Success(cartItemDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<PagedList<CartItemDto>>.Failure("Lỗi khi lấy danh sách sản phẩm trong giỏ hàng", ex);
-            }
-        }
-
-        public async Task<ApiResult<IEnumerable<CartItemDto>>> GetUserCartItemsAsync(Guid userId)
-        {
-            try
-            {
-                var cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId);
-                var cartItemDtos = CartItemMapper.ToDtoList(cartItems);
-                return ApiResult<IEnumerable<CartItemDto>>.Success(cartItemDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<IEnumerable<CartItemDto>>.Failure("Lỗi khi lấy giỏ hàng của người dùng", ex);
-            }
-        }
-
-        public async Task<ApiResult<IEnumerable<CartItemDto>>> GetSessionCartItemsAsync(string sessionId)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(sessionId))
-                    return ApiResult<IEnumerable<CartItemDto>>.Failure("Session ID không được để trống");
-
-                var cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId);
-                var cartItemDtos = CartItemMapper.ToDtoList(cartItems);
-                return ApiResult<IEnumerable<CartItemDto>>.Success(cartItemDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<IEnumerable<CartItemDto>>.Failure("Lỗi khi lấy giỏ hàng guest", ex);
-            }
-        }
-
-        public async Task<ApiResult<CartSummaryDto>> GetCartSummaryAsync(Guid? userId, string? sessionId)
-        {
-            try
-            {
-                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
-                    return ApiResult<CartSummaryDto>.Failure("Phải có userId hoặc sessionId");
-
-                IEnumerable<CartItem> cartItems;
-
-                if (userId.HasValue)
-                {
-                    cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId.Value);
-                }
-                else
-                {
-                    cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
-                }
-
-                // Calculate estimated shipping and tax
-                var subtotal = cartItems.Sum(ci => ci.TotalPrice);
-                var estimatedShipping = CalculateEstimatedShipping(subtotal);
-                var estimatedTax = CalculateEstimatedTax(subtotal);
-
-                var cartSummary = CartItemMapper.ToCartSummaryDto(cartItems, estimatedShipping, estimatedTax);
-                return ApiResult<CartSummaryDto>.Success(cartSummary);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<CartSummaryDto>.Failure("Lỗi khi lấy tổng quan giỏ hàng", ex);
-            }
+                return cartItem == null
+                    ? ApiResult<CartItemDto>.Failure("Không tìm thấy sản phẩm trong giỏ hàng")
+                    : ApiResult<CartItemDto>.Success(CartItemMapper.ToDto(cartItem));
+            }, "Lỗi khi lấy thông tin sản phẩm trong giỏ hàng");
         }
 
         public async Task<ApiResult<CartItemDto>> AddToCartAsync(InternalCreateCartItemDto createDto)
         {
             using var transaction = await _unitOfWork.BeginTransactionAsync();
-            try
+            return await ExecuteWithTransactionAsync(transaction, async () =>
             {
-                // Validate business rules
                 var validationResult = await ValidateCreateCartItemAsync(createDto);
-                if (!validationResult.IsSuccess)
-                    return validationResult;
+                if (!validationResult.IsSuccess) return validationResult;
 
-                // Check if item already exists in cart
                 var existingItem = await _cartItemRepository.FindExistingCartItemAsync(
                     createDto.UserId, createDto.SessionId, createDto.ProductId,
                     createDto.CustomDesignId, createDto.ProductVariantId);
 
-                CartItem cartItem;
-                if (existingItem != null)
-                {
-                    // Update existing item quantity
-                    existingItem.Quantity += createDto.Quantity;
-                    existingItem.UnitPrice = createDto.UnitPrice;
-                    existingItem.UpdatedAt = _currentTime.GetVietnamTime();
+                CartItem cartItem = existingItem != null
+                    ? await UpdateExistingCartItem(existingItem, createDto)
+                    : await CreateNewCartItem(createDto);
 
-                    cartItem = await UpdateAsync(existingItem);
-                }
-                else
-                {
-                    // Create new cart item
-                    cartItem = CartItemMapper.ToEntity(createDto); // Update mapper to use InternalCreateCartItemDto
-                    cartItem = await CreateAsync(cartItem);
-                }
-
-                await transaction.CommitAsync();
-
-                var cartItemDto = CartItemMapper.ToDto(cartItem);
-                return ApiResult<CartItemDto>.Success(cartItemDto, "Thêm vào giỏ hàng thành công");
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return ApiResult<CartItemDto>.Failure("Lỗi khi thêm vào giỏ hàng", ex);
-            }
+                return ApiResult<CartItemDto>.Success(CartItemMapper.ToDto(cartItem), "Thêm vào giỏ hàng thành công");
+            }, "Lỗi khi thêm vào giỏ hàng");
         }
 
         public async Task<ApiResult<CartItemDto>> UpdateCartItemAsync(Guid id, UpdateCartItemDto updateDto)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 var existingCartItem = await _cartItemRepository.GetByIdAsync(id);
                 if (existingCartItem == null)
                     return ApiResult<CartItemDto>.Failure("Không tìm thấy sản phẩm trong giỏ hàng");
 
-                // Validate business rules
                 var validationResult = ValidateUpdateCartItem(updateDto);
-                if (!validationResult.IsSuccess)
-                    return validationResult;
+                if (!validationResult.IsSuccess) return validationResult;
 
-                // Update cart item properties
                 CartItemMapper.UpdateEntity(existingCartItem, updateDto);
-
                 var updatedCartItem = await UpdateAsync(existingCartItem);
-                var cartItemDto = CartItemMapper.ToDto(updatedCartItem);
 
-                return ApiResult<CartItemDto>.Success(cartItemDto, "Cập nhật giỏ hàng thành công");
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<CartItemDto>.Failure("Lỗi khi cập nhật giỏ hàng", ex);
-            }
+                return ApiResult<CartItemDto>.Success(CartItemMapper.ToDto(updatedCartItem), "Cập nhật giỏ hàng thành công");
+            }, "Lỗi khi cập nhật giỏ hàng");
         }
 
         public async Task<ApiResult<bool>> RemoveFromCartAsync(Guid id)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 var cartItem = await _cartItemRepository.GetByIdAsync(id);
                 if (cartItem == null)
@@ -200,101 +92,225 @@ namespace Services.Implementations
 
                 var result = await DeleteAsync(id);
                 return ApiResult<bool>.Success(result, "Xóa khỏi giỏ hàng thành công");
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<bool>.Failure("Lỗi khi xóa khỏi giỏ hàng", ex);
-            }
+            }, "Lỗi khi xóa khỏi giỏ hàng");
         }
+
+        #endregion
+
+        #region Cart Retrieval Methods
+
+        public async Task<ApiResult<PagedList<CartItemDto>>> GetCartItemsAsync(CartItemQueryDto query)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                var pagedCartItems = await _cartItemRepository.GetCartItemsAsync(query);
+                var cartItemDtos = CartItemMapper.ToPagedDto(pagedCartItems);
+                return ApiResult<PagedList<CartItemDto>>.Success(cartItemDtos);
+            }, "Lỗi khi lấy danh sách sản phẩm trong giỏ hàng");
+        }
+
+        public async Task<ApiResult<IEnumerable<CartItemDto>>> GetUserCartItemsAsync(Guid userId)
+        {
+            return (ApiResult<IEnumerable<CartItemDto>>)await GetCartItemsAsync(userId, null);
+        }
+
+        public async Task<ApiResult<IEnumerable<CartItemDto>>> GetSessionCartItemsAsync(string sessionId)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+                return ApiResult<IEnumerable<CartItemDto>>.Failure("Session ID không được để trống");
+
+            return (ApiResult<IEnumerable<CartItemDto>>)await GetCartItemsAsync(null, sessionId);
+        }
+
+        public async Task<ApiResult<IEnumerable<CartItemDto>>> GetCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<IEnumerable<CartItemDto>>.Failure("Phải có userId hoặc sessionId");
+
+                if (!cartItemIds.Any())
+                    return ApiResult<IEnumerable<CartItemDto>>.Success(new List<CartItemDto>());
+
+                var cartItems = await GetValidatedCartItemsByIds(cartItemIds, userId, sessionId);
+                var cartItemDtos = CartItemMapper.ToDtoList(cartItems);
+                return ApiResult<IEnumerable<CartItemDto>>.Success(cartItemDtos);
+            }, "Lỗi khi lấy danh sách sản phẩm từ giỏ hàng");
+        }
+
+        #endregion
+
+        #region Cart Management
 
         public async Task<ApiResult<bool>> ClearCartAsync(Guid? userId, string? sessionId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
                     return ApiResult<bool>.Failure("Phải có userId hoặc sessionId");
 
-                bool result;
-                if (userId.HasValue)
-                {
-                    result = await _cartItemRepository.ClearUserCartAsync(userId.Value);
-                }
-                else
-                {
-                    result = await _cartItemRepository.ClearSessionCartAsync(sessionId!);
-                }
+                bool result = userId.HasValue
+                    ? await _cartItemRepository.ClearUserCartAsync(userId.Value)
+                    : await _cartItemRepository.ClearSessionCartAsync(sessionId!);
 
-                if (result)
-                    await _unitOfWork.SaveChangesAsync();
-
+                if (result) await _unitOfWork.SaveChangesAsync();
                 return ApiResult<bool>.Success(result, "Xóa giỏ hàng thành công");
-            }
-            catch (Exception ex)
+            }, "Lỗi khi xóa giỏ hàng");
+        }
+
+        public async Task<ApiResult<bool>> ClearCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId)
+        {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            return await ExecuteWithTransactionAsync(transaction, async () =>
             {
-                return ApiResult<bool>.Failure("Lỗi khi xóa giỏ hàng", ex);
-            }
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<bool>.Failure("Phải có userId hoặc sessionId");
+
+                if (!cartItemIds.Any())
+                    return ApiResult<bool>.Success(true);
+
+                await DeleteCartItemsByOwnership(cartItemIds, userId, sessionId);
+                await _unitOfWork.SaveChangesAsync();
+
+                return ApiResult<bool>.Success(true, "Xóa sản phẩm khỏi giỏ hàng thành công");
+            }, "Lỗi khi xóa sản phẩm khỏi giỏ hàng");
         }
 
         public async Task<ApiResult<bool>> MergeGuestCartToUserAsync(string sessionId, Guid userId)
         {
+            if (string.IsNullOrEmpty(sessionId))
+                return ApiResult<bool>.Failure("Session ID không được để trống");
+
             using var transaction = await _unitOfWork.BeginTransactionAsync();
-            try
+            return await ExecuteWithTransactionAsync(transaction, async () =>
             {
-                if (string.IsNullOrEmpty(sessionId))
-                    return ApiResult<bool>.Failure("Session ID không được để trống");
-
                 var result = await _cartItemRepository.MergeGuestCartToUserAsync(sessionId, userId);
-
-                if (result)
-                {
-                    await _unitOfWork.SaveChangesAsync();
-                    await transaction.CommitAsync();
-                }
-                else
-                {
-                    await transaction.RollbackAsync();
-                }
-
+                if (result) await _unitOfWork.SaveChangesAsync();
                 return ApiResult<bool>.Success(result, "Merge giỏ hàng thành công");
-            }
-            catch (Exception ex)
+            }, "Lỗi khi merge giỏ hàng");
+        }
+
+        #endregion
+
+        #region Cart Summary & Statistics
+
+        public async Task<ApiResult<CartSummaryDto>> GetCartSummaryAsync(Guid? userId, string? sessionId)
+        {
+            return await ExecuteAsync(async () =>
             {
-                await transaction.RollbackAsync();
-                return ApiResult<bool>.Failure("Lỗi khi merge giỏ hàng", ex);
-            }
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<CartSummaryDto>.Failure("Phải có userId hoặc sessionId");
+
+                var cartItems = await GetCartItems(userId, sessionId);
+                var subtotal = cartItems.Sum(ci => ci.TotalPrice);
+                var estimatedShipping = CalculateEstimatedShipping(subtotal);
+                var estimatedTax = CalculateEstimatedTax(subtotal);
+
+                var cartSummary = CartItemMapper.ToCartSummaryDto(cartItems, estimatedShipping, estimatedTax);
+                return ApiResult<CartSummaryDto>.Success(cartSummary);
+            }, "Lỗi khi lấy tổng quan giỏ hàng");
         }
 
         public async Task<ApiResult<int>> GetCartItemCountAsync(Guid? userId, string? sessionId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
                     return ApiResult<int>.Failure("Phải có userId hoặc sessionId");
 
                 var count = await _cartItemRepository.GetCartItemCountAsync(userId, sessionId);
                 return ApiResult<int>.Success(count);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<int>.Failure("Lỗi khi đếm sản phẩm trong giỏ hàng", ex);
-            }
+            }, "Lỗi khi đếm sản phẩm trong giỏ hàng");
         }
 
         public async Task<ApiResult<decimal>> GetCartTotalAsync(Guid? userId, string? sessionId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
                 if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
                     return ApiResult<decimal>.Failure("Phải có userId hoặc sessionId");
 
                 var total = await _cartItemRepository.GetCartTotalAsync(userId, sessionId);
                 return ApiResult<decimal>.Success(total);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<decimal>.Failure("Lỗi khi tính tổng giỏ hàng", ex);
-            }
+            }, "Lỗi khi tính tổng giỏ hàng");
         }
+
+        #endregion
+
+        #region Checkout Related Methods
+
+        public async Task<ApiResult<IEnumerable<CartItem>>> GetCartItemEntitiesForCheckoutAsync(Guid? userId, string? sessionId)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<IEnumerable<CartItem>>.Failure("Phải có userId hoặc sessionId");
+
+                var cartItems = userId.HasValue
+                    ? await _cartItemRepository.GetUserCartItemsWithDetailsAsync(userId.Value)
+                    : await _cartItemRepository.GetSessionCartItemsWithDetailsAsync(sessionId!);
+
+                return ApiResult<IEnumerable<CartItem>>.Success(cartItems);
+            }, "Lỗi khi lấy giỏ hàng cho checkout");
+        }
+
+        public async Task<ApiResult<bool>> ClearCartItemsAfterCheckoutAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId)
+        {
+            return await ClearCartItemsByIdsAsync(cartItemIds, userId, sessionId);
+        }
+
+        public async Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutAsync(Guid? userId, string? sessionId)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<CartValidationDto>.Failure("Phải có userId hoặc sessionId");
+
+                var cartItems = await GetCartItems(userId, sessionId);
+                return await BuildCartValidationResult(cartItems, false);
+            }, "Lỗi khi kiểm tra giỏ hàng");
+        }
+
+        public async Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutDetailedAsync(Guid? userId, string? sessionId)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<CartValidationDto>.Failure("Phải có userId hoặc sessionId");
+
+                var cartItemsResult = await GetCartItemEntitiesForCheckoutAsync(userId, sessionId);
+                if (!cartItemsResult.IsSuccess)
+                    return ApiResult<CartValidationDto>.Failure(cartItemsResult.Message);
+
+                var cartItems = cartItemsResult.Data ?? Enumerable.Empty<CartItem>();
+                return await BuildCartValidationResult(cartItems, true);
+            }, "Lỗi khi kiểm tra giỏ hàng chi tiết");
+        }
+
+        public async Task<ApiResult<bool>> UpdateCartPricesAsync(Guid? userId, string? sessionId)
+        {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            return await ExecuteWithTransactionAsync(transaction, async () =>
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<bool>.Failure("Phải có userId hoặc sessionId");
+
+                var cartItems = await GetCartItems(userId, sessionId);
+                if (!cartItems.Any())
+                    return ApiResult<bool>.Success(true, "Giỏ hàng trống, không có gì để cập nhật");
+
+                var updatedCount = await UpdateCartItemPrices(cartItems);
+                var message = updatedCount > 0
+                    ? $"Đã cập nhật giá cho {updatedCount} sản phẩm trong giỏ hàng"
+                    : "Tất cả giá sản phẩm đã là mới nhất";
+
+                return ApiResult<bool>.Success(true, message);
+            }, "Lỗi khi cập nhật giá giỏ hàng");
+        }
+
+        #endregion
+
+        #region Price Calculation Methods
 
         public async Task<decimal> GetUnitPriceFromProduct(Guid productId)
         {
@@ -302,7 +318,6 @@ namespace Services.Implementations
             if (product == null)
                 throw new Exception("Không tìm thấy sản phẩm");
 
-            // Giả sử ưu tiên SalePrice, nếu không có thì lấy Price
             return product.SalePrice ?? product.Price;
         }
 
@@ -312,297 +327,360 @@ namespace Services.Implementations
             if (productVariant == null)
                 throw new Exception("Không tìm thấy biến thể sản phẩm");
 
-            // Lấy product gốc
             var product = await _cartItemRepository.GetProductByIdAsync(productVariant.ProductId);
             if (product == null)
                 throw new Exception("Không tìm thấy sản phẩm gốc của biến thể");
 
-            // Ưu tiên SalePrice nếu có, không có thì lấy Price
             decimal basePrice = product.SalePrice ?? product.Price;
-
-            // Áp dụng điều chỉnh giá
-            decimal finalPrice = basePrice + (productVariant.PriceAdjustment ?? 0);
-
-            return finalPrice;
+            return basePrice + (productVariant.PriceAdjustment ?? 0);
         }
 
-        public async Task<ApiResult<IEnumerable<CartItemDto>>> GetCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId)
-        {
-            try
-            {
-                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
-                    return ApiResult<IEnumerable<CartItemDto>>.Failure("Phải có userId hoặc sessionId");
-
-                if (!cartItemIds.Any())
-                    return ApiResult<IEnumerable<CartItemDto>>.Success(new List<CartItemDto>());
-
-                var cartItems = new List<CartItem>();
-
-                foreach (var cartItemId in cartItemIds)
-                {
-                    var cartItem = await _cartItemRepository.GetWithDetailsAsync(cartItemId);
-                    if (cartItem != null)
-                    {
-                        // Validate ownership
-                        bool isOwner = userId.HasValue
-                            ? cartItem.UserId == userId.Value
-                            : cartItem.SessionId == sessionId && cartItem.UserId == null;
-
-                        if (isOwner)
-                        {
-                            cartItems.Add(cartItem);
-                        }
-                    }
-                }
-
-                var cartItemDtos = CartItemMapper.ToDtoList(cartItems);
-                return ApiResult<IEnumerable<CartItemDto>>.Success(cartItemDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<IEnumerable<CartItemDto>>.Failure("Lỗi khi lấy danh sách sản phẩm từ giỏ hàng", ex);
-            }
-        }
-
-        public async Task<ApiResult<bool>> ClearCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId)
-        {
-            using var transaction = await _unitOfWork.BeginTransactionAsync();
-            try
-            {
-                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
-                    return ApiResult<bool>.Failure("Phải có userId hoặc sessionId");
-
-                if (!cartItemIds.Any())
-                    return ApiResult<bool>.Success(true);
-
-                // Validate ownership before deletion
-                foreach (var cartItemId in cartItemIds)
-                {
-                    var cartItem = await _cartItemRepository.GetByIdAsync(cartItemId);
-                    if (cartItem != null)
-                    {
-                        bool isOwner = userId.HasValue
-                            ? cartItem.UserId == userId.Value
-                            : cartItem.SessionId == sessionId && cartItem.UserId == null;
-
-                        if (isOwner)
-                        {
-                            await _cartItemRepository.DeleteAsync(cartItemId);
-                        }
-                    }
-                }
-
-                await _unitOfWork.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return ApiResult<bool>.Success(true, "Xóa sản phẩm khỏi giỏ hàng thành công");
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return ApiResult<bool>.Failure("Lỗi khi xóa sản phẩm khỏi giỏ hàng", ex);
-            }
-        }
-
-        public async Task<ApiResult<IEnumerable<CartItem>>> GetCartItemsForCheckoutAsync(Guid? userId, string? sessionId)
-        {
-            try
-            {
-                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
-                    return ApiResult<IEnumerable<CartItem>>.Failure("Phải có userId hoặc sessionId");
-
-                IEnumerable<CartItem> cartItems;
-
-                if (userId.HasValue)
-                {
-                    cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId.Value);
-                }
-                else
-                {
-                    cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
-                }
-
-                return ApiResult<IEnumerable<CartItem>>.Success(cartItems);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<IEnumerable<CartItem>>.Failure("Lỗi khi lấy giỏ hàng cho checkout", ex);
-            }
-        }
-
-        public async Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutAsync(Guid? userId, string? sessionId)
-        {
-            try
-            {
-                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
-                    return ApiResult<CartValidationDto>.Failure("Phải có userId hoặc sessionId");
-
-                // Get cart items
-                IEnumerable<CartItem> cartItems;
-                if (userId.HasValue)
-                {
-                    cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId.Value);
-                }
-                else
-                {
-                    cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
-                }
-
-                var validationResult = new CartValidationDto
-                {
-                    TotalItems = cartItems.Count(),
-                    Items = new List<CartItemValidationDto>()
-                };
-
-                if (!cartItems.Any())
-                {
-                    validationResult.Errors.Add("Giỏ hàng trống");
-                    validationResult.IsValid = false;
-                    validationResult.Summary = "Giỏ hàng trống, không thể checkout";
-                    return ApiResult<CartValidationDto>.Success(validationResult);
-                }
-
-                decimal totalAmount = 0;
-                var allValid = true;
-
-                foreach (var cartItem in cartItems)
-                {
-                    var itemValidation = await ValidateCartItemAsync(cartItem);
-                    validationResult.Items.Add(itemValidation);
-
-                    if (!itemValidation.IsAvailable)
-                    {
-                        allValid = false;
-                        validationResult.Errors.Add($"Sản phẩm '{itemValidation.ProductName}' không còn khả dụng");
-                    }
-
-                    if (itemValidation.HasStockIssue)
-                    {
-                        allValid = false;
-                        validationResult.Errors.Add($"Sản phẩm '{itemValidation.ProductName}' không đủ hàng");
-                    }
-
-                    if (itemValidation.HasPriceChange)
-                    {
-                        var priceChangeMsg = itemValidation.PriceDifference > 0
-                            ? $"Sản phẩm '{itemValidation.ProductName}' đã tăng giá {itemValidation.PriceDifference:C}"
-                            : $"Sản phẩm '{itemValidation.ProductName}' đã giảm giá {Math.Abs(itemValidation.PriceDifference):C}";
-
-                        // Price changes are warnings, not errors
-                        if (itemValidation.WarningMessage == null)
-                            itemValidation.WarningMessage = priceChangeMsg;
-                    }
-
-                    // Calculate total with current prices
-                    totalAmount += itemValidation.CurrentPrice * itemValidation.Quantity;
-                }
-
-                validationResult.TotalAmount = totalAmount;
-                validationResult.IsValid = allValid;
-
-                // Generate summary
-                if (validationResult.IsValid)
-                {
-                    if (validationResult.HasPriceChanges)
-                    {
-                        validationResult.Summary = "Giỏ hàng hợp lệ nhưng có thay đổi giá. Vui lòng xem lại trước khi checkout.";
-                    }
-                    else
-                    {
-                        validationResult.Summary = "Giỏ hàng hợp lệ và sẵn sàng checkout.";
-                    }
-                }
-                else
-                {
-                    validationResult.Summary = $"Giỏ hàng có {validationResult.Errors.Count} lỗi cần khắc phục.";
-                }
-
-                return ApiResult<CartValidationDto>.Success(validationResult);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<CartValidationDto>.Failure("Lỗi khi kiểm tra giỏ hàng", ex);
-            }
-        }
-
-        public async Task<ApiResult<bool>> UpdateCartPricesAsync(Guid? userId, string? sessionId)
-        {
-            using var transaction = await _unitOfWork.BeginTransactionAsync();
-            try
-            {
-                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
-                    return ApiResult<bool>.Failure("Phải có userId hoặc sessionId");
-
-                // Get cart items
-                IEnumerable<CartItem> cartItems;
-                if (userId.HasValue)
-                {
-                    cartItems = await _cartItemRepository.GetUserCartItemsAsync(userId.Value);
-                }
-                else
-                {
-                    cartItems = await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
-                }
-
-                if (!cartItems.Any())
-                    return ApiResult<bool>.Success(true, "Giỏ hàng trống, không có gì để cập nhật");
-
-                var updatedCount = 0;
-                var errors = new List<string>();
-
-                foreach (var cartItem in cartItems)
-                {
-                    try
-                    {
-                        decimal currentPrice = await GetCurrentPriceForCartItem(cartItem);
-
-                        if (currentPrice != cartItem.UnitPrice)
-                        {
-                            var oldPrice = cartItem.UnitPrice;
-                            cartItem.UnitPrice = currentPrice;
-                            cartItem.UpdatedAt = _currentTime.GetVietnamTime();
-
-                            await UpdateAsync(cartItem);
-                            updatedCount++;
-
-                            // Log price change
-                            _logger?.LogInformation(
-                                "Updated cart item {CartItemId} price from {OldPrice} to {NewPrice} for user {UserId}/session {SessionId}",
-                                cartItem.Id, oldPrice, currentPrice, userId, sessionId);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        var productName = GetProductNameFromCartItem(cartItem);
-                        var errorMsg = $"Không thể cập nhật giá cho sản phẩm '{productName}': {ex.Message}";
-                        errors.Add(errorMsg);
-
-                        _logger?.LogError(ex, "Error updating price for cart item {CartItemId}", cartItem.Id);
-                    }
-                }
-
-                if (errors.Any())
-                {
-                    await transaction.RollbackAsync();
-                    return ApiResult<bool>.Failure($"Có lỗi khi cập nhật giá: {string.Join(", ", errors)}");
-                }
-
-                await transaction.CommitAsync();
-
-                var message = updatedCount > 0
-                    ? $"Đã cập nhật giá cho {updatedCount} sản phẩm trong giỏ hàng"
-                    : "Tất cả giá sản phẩm đã là mới nhất";
-
-                return ApiResult<bool>.Success(true, message);
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return ApiResult<bool>.Failure("Lỗi khi cập nhật giá giỏ hàng", ex);
-            }
-        }
+        #endregion
 
         #region Private Helper Methods
+
+        private async Task<T> ExecuteAsync<T>(Func<Task<T>> operation, string errorMessage) where T : class
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex)
+            {
+                if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(ApiResult<>))
+                {
+                    var resultType = typeof(T).GetGenericArguments()[0];
+                    var failureMethod = typeof(ApiResult<>).MakeGenericType(resultType)
+                        .GetMethod("Failure", new[] { typeof(string), typeof(Exception) });
+                    return (T)failureMethod.Invoke(null, new object[] { errorMessage, ex });
+                }
+                throw;
+            }
+        }
+
+        private async Task<T> ExecuteWithTransactionAsync<T>(IDbContextTransaction transaction, Func<Task<T>> operation, string errorMessage) where T : class
+        {
+            try
+            {
+                var result = await operation();
+                await transaction.CommitAsync();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(ApiResult<>))
+                {
+                    var resultType = typeof(T).GetGenericArguments()[0];
+                    var failureMethod = typeof(ApiResult<>).MakeGenericType(resultType)
+                        .GetMethod("Failure", new[] { typeof(string), typeof(Exception) });
+                    return (T)failureMethod.Invoke(null, new object[] { errorMessage, ex });
+                }
+                throw;
+            }
+        }
+
+        private async Task<CartItem> UpdateExistingCartItem(CartItem existingItem, InternalCreateCartItemDto createDto)
+        {
+            existingItem.Quantity += createDto.Quantity;
+            existingItem.UnitPrice = createDto.UnitPrice;
+            existingItem.UpdatedAt = _currentTime.GetVietnamTime();
+            return await UpdateAsync(existingItem);
+        }
+
+        private async Task<CartItem> CreateNewCartItem(InternalCreateCartItemDto createDto)
+        {
+            var cartItem = CartItemMapper.ToEntity(createDto);
+            return await CreateAsync(cartItem);
+        }
+
+        private async Task<ApiResult<IEnumerable<CartItemDto>>> GetCartItemsAsync(Guid? userId, string? sessionId)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                var cartItems = await GetCartItems(userId, sessionId);
+                var cartItemDtos = CartItemMapper.ToDtoList(cartItems);
+                return ApiResult<IEnumerable<CartItemDto>>.Success(cartItemDtos);
+            }, "Lỗi khi lấy giỏ hàng");
+        }
+
+        private async Task<IEnumerable<CartItem>> GetCartItems(Guid? userId, string? sessionId)
+        {
+            return userId.HasValue
+                ? await _cartItemRepository.GetUserCartItemsAsync(userId.Value)
+                : await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
+        }
+
+        private async Task<List<CartItem>> GetValidatedCartItemsByIds(List<Guid> cartItemIds, Guid? userId, string? sessionId)
+        {
+            var cartItems = new List<CartItem>();
+            foreach (var cartItemId in cartItemIds)
+            {
+                var cartItem = await _cartItemRepository.GetWithDetailsAsync(cartItemId);
+                if (cartItem != null && IsOwner(cartItem, userId, sessionId))
+                {
+                    cartItems.Add(cartItem);
+                }
+            }
+            return cartItems;
+        }
+
+        private async Task DeleteCartItemsByOwnership(List<Guid> cartItemIds, Guid? userId, string? sessionId)
+        {
+            foreach (var cartItemId in cartItemIds)
+            {
+                var cartItem = await _cartItemRepository.GetByIdAsync(cartItemId);
+                if (cartItem != null && IsOwner(cartItem, userId, sessionId))
+                {
+                    await _cartItemRepository.DeleteAsync(cartItemId);
+                }
+            }
+        }
+
+        private bool IsOwner(CartItem cartItem, Guid? userId, string? sessionId)
+        {
+            return userId.HasValue
+                ? cartItem.UserId == userId.Value
+                : cartItem.SessionId == sessionId && cartItem.UserId == null;
+        }
+
+        private async Task<ApiResult<CartValidationDto>> BuildCartValidationResult(IEnumerable<CartItem> cartItems, bool isDetailed)
+        {
+            var validationResult = new CartValidationDto
+            {
+                TotalItems = cartItems.Count(),
+                Items = new List<CartItemValidationDto>()
+            };
+
+            if (!cartItems.Any())
+            {
+                validationResult.Errors.Add("Giỏ hàng trống");
+                validationResult.IsValid = false;
+                validationResult.Summary = "Giỏ hàng trống, không thể checkout";
+                return ApiResult<CartValidationDto>.Success(validationResult);
+            }
+
+            decimal totalAmount = 0;
+            var allValid = true;
+
+            foreach (var cartItem in cartItems)
+            {
+                var itemValidation = isDetailed
+                    ? await ValidateCartItemDetailedAsync(cartItem)
+                    : await ValidateCartItemAsync(cartItem);
+
+                validationResult.Items.Add(itemValidation);
+
+                if (!itemValidation.IsAvailable)
+                {
+                    allValid = false;
+                    validationResult.Errors.Add($"Sản phẩm '{itemValidation.ProductName}' không còn khả dụng");
+                }
+
+                if (itemValidation.HasStockIssue)
+                {
+                    allValid = false;
+                    validationResult.Errors.Add($"Sản phẩm '{itemValidation.ProductName}' không đủ hàng");
+                }
+
+                if (itemValidation.HasPriceChange)
+                {
+                    var priceChangeMsg = itemValidation.PriceDifference > 0
+                        ? $"Sản phẩm '{itemValidation.ProductName}' đã tăng giá {itemValidation.PriceDifference:C}"
+                        : $"Sản phẩm '{itemValidation.ProductName}' đã giảm giá {Math.Abs(itemValidation.PriceDifference):C}";
+
+                    validationResult.Warnings.Add(priceChangeMsg);
+                }
+
+                totalAmount += itemValidation.CurrentPrice * itemValidation.Quantity;
+            }
+
+            validationResult.TotalAmount = totalAmount;
+            validationResult.IsValid = allValid;
+            validationResult.HasPriceChanges = validationResult.Items.Any(i => i.HasPriceChange);
+            validationResult.Summary = GenerateValidationSummary(validationResult);
+
+            return ApiResult<CartValidationDto>.Success(validationResult);
+        }
+
+        private string GenerateValidationSummary(CartValidationDto validation)
+        {
+            if (validation.IsValid)
+            {
+                return validation.HasPriceChanges
+                    ? "Giỏ hàng hợp lệ nhưng có thay đổi giá. Vui lòng xem lại trước khi checkout."
+                    : "Giỏ hàng hợp lệ và sẵn sàng checkout.";
+            }
+            return $"Giỏ hàng có {validation.Errors.Count} lỗi cần khắc phục.";
+        }
+
+        private async Task<int> UpdateCartItemPrices(IEnumerable<CartItem> cartItems)
+        {
+            var updatedCount = 0;
+            foreach (var cartItem in cartItems)
+            {
+                try
+                {
+                    decimal currentPrice = await GetCurrentPriceForCartItem(cartItem);
+                    if (currentPrice != cartItem.UnitPrice)
+                    {
+                        cartItem.UnitPrice = currentPrice;
+                        cartItem.UpdatedAt = _currentTime.GetVietnamTime();
+                        await UpdateAsync(cartItem);
+                        updatedCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error but continue with other items
+                    _logger?.LogError(ex, "Error updating price for cart item {CartItemId}", cartItem.Id);
+                }
+            }
+            return updatedCount;
+        }
+
+        private async Task<CartItemValidationDto> ValidateCartItemAsync(CartItem cartItem)
+        {
+            var validation = new CartItemValidationDto
+            {
+                CartItemId = cartItem.Id,
+                CartPrice = cartItem.UnitPrice,
+                Quantity = cartItem.Quantity,
+                IsAvailable = true,
+                HasStockIssue = false,
+                HasPriceChange = false,
+                AvailableQuantity = 0 // Initialize with default value
+            };
+
+            try
+            {
+                // Get current price and product info
+                validation.CurrentPrice = await GetCurrentPriceForCartItem(cartItem);
+                validation.ProductName = GetProductNameFromCartItem(cartItem);
+                validation.VariantInfo = GetVariantInfoFromCartItem(cartItem);
+
+                // Check price changes
+                validation.PriceDifference = validation.CurrentPrice - validation.CartPrice;
+                if (Math.Abs(validation.PriceDifference) > 0.01m)
+                {
+                    validation.HasPriceChange = true;
+                }
+
+                // Check product availability
+                if (cartItem.ProductId.HasValue)
+                {
+                    var product = await _cartItemRepository.GetProductByIdAsync(cartItem.ProductId.Value);
+                    if (product == null || product.IsDeleted)
+                    {
+                        validation.IsAvailable = false;
+                        validation.ErrorMessage = "Sản phẩm không còn tồn tại";
+                        return validation;
+                    }
+
+                    // You can add more product availability checks here
+                    // For example: product.IsActive, product.Status, etc.
+                }
+
+                // Check variant availability
+                if (cartItem.ProductVariantId.HasValue)
+                {
+                    var variant = await _cartItemRepository.GetProductVariantByIdAsync(cartItem.ProductVariantId.Value);
+                    if (variant == null)
+                    {
+                        validation.IsAvailable = false;
+                        validation.ErrorMessage = "Biến thể sản phẩm không còn tồn tại";
+                        return validation;
+                    }
+
+                    // Stock checking if implemented
+                    if (variant.Quantity < cartItem.Quantity)
+                    {
+                        validation.HasStockIssue = true;
+                        validation.AvailableQuantity = variant.Quantity;
+                        validation.ErrorMessage = $"Chỉ còn {variant.Quantity} sản phẩm trong kho";
+                    }
+                }
+
+                // Check custom design availability
+                if (cartItem.CustomDesignId.HasValue)
+                {
+                    var customDesignExists = await _cartItemRepository.ValidateCustomDesignExistsAsync(cartItem.CustomDesignId.Value);
+                    if (!customDesignExists)
+                    {
+                        validation.IsAvailable = false;
+                        validation.ErrorMessage = "Thiết kế tùy chỉnh không còn tồn tại";
+                        return validation;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                validation.IsAvailable = false;
+                validation.ErrorMessage = $"Lỗi khi kiểm tra sản phẩm: {ex.Message}";
+            }
+
+            return validation;
+        }
+
+        private async Task<CartItemValidationDto> ValidateCartItemDetailedAsync(CartItem cartItem)
+        {
+            var validation = await ValidateCartItemAsync(cartItem);
+
+            // Add more detailed validation logic here if needed
+            // This is where you would add enhanced stock checking, status validation, etc.
+
+            return validation;
+        }
+
+        private async Task ValidateProductAvailability(CartItem cartItem, CartItemValidationDto validation)
+        {
+            if (cartItem.ProductId.HasValue)
+            {
+                var product = await _cartItemRepository.GetProductByIdAsync(cartItem.ProductId.Value);
+                if (product == null || product.IsDeleted)
+                {
+                    validation.IsAvailable = false;
+                    validation.ErrorMessage = "Sản phẩm không còn tồn tại";
+                    return;
+                }
+            }
+
+            if (cartItem.ProductVariantId.HasValue)
+            {
+                var variant = await _cartItemRepository.GetProductVariantByIdAsync(cartItem.ProductVariantId.Value);
+                if (variant == null)
+                {
+                    validation.IsAvailable = false;
+                    validation.ErrorMessage = "Biến thể sản phẩm không còn tồn tại";
+                    return;
+                }
+
+                if (variant.Quantity < cartItem.Quantity)
+                {
+                    validation.HasStockIssue = true;
+                    validation.AvailableQuantity = variant.Quantity;
+                    validation.ErrorMessage = $"Chỉ còn {variant.Quantity} sản phẩm trong kho";
+                }
+            }
+
+            if (cartItem.CustomDesignId.HasValue)
+            {
+                var customDesignExists = await _cartItemRepository.ValidateCustomDesignExistsAsync(cartItem.CustomDesignId.Value);
+                if (!customDesignExists)
+                {
+                    validation.IsAvailable = false;
+                    validation.ErrorMessage = "Thiết kế tùy chỉnh không còn tồn tại";
+                }
+            }
+        }
+        private string GetProductNameFromCartItem(CartItem cartItem)
+        {
+            return cartItem.Product?.Name
+                ?? cartItem.CustomDesign?.DesignName
+                ?? cartItem.ProductVariant?.Product?.Name
+                ?? "Sản phẩm không xác định";
+        }
+
 
         private async Task<ApiResult<CartItemDto>> ValidateCreateCartItemAsync(InternalCreateCartItemDto createDto)
 
@@ -674,85 +752,6 @@ namespace Services.Implementations
         {
             return subtotal * 0.1m; // 10% VAT
         }
-        private async Task<CartItemValidationDto> ValidateCartItemAsync(CartItem cartItem)
-        {
-            var validation = new CartItemValidationDto
-            {
-                CartItemId = cartItem.Id,
-                CartPrice = cartItem.UnitPrice,
-                Quantity = cartItem.Quantity,
-                IsAvailable = true,
-                HasStockIssue = false,
-                HasPriceChange = false
-            };
-
-            try
-            {
-                // Get current price and product info
-                validation.CurrentPrice = await GetCurrentPriceForCartItem(cartItem);
-                validation.ProductName = GetProductNameFromCartItem(cartItem);
-                validation.VariantInfo = GetVariantInfoFromCartItem(cartItem);
-
-                // Check price changes
-                if (Math.Abs(validation.CurrentPrice - validation.CartPrice) > 0.01m) // Allow for small floating point differences
-                {
-                    validation.HasPriceChange = true;
-                }
-
-                // Check product availability
-                if (cartItem.ProductId.HasValue)
-                {
-                    var product = await _cartItemRepository.GetProductByIdAsync(cartItem.ProductId.Value);
-                    if (product == null || product.IsDeleted)
-                    {
-                        validation.IsAvailable = false;
-                        validation.ErrorMessage = "Sản phẩm không còn tồn tại";
-                        return validation;
-                    }
-
-                    // You can add more product availability checks here
-                    // For example: product.IsActive, product.Status, etc.
-                }
-
-                // Check variant availability
-                if (cartItem.ProductVariantId.HasValue)
-                {
-                    var variant = await _cartItemRepository.GetProductVariantByIdAsync(cartItem.ProductVariantId.Value);
-                    if (variant == null)
-                    {
-                        validation.IsAvailable = false;
-                        validation.ErrorMessage = "Biến thể sản phẩm không còn tồn tại";
-                        return validation;
-                    }
-
-                    // You can add stock checking here if implemented
-                    // if (variant.StockQuantity < cartItem.Quantity)
-                    // {
-                    //     validation.HasStockIssue = true;
-                    //     validation.ErrorMessage = $"Chỉ còn {variant.StockQuantity} sản phẩm trong kho";
-                    // }
-                }
-
-                // Check custom design availability
-                if (cartItem.CustomDesignId.HasValue)
-                {
-                    var customDesignExists = await _cartItemRepository.ValidateCustomDesignExistsAsync(cartItem.CustomDesignId.Value);
-                    if (!customDesignExists)
-                    {
-                        validation.IsAvailable = false;
-                        validation.ErrorMessage = "Thiết kế tùy chỉnh không còn tồn tại";
-                        return validation;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                validation.IsAvailable = false;
-                validation.ErrorMessage = $"Lỗi khi kiểm tra sản phẩm: {ex.Message}";
-            }
-
-            return validation;
-        }
 
         private async Task<decimal> GetCurrentPriceForCartItem(CartItem cartItem)
         {
@@ -785,35 +784,42 @@ namespace Services.Implementations
             }
         }
 
-        private string GetProductNameFromCartItem(CartItem cartItem)
-        {
-            if (cartItem.Product != null)
-                return cartItem.Product.Name;
-
-            if (cartItem.CustomDesign != null)
-                return cartItem.CustomDesign.DesignName;
-
-            if (cartItem.ProductVariant?.Product != null)
-                return cartItem.ProductVariant.Product.Name;
-
-            return "Sản phẩm không xác định";
-        }
-
         private string? GetVariantInfoFromCartItem(CartItem cartItem)
         {
             if (cartItem.ProductVariant != null)
             {
-                return $"{cartItem.ProductVariant.Color} - {cartItem.ProductVariant.Size}";
-            }
-
-            if (cartItem.SelectedColor.HasValue || cartItem.SelectedSize.HasValue)
-            {
-                var colorInfo = cartItem.SelectedColor?.ToString() ?? "";
-                var sizeInfo = cartItem.SelectedSize?.ToString() ?? "";
-                return $"{colorInfo} - {sizeInfo}".Trim(' ', '-');
+                var color = cartItem.ProductVariant.Color.ToString() ?? "";
+                var size = cartItem.ProductVariant.Size.ToString() ?? "";
+                return $"{color} - {size}".Trim(' ', '-');
             }
 
             return null;
+        }
+
+        public async Task<ApiResult<IEnumerable<CartItem>>> GetCartItemsForCheckoutAsync(Guid? userId, string? sessionId)
+        {
+            try
+            {
+                if (!CartItemBusinessLogic.ValidateUserOrSession(userId, sessionId))
+                    return ApiResult<IEnumerable<CartItem>>.Failure("Phải có userId hoặc sessionId");
+
+                IEnumerable<CartItem> cartItems;
+
+                if (userId.HasValue)
+                {
+                    cartItems = await _cartItemRepository.GetUserCartItemsWithDetailsAsync(userId.Value);
+                }
+                else
+                {
+                    cartItems = await _cartItemRepository.GetSessionCartItemsWithDetailsAsync(sessionId!);
+                }
+
+                return ApiResult<IEnumerable<CartItem>>.Success(cartItems);
+            }
+            catch (Exception ex)
+            {
+                return ApiResult<IEnumerable<CartItem>>.Failure("Lỗi khi lấy giỏ hàng cho checkout", ex);
+            }
         }
 
         #endregion

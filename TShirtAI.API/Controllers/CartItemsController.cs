@@ -3,7 +3,6 @@ using DTOs.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Repositories.Commons;
-using Repositories.Helpers;
 using Services.Interfaces;
 using WebAPI.Middlewares;
 
@@ -129,8 +128,6 @@ namespace WebAPI.Controllers
                     ProductId = createDto.ProductId,
                     CustomDesignId = createDto.CustomDesignId,
                     ProductVariantId = createDto.ProductVariantId,
-                    SelectedColor = createDto.SelectedColor,
-                    SelectedSize = createDto.SelectedSize,
                     Quantity = createDto.Quantity,
                     UnitPrice = unitPrice
                 };
@@ -142,9 +139,6 @@ namespace WebAPI.Controllers
 
                 // ✅ Thay đổi: Trả về Created với data trực tiếp thay vì CreatedAtAction
                 return Created($"/api/cart/{result.Data.Id}", result.Data);
-
-                // Hoặc đơn giản hơn, chỉ trả về Ok:
-                // return Ok(result.Data);
             }
             catch (Exception ex)
             {

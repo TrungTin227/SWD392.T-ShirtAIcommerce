@@ -29,5 +29,20 @@ namespace Services.Interfaces
         /// Kiểm tra cart có thể checkout không
         /// </summary>
         Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutAsync(Guid? userId, string? sessionId);
+        /// <summary>
+        /// Lấy CartItem entities với đầy đủ navigation properties cho checkout
+        /// </summary>
+        Task<ApiResult<IEnumerable<CartItem>>> GetCartItemEntitiesForCheckoutAsync(Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Xóa cart items sau khi checkout thành công
+        /// </summary>
+        Task<ApiResult<bool>> ClearCartItemsAfterCheckoutAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Validate giỏ hàng chi tiết cho checkout
+        /// </summary>
+        Task<ApiResult<CartValidationDto>> ValidateCartForCheckoutDetailedAsync(Guid? userId, string? sessionId);
+
     }
 }

@@ -209,7 +209,47 @@ namespace Repositories.Implementations
         {
             return await _context.Set<ProductVariant>().FirstOrDefaultAsync(pv => pv.Id == productVariantId);
         }
+        /// <summary>
+        /// Lấy cart items của user với đầy đủ navigation properties
+        /// </summary>
+        public async Task<IEnumerable<CartItem>> GetUserCartItemsWithDetailsAsync(Guid userId)
+        {
+            return await GetAllAsync(
+                ci => ci.UserId == userId,
+                q => q.OrderBy(ci => ci.CreatedAt),
+                // Include all navigation properties needed for checkout
+                ci => ci.Product,
+                ci => ci.CustomDesign,
+                ci => ci.ProductVariant,
+                ci => ci.ProductVariant.Product, // Include Product from ProductVariant
+                ci => ci.User);
+        }
 
+        /// <summary>
+        /// Lấy cart items của session với đầy đủ navigation properties
+        /// </summary>
+        public async Task<IEnumerable<CartItem>> GetSessionCartItemsWithDetailsAsync(string sessionId)
+        {
+            return await GetAllAsync(
+                ci => ci.SessionId == sessionId && ci.UserId == null,
+                q => q.OrderBy(ci => ci.CreatedAt),
+                // Include all navigation properties needed for checkout
+                ci => ci.Product,
+                ci => ci.CustomDesign,
+                ci => ci.ProductVariant,
+                ci => ci.ProductVariant.Product, // Include Product from ProductVariant
+                ci => ci.User);
+        }
+
+        /// <summary>
+        /// Lấy CustomDesign by ID
+        /// </summary>
+        public async Task<CustomDesign?> GetCustomDesignByIdAsync(Guid customDesignId)
+        {
+            return await _context.Set<CustomDesign>()
+                .Where(cd => cd.Id == customDesignId && !cd.IsDeleted)
+                .FirstOrDefaultAsync();
+        }
         #region Private Helper Methods
 
         private static Expression<Func<CartItem, bool>>? BuildFilterPredicate(CartItemQueryDto query)
