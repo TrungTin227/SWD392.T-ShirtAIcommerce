@@ -25,5 +25,40 @@ namespace Services.Interfaces
         Task<IEnumerable<OrderDTO>> GetRecentOrdersAsync(int limit = 10);
         Task<IEnumerable<OrderDTO>> GetOrdersForAnalyticsAsync(DateTime fromDate, DateTime toDate);
         Task<bool> UpdateTrackingNumberAsync(Guid orderId, string trackingNumber, Guid? updatedBy = null);
+
+        /// <summary>
+        /// Tạo đơn hàng từ giỏ hàng với validation đầy đủ
+        /// </summary>
+        Task<OrderDTO?> CreateOrderFromCartAsync(CreateOrderFromCartRequest request, Guid userId);
+
+        /// <summary>
+        /// Validate giỏ hàng trước khi tạo đơn hàng
+        /// </summary>
+        Task<OrderValidationResult> ValidateCartForOrderAsync(Guid? userId, string? sessionId);
+
+        /// <summary>
+        /// Reserve inventory cho đơn hàng
+        /// </summary>
+        Task<bool> ReserveInventoryForOrderAsync(Guid orderId);
+
+        /// <summary>
+        /// Release inventory khi hủy đơn hàng
+        /// </summary>
+        Task<bool> ReleaseInventoryForOrderAsync(Guid orderId);
+
+        /// <summary>
+        /// Tính toán lại tổng tiền đơn hàng
+        /// </summary>
+        Task<decimal> RecalculateOrderTotalAsync(Guid orderId);
+
+        /// <summary>
+        /// Lấy order analytics nâng cao
+        /// </summary>
+        Task<OrderAnalyticsDto> GetOrderAnalyticsAsync(DateTime fromDate, DateTime toDate);
+
+        /// <summary>
+        /// Bulk cancel orders
+        /// </summary>
+        Task<BatchOperationResultDTO> BulkCancelOrdersAsync(List<Guid> orderIds, string reason, Guid? cancelledBy = null);
     }
 }
