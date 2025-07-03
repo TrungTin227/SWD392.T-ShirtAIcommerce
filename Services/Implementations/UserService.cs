@@ -223,10 +223,8 @@ namespace Services.Implementations
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
 
-            await Task.WhenAll(
-                _userEmailService.SendWelcomeEmailAsync(email),
-                _userEmailService.SendEmailConfirmationAsync(email, user.Id, token, _confirmEmailUri)
-            );
+            await _userEmailService.SendWelcomeEmailAsync(email);
+            await _userEmailService.SendEmailConfirmationAsync(email, user.Id, token, _confirmEmailUri);
         }
 
         public async Task<ApiResult<string>> ConfirmEmailAsync(Guid userId, string encodedToken)
@@ -584,21 +582,18 @@ namespace Services.Implementations
             }
             else
             {
-                var tasks = new List<Task>();
                 if (!await _userManager.IsInRoleAsync(user, "USER"))
-                    tasks.Add(_userManager.AddDefaultRoleAsync(user));
+                    await _userManager.AddDefaultRoleAsync(user);
 
                 if (UserMappings.MergeGoogleInfo(info, user))
-                    tasks.Add(_userManager.UpdateAsync(user));
-
-                if (tasks.Any())
-                    await Task.WhenAll(tasks);
+                    await _userManager.UpdateAsync(user);
             }
 
-            var tokenTask = _tokenService.GenerateToken(user);
+            var tokenResult = await _tokenService.GenerateToken(user);
             var refresh = _tokenService.GenerateRefreshToken();
-            await Task.WhenAll(tokenTask, _userManager.SetRefreshTokenAsync(user, refresh.Token));
-            return await UserMappings.ToUserResponseAsync(user, _userManager, tokenTask.Result.Data, refresh.Token);
+            await _userManager.SetRefreshTokenAsync(user, refresh.Token);
+
+            return await UserMappings.ToUserResponseAsync(user, _userManager, tokenResult.Data, refresh.Token);
         }
 
         public async Task<ApiResult<PagedList<UserDetailsDTO>>> GetUsersAsync(int page, int size)

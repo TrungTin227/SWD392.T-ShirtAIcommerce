@@ -67,7 +67,7 @@ public class ExternalAuthService : IExternalAuthService
 
             Console.WriteLine($"Token validated successfully for email: {payload.Email}");
 
-            var googleInfo = new DTOs.UserDTOs.Identities.GoogleUserInfo
+            var googleInfo = new GoogleUserInfo
             {
                 Email = payload.Email,
                 FirstName = payload.GivenName,
@@ -135,7 +135,7 @@ public class ExternalAuthService : IExternalAuthService
                 var given = info.Principal.FindFirstValue(ClaimTypes.GivenName);
                 var family = info.Principal.FindFirstValue(ClaimTypes.Surname);
 
-                var googleInfo = new DTOs.UserDTOs.Identities.GoogleUserInfo
+                var googleInfo = new GoogleUserInfo
                 {
                     Email = email,
                     FirstName = given,
