@@ -19,6 +19,7 @@
         public DateTime UpdateAt { get; set; }
 
         public List<string> Roles { get; set; } = new List<string>();
+        public bool IsActive { get; set; }
 
     }
 }

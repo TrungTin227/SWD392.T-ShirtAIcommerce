@@ -63,6 +63,7 @@ namespace Repositories.Implementations
                 Gender = u.User.Gender.ToString(), 
                 CreateAt = u.User.CreatedAt,
                 UpdateAt = u.User.UpdatedAt,
+                IsActive = u.User.LockoutEnabled,
                 Roles = userRolesDict.TryGetValue(u.User.Id, out var roles) ? roles : new List<string>()
             }).ToList();
 
