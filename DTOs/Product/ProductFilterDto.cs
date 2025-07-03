@@ -11,14 +11,11 @@ namespace DTOs.Product
         public ProductStatus? Status { get; set; }
         public decimal? MinPrice { get; set; }
         public decimal? MaxPrice { get; set; }
-        public bool? IsFeatured { get; set; }
-        public bool? IsBestseller { get; set; }
-        public bool? InStock { get; set; }
         public ProductMaterial? Material { get; set; }
         public ProductSeason? Season { get; set; }
         public DateTime? CreatedFrom { get; set; }
         public DateTime? CreatedTo { get; set; }
-        public string? SortBy { get; set; } = "CreatedAt"; // Name, Price, CreatedAt, SoldCount
-        public string? SortDirection { get; set; } = "desc"; // asc, desc
+        public string? SortBy { get; set; } = "CreatedAt";
+        public string? SortDirection { get; set; } = "desc";
     }
 }

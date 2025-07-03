@@ -335,6 +335,7 @@ namespace Services.Implementations
                 Price = product.Price,
                 SalePrice = product.SalePrice,
                 Sku = product.Sku,
+                Quantity = product.Variants.Sum(v => v.Quantity),
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,
                 Material = product.Material,

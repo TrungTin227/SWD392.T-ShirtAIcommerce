@@ -36,5 +36,8 @@ namespace Services.Interfaces
         Task<ApiResult<string>> Verify2FAAsync(Verify2FARequest request);
         Task<ApiResult<UserResponse>> RegisterAsync(UserRegisterRequest req);
 
+        Task<ApiResult<UpdateUserResponse>> UpdateProfileAsync(Guid userId, UpdateUserRequest request);
+
+
     }
 }

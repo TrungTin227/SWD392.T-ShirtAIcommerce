@@ -1,6 +1,4 @@
-﻿// WebAPI/Extensions/InfrastructureServiceCollectionExtensions.cs
-
-using BusinessObjects.Identity;
+﻿using BusinessObjects.Identity;
 using Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -137,6 +135,7 @@ namespace WebAPI.Extensions
             services.AddScoped<IReviewRepository, ReviewRepository>();
             services.AddScoped<ICustomDesignRepository, CustomDesignRepository>();
             services.AddScoped<IWishlistRepository, WishlistRepository>();
+            services.AddScoped<IProductVariantRepository, ProductVariantRepository>();
 
             services.AddScoped<ICurrentTime, CurrentTime>();
             services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -157,6 +156,7 @@ namespace WebAPI.Extensions
             services.AddScoped<IReviewService, ReviewService>();
             services.AddScoped<ICustomDesignService, CustomDesignService>();
             services.AddScoped<IWishlistService, WishlistService>();
+            services.AddScoped<IProductVariantService, ProductVariantService>();
 
             // === 7. Email & Quartz ===
             services.AddEmailServices(configuration.GetSection("EmailSettings"));

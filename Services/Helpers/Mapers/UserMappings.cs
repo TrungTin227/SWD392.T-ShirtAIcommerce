@@ -56,8 +56,6 @@ namespace Services.Helpers.Mapers
         {
             if (!string.IsNullOrEmpty(req.FirstName)) user.FirstName = req.FirstName;
             if (!string.IsNullOrEmpty(req.LastName)) user.LastName = req.LastName;
-            if (new EmailAddressAttribute().IsValid(req.Email)) user.Email = req.Email;
-            if (!string.IsNullOrEmpty(req.PhoneNumbers)) user.PhoneNumber = req.PhoneNumbers;
             if (req.Gender != null) user.Gender = req.Gender;
             user.UpdatedAt = DateTime.UtcNow;
         }

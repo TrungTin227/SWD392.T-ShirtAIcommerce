@@ -12,24 +12,14 @@ namespace DTOs.Product
         public string? Sku { get; set; }
         public int Quantity { get; set; }
         public Guid? CategoryId { get; set; }
-        public string? CategoryName { get; set; }
+        public string? CategoryName { get; set; } // tổng hợp từ navigation property
         public ProductMaterial Material { get; set; }
         public ProductSeason Season { get; set; }
-        public decimal Weight { get; set; }
-        public string? Dimensions { get; set; }
         public string? MetaTitle { get; set; }
         public string? MetaDescription { get; set; }
         public string? Slug { get; set; }
-        public int ViewCount { get; set; }
         public int SoldCount { get; set; }
-        public int MinOrderQuantity { get; set; }
-        public int MaxOrderQuantity { get; set; }
-        public bool IsFeatured { get; set; }
-        public bool IsBestseller { get; set; }
-        public decimal DiscountPercentage { get; set; }
-        public List<ProductColor>? AvailableColors { get; set; }
-        public List<ProductSize>? AvailableSizes { get; set; }
-        public string? Images { get; set; }
+        public List<string>? Images { get; set; } // nên chuyển sang List<string> nếu ProductImage chỉ có Url
         public ProductStatus Status { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }

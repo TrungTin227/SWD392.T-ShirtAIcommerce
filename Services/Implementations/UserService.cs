@@ -1,10 +1,13 @@
-﻿using BusinessObjects.Identity;
+﻿using Azure;
+using BusinessObjects.Identity;
 using DTOs.UserAddressDTOs.Request;
+using DTOs.UserAddressDTOs.Response;
 using DTOs.UserDTOs.Identities;
 using DTOs.UserDTOs.Request;
 using DTOs.UserDTOs.Response;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Repositories.Commons;
@@ -107,6 +110,112 @@ namespace Services.Implementations
             return result;
         }
 
+        public async Task<ApiResult<UpdateUserResponse>> UpdateProfileAsync(Guid userId, UpdateUserRequest request)
+        {
+            // 1. Lấy user
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+                return ApiResult<UpdateUserResponse>.Failure("User not found");
+
+            // 2. Cập nhật thông tin cơ bản
+            user.FirstName = request.FirstName;
+            user.LastName = request.LastName;
+            user.Gender = request.Gender;
+            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedBy = userId;
+
+            var userUpdate = await _userManager.UpdateAsync(user);
+            if (!userUpdate.Succeeded)
+                return ApiResult<UpdateUserResponse>.Failure(userUpdate.Errors.First().Description);
+
+            // 3. Xử lý addresses
+            var seenAddressIds = new HashSet<Guid>();
+            foreach (var addrDto in request.Addresses)
+            {
+                if (addrDto.Id == Guid.Empty)
+                {
+                    var createResult = await _userAddressService.CreateUserAddressAsync(
+                        new CreateUserAddressRequest
+                        {
+                            ReceiverName = addrDto.ReceiverName,
+                            Phone = addrDto.Phone,
+                            DetailAddress = addrDto.DetailAddress,
+                            Ward = addrDto.Ward,
+                            District = addrDto.District,
+                            Province = addrDto.Province,
+                            IsDefault = addrDto.IsDefault
+                        });
+                    if (createResult.IsSuccess)
+                        seenAddressIds.Add(createResult.Data.Id);
+                    else
+                        _logger.LogWarning("Failed to create address: {Message}", createResult.Message);
+                }
+                else
+                {
+                    var updateResult = await _userAddressService.UpdateUserAddressAsync(
+                        addrDto.Id,
+                        new UpdateUserAddressRequest
+                        {
+                            Id = addrDto.Id,
+                            ReceiverName = addrDto.ReceiverName,
+                            Phone = addrDto.Phone,
+                            DetailAddress = addrDto.DetailAddress,
+                            Ward = addrDto.Ward,
+                            District = addrDto.District,
+                            Province = addrDto.Province,
+                            IsDefault = addrDto.IsDefault
+                        });
+                    if (updateResult.IsSuccess)
+                        seenAddressIds.Add(addrDto.Id);
+                    else
+                        _logger.LogWarning("Failed to update address {AddressId}: {Message}", addrDto.Id, updateResult.Message);
+                }
+            }
+
+            // 4. Xóa địa chỉ không còn trong request
+            var allAddressesResult = await _userAddressService.GetUserAddressesAsync();
+            var finalAddresses = new List<UserAddressResponse>();
+            if (allAddressesResult.IsSuccess)
+            {
+                foreach (var addr in allAddressesResult.Data)
+                {
+                    if (!seenAddressIds.Contains(addr.Id))
+                    {
+                        var delResult = await _userAddressService.DeleteUserAddressAsync(addr.Id);
+                        if (!delResult.IsSuccess)
+                            _logger.LogWarning("Failed to delete address {AddressId}: {Message}", addr.Id, delResult.Message);
+                    }
+                    else
+                    {
+                        finalAddresses.Add(addr);
+                    }
+                }
+            }
+
+            // 5. Chuẩn bị UserDetailsDTO
+            var roles = await _userManager.GetRolesAsync(user);
+            var updatedUserDetailsDto = new UserDetailsDTO
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email!,
+                Gender = user.Gender.ToString(),
+                CreateAt = user.CreatedAt,
+                UpdateAt = user.UpdatedAt,
+                Roles = roles.ToList(),
+                IsActive = !user.LockoutEnabled
+            };
+
+            // 6. Trả về response
+            var response = new UpdateUserResponse
+            {
+                User = updatedUserDetailsDto,
+                Addresses = finalAddresses
+            };
+
+            return ApiResult<UpdateUserResponse>.Success(response);
+        }
         private async Task SendWelcomeEmailsAsync(string email)
         {
             var user = await _userManager.FindByEmailAsync(email);

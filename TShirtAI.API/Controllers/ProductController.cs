@@ -37,19 +37,19 @@ namespace Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpGet("bestsellers")]
-        public async Task<IActionResult> GetBestSellers([FromQuery] int count = 10)
-        {
-            var result = await _productService.GetBestSellersAsync(count);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
+        //[HttpGet("bestsellers")]
+        //public async Task<IActionResult> GetBestSellers([FromQuery] int count = 10)
+        //{
+        //    var result = await _productService.GetBestSellersAsync(count);
+        //    return result.IsSuccess ? Ok(result) : BadRequest(result);
+        //}
 
-        [HttpGet("featured")]
-        public async Task<IActionResult> GetFeatured([FromQuery] int count = 10)
-        {
-            var result = await _productService.GetFeaturedAsync(count);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
+        //[HttpGet("featured")]
+        //public async Task<IActionResult> GetFeatured([FromQuery] int count = 10)
+        //{
+        //    var result = await _productService.GetFeaturedAsync(count);
+        //    return result.IsSuccess ? Ok(result) : BadRequest(result);
+        //}
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateProductDto dto)

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
+using System.Security.Claims;
 
 namespace WebAPI.Controllers
 {
@@ -64,6 +65,33 @@ namespace WebAPI.Controllers
 
             var result = await _userService.LoginAsync(request);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPut("profile")]
+        [Authorize]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateUserRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest("Invalid data");
+
+            // 1. Lấy claim NameIdentifier (hoặc "sub") an toàn hơn
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)
+                           ?? User.FindFirst("sub");
+            if (userIdClaim == null
+                || !Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                return Unauthorized("Invalid or missing user ID claim");
+            }
+
+            // 2. Gọi service và trả kết quả
+            var result = await _userService.UpdateProfileAsync(userId, request);
+            if (result == null)
+                // nếu service trả null (không nên), báo lỗi server
+                return StatusCode(StatusCodes.Status500InternalServerError, "Update failed");
+
+            return result.IsSuccess
+                ? Ok(result)
+                : BadRequest(result);
         }
 
         [HttpPost("logout")]

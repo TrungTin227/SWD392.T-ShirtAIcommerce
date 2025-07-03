@@ -34,7 +34,6 @@ namespace Services.Extensions
             userAddress.Ward = request.Ward;
             userAddress.District = request.District;
             userAddress.Province = request.Province;
-            userAddress.PostalCode = request.PostalCode;
             userAddress.IsDefault = request.IsDefault;
             userAddress.UpdatedAt = DateTime.UtcNow;
         }

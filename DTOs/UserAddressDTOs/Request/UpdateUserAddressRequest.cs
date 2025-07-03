@@ -4,6 +4,8 @@ namespace DTOs.UserAddressDTOs.Request
 {
     public class UpdateUserAddressRequest
     {
+        public Guid Id { get; set; }
+
         [Required(ErrorMessage = "Tên người nhận là bắt buộc")]
         [MaxLength(100)]
         public string ReceiverName { get; set; } = string.Empty;
@@ -28,10 +30,6 @@ namespace DTOs.UserAddressDTOs.Request
         [Required(ErrorMessage = "Tỉnh/Thành phố là bắt buộc")]
         [MaxLength(100)]
         public string Province { get; set; } = string.Empty;
-
-        [MaxLength(10)]
-        public string? PostalCode { get; set; }
-
         public bool IsDefault { get; set; } = false;
     }
 }

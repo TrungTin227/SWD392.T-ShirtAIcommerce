@@ -17,9 +17,9 @@ namespace Repositories.Implementations
         {
             IQueryable<Product> query = GetQueryable();
 
-            // Nếu có navigation property Category, hãy Include nếu cần filter/hiển thị category name
-            query = query.Include(p => p.Variants)
-                         .Include(p => p.Images);
+            query = query.Include(p => p.Category)
+                         .Include(p => p.Images)
+                         .Include(p => p.Variants);   
 
             if (!string.IsNullOrWhiteSpace(filter.Name))
                 query = query.Where(x => x.Name.Contains(filter.Name));
@@ -33,21 +33,11 @@ namespace Repositories.Implementations
             if (filter.Status.HasValue)
                 query = query.Where(x => x.Status == filter.Status.Value);
 
-            // Price filter applies to base price of product
             if (filter.MinPrice.HasValue)
                 query = query.Where(x => x.Price >= filter.MinPrice.Value);
 
             if (filter.MaxPrice.HasValue)
                 query = query.Where(x => x.Price <= filter.MaxPrice.Value);
-
-            // InStock filter: kiểm tra có ít nhất 1 variant còn hàng
-            if (filter.InStock.HasValue)
-            {
-                if (filter.InStock.Value)
-                    query = query.Where(x => x.Variants.Any(v => v.Quantity > 0 && v.IsActive));
-                else
-                    query = query.Where(x => !x.Variants.Any(v => v.Quantity > 0 && v.IsActive));
-            }
 
             if (filter.CreatedFrom.HasValue)
                 query = query.Where(x => x.CreatedAt >= filter.CreatedFrom.Value);
