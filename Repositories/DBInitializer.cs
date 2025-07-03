@@ -329,7 +329,8 @@ namespace Repositories
 
         private static async Task SeedProductsAsync(T_ShirtAIcommerceContext context)
         {
-            if (!await context.Products.AnyAsync())
+            // Nếu chưa có bất kỳ variant nào, seed toàn bộ products + variants
+            if (!await context.ProductVariants.AnyAsync())
             {
                 var categories = await context.Categories.ToListAsync();
                 var adminUser = await context.Users.FirstOrDefaultAsync(u => u.UserName == "admin");
@@ -339,136 +340,236 @@ namespace Repositories
                     return;
                 }
 
-                var products = new List<Product>();
-
-                // Helper để sinh variants
-                List<ProductVariant> GenerateVariants(Product product, string baseSku, List<string> colors, List<string> sizes, int quantity = 20)
+                // Helper: sinh đúng 5 variants và gắn vào navigation collection
+                List<ProductVariant> GenerateVariants(Product product, string baseSku,
+                                                     List<string> colors, List<string> sizes, int quantity = 20)
                 {
                     var variants = new List<ProductVariant>();
-                    int idx = 1;
-                    foreach (var color in colors)
+                    var combos = colors.SelectMany(c => sizes.Select(s => (color: c, size: s)))
+                                       .Take(5);
+
+                    foreach (var (color, size) in combos)
                     {
-                        foreach (var size in sizes)
+                        variants.Add(new ProductVariant
                         {
-                            if (variants.Count >= 5) break;
-                            variants.Add(new ProductVariant
-                            {
-                                Product = product,
-                                Color = Enum.Parse<ProductColor>(color),
-                                Size = Enum.Parse<ProductSize>(size),
-                                VariantSku = $"{baseSku}-{color.ToUpper()}-{size.ToUpper()}",
-                                Quantity = quantity,
-                                PriceAdjustment = 0,
-                                ImageUrl = $"/images/products/{baseSku.ToLower()}-{color.ToLower()}-{size.ToLower()}.jpg",
-                                IsActive = true
-                            });
-                            idx++;
-                        }
-                        if (variants.Count >= 5) break;
+                            Id = Guid.NewGuid(),
+                            Color = Enum.Parse<ProductColor>(color),
+                            Size = Enum.Parse<ProductSize>(size),
+                            VariantSku = $"{baseSku}-{color.ToUpper()}-{size.ToUpper()}",
+                            Quantity = quantity,
+                            PriceAdjustment = 0m,
+                            ImageUrl = $"/images/products/{baseSku.ToLower()}-{color.ToLower()}-{size.ToLower()}.jpg",
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow,
+                            CreatedBy = adminUser.Id,
+                            UpdatedBy = adminUser.Id,
+                            IsDeleted = false,
+                            // Không gán ProductId — EF sẽ tự điền khi save thông qua navigation:
+                            Product = product
+                        });
                     }
+
                     return variants;
                 }
 
-                // T-Shirt
-                var tshirtCategory = categories.FirstOrDefault(c => c.Name == "T-Shirt");
-                if (tshirtCategory != null)
+                var productsToSeed = new List<Product>();
+
+                // Danh sách các category cần seed cùng với cấu hình variant
+                var seedDefinitions = new[]
                 {
-                    var tshirt1 = new Product
-                    {
+            // T-Shirt
+            new {
+                CategoryName = "T-Shirt",
+                Products = new[]
+                {
+                    new {
                         Name = "Basic Cotton T-Shirt White",
-                        Description = "100% cotton basic t-shirt in white color. Perfect for custom designs.",
-                        Price = 150000,
-                        SalePrice = 120000,
                         Sku = "TSHIRT-WHITE-001",
-                        Slug = "basic-cotton-t-shirt-white",
-                        CategoryId = tshirtCategory.Id,
-                        Status = ProductStatus.Active,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow,
-                        CreatedBy = adminUser.Id,
-                        UpdatedBy = adminUser.Id,
-                    };
-                    tshirt1.Variants = GenerateVariants(tshirt1, "TSHIRT-WHITE-001", new List<string> { "White", "Black", "Navy", "Gray", "Red" }, new List<string> { "S", "M", "L", "XL", "XXL" });
-
-                    var tshirt2 = new Product
-                    {
+                        Description = "100% cotton basic t-shirt in white color. Perfect for custom designs.",
+                        Price = 150000m, SalePrice = 120000m,
+                        Material = ProductMaterial.Cotton100,
+                        Season = ProductSeason.AllSeason,
+                        Colors = new List<string>{ "White","Black","Navy","Gray","Red" }
+                    },
+                    new {
                         Name = "Basic Cotton T-Shirt Black",
-                        Description = "100% cotton basic t-shirt in black color. Classic and versatile.",
-                        Price = 150000,
-                        SalePrice = 120000,
                         Sku = "TSHIRT-BLACK-002",
-                        Slug = "basic-cotton-t-shirt-black",
-                        CategoryId = tshirtCategory.Id,
-                        Status = ProductStatus.Active,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow,
-                        CreatedBy = adminUser.Id,
-                        UpdatedBy = adminUser.Id,
-                    };
-                    tshirt2.Variants = GenerateVariants(tshirt2, "TSHIRT-BLACK-002", new List<string> { "Black", "White", "Navy", "Gray", "Red" }, new List<string> { "S", "M", "L", "XL", "XXL" });
-
-                    products.Add(tshirt1);
-                    products.Add(tshirt2);
+                        Description = "100% cotton basic t-shirt in black color. Classic and versatile.",
+                        Price = 150000m, SalePrice = 120000m,
+                        Material = ProductMaterial.Cotton100,
+                        Season = ProductSeason.AllSeason,
+                        Colors = new List<string>{ "Black","White","Navy","Gray","Red" }
+                    },
+                    new {
+                        Name = "Graphic T-Shirt Vintage",
+                        Sku = "TSHIRT-VINTAGE-003",
+                        Description = "Vintage style graphic t-shirt with retro design. Soft cotton blend.",
+                        Price = 180000m, SalePrice = 150000m,
+                        Material = ProductMaterial.CottonSpandex,
+                        Season = ProductSeason.AllSeason,
+                        Colors = new List<string>{ "Gray","Black","White","Navy","Maroon" }
+                    }
                 }
-
-                // Polo
-                var poloCategory = categories.FirstOrDefault(c => c.Name == "Polo");
-                if (poloCategory != null)
+            },
+            // Polo
+            new {
+                CategoryName = "Polo",
+                Products = new[]
                 {
-                    var polo1 = new Product
-                    {
+                    new {
                         Name = "Classic Polo Shirt Blue",
-                        Description = "Cotton blend polo shirt with ribbed collar. Professional and comfortable.",
-                        Price = 220000,
-                        SalePrice = 180000,
                         Sku = "POLO-BLUE-001",
-                        Slug = "classic-polo-shirt-blue",
-                        CategoryId = poloCategory.Id,
-                        Status = ProductStatus.Active,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow,
-                        CreatedBy = adminUser.Id,
-                        UpdatedBy = adminUser.Id,
-                    };
-                    polo1.Variants = GenerateVariants(polo1, "POLO-BLUE-001", new List<string> { "Blue", "White", "Black", "Navy", "Gray" }, new List<string> { "S", "M", "L", "XL", "XXL" });
-
-                    products.Add(polo1);
+                        Description = "Cotton blend polo shirt with ribbed collar. Professional and comfortable.",
+                        Price = 220000m, SalePrice = 180000m,
+                        Material = ProductMaterial.Bamboo,
+                        Season = ProductSeason.AllSeason,
+                        Colors = new List<string>{ "Blue","White","Black","Navy","Gray" }
+                    },
+                    new {
+                        Name = "Premium Polo Shirt White",
+                        Sku = "POLO-WHITE-002",
+                        Description = "Premium cotton polo with elegant design. Perfect for business casual.",
+                        Price = 250000m, SalePrice = 200000m,
+                        Material = ProductMaterial.Cotton100,
+                        Season = ProductSeason.AllSeason,
+                        Colors = new List<string>{ "White","Blue","Black","Gray","Green" }
+                    }
                 }
-
-                // Hoodie
-                var hoodieCategory = categories.FirstOrDefault(c => c.Name == "Hoodie");
-                if (hoodieCategory != null)
+            },
+            // Hoodie
+            new {
+                CategoryName = "Hoodie",
+                Products = new[]
                 {
-                    var hoodie1 = new Product
-                    {
+                    new {
                         Name = "Premium Hoodie Gray",
-                        Description = "Premium fleece hoodie with front pockets. Perfect for cold weather.",
-                        Price = 350000,
-                        SalePrice = 300000,
                         Sku = "HOODIE-GRAY-001",
-                        Slug = "premium-hoodie-gray",
-                        CategoryId = hoodieCategory.Id,
-                        Status = ProductStatus.Active,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow,
-                        CreatedBy = adminUser.Id,
-                        UpdatedBy = adminUser.Id,
-                    };
-                    hoodie1.Variants = GenerateVariants(hoodie1, "HOODIE-GRAY-001", new List<string> { "Gray", "Black", "Navy", "White" }, new List<string> { "S", "M", "L", "XL", "XXL" });
+                        Description = "Premium fleece hoodie with front pockets. Perfect for cold weather.",
+                        Price = 350000m, SalePrice = 300000m,
+                        Material = ProductMaterial.Cotton100,
+                        Season = ProductSeason.Winter,
+                        Colors = new List<string>{ "Gray","Black","Navy","White","Maroon" }
+                    },
+                    new {
+                        Name = "Sport Hoodie Black",
+                        Sku = "HOODIE-SPORT-002",
+                        Description = "Athletic hoodie with moisture-wicking fabric. Great for workouts.",
+                        Price = 380000m, SalePrice = 320000m,
+                        Material = ProductMaterial.Polyester,
+                        Season = ProductSeason.Autumn,
+                        Colors = new List<string>{ "Black","Gray","Navy","Blue","Red" }
+                    }
+                }
+            },
+            // Tank Top
+            new {
+                CategoryName = "Tank Top",
+                Products = new[]
+                {
+                    new {
+                        Name = "Summer Tank Top White",
+                        Sku = "TANK-WHITE-001",
+                        Description = "Lightweight cotton tank top. Perfect for hot summer days.",
+                        Price = 120000m, SalePrice = 100000m,
+                        Material = ProductMaterial.Cotton100,
+                        Season = ProductSeason.Summer,
+                        Colors = new List<string>{ "White","Black","Gray","Navy","Blue" }
+                    },
+                    new {
+                        Name = "Athletic Tank Top Black",
+                        Sku = "TANK-SPORT-002",
+                        Description = "Performance tank top with quick-dry technology. Ideal for gym and sports.",
+                        Price = 140000m, SalePrice = 120000m,
+                        Material = ProductMaterial.Polyester,
+                        Season = ProductSeason.Summer,
+                        Colors = new List<string>{ "Black","White","Gray","Red","Blue" }
+                    }
+                }
+            },
+            // Long Sleeve
+            new {
+                CategoryName = "Long Sleeve",
+                Products = new[]
+                {
+                    new {
+                        Name = "Basic Long Sleeve White",
+                        Sku = "LONG-WHITE-001",
+                        Description = "Comfortable long sleeve shirt in soft cotton. Great for layering.",
+                        Price = 200000m, SalePrice = 170000m,
+                        Material = ProductMaterial.Cotton100,
+                        Season = ProductSeason.Autumn,
+                        Colors = new List<string>{ "White","Black","Gray","Navy","Green" }
+                    },
+                    new {
+                        Name = "Striped Long Sleeve Gray",
+                        Sku = "LONG-STRIPE-002",
+                        Description = "Trendy striped long sleeve with modern fit. Stylish and comfortable.",
+                        Price = 220000m, SalePrice = 190000m,
+                        Material = ProductMaterial.Modal,
+                        Season = ProductSeason.Autumn,
+                        Colors = new List<string>{ "Gray","Black","White","Navy","Blue" }
+                    }
+                }
+            }
+        };
 
-                    products.Add(hoodie1);
+                // Khởi tạo products + variants
+                foreach (var def in seedDefinitions)
+                {
+                    var cat = categories.FirstOrDefault(c => c.Name == def.CategoryName);
+                    if (cat == null) continue;
+
+                    foreach (var pDef in def.Products)
+                    {
+                        var product = new Product
+                        {
+                            Id = Guid.NewGuid(),
+                            Name = pDef.Name,
+                            Description = pDef.Description,
+                            Price = pDef.Price,
+                            SalePrice = pDef.SalePrice,
+                            Sku = pDef.Sku,
+                            Slug = pDef.Sku.ToLowerInvariant().Replace('_', '-'),
+                            CategoryId = cat.Id,
+                            Status = ProductStatus.Active,
+                            Material = pDef.Material,
+                            Season = pDef.Season,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow,
+                            CreatedBy = adminUser.Id,
+                            UpdatedBy = adminUser.Id,
+                            IsDeleted = false
+                        };
+
+                        // Gắn variants
+                        var variants = GenerateVariants(product, pDef.Sku, pDef.Colors,
+                                                        new List<string> { "S", "M", "L", "XL", "XXL" });
+                        foreach (var v in variants)
+                            product.Variants.Add(v);
+
+                        productsToSeed.Add(product);
+                    }
                 }
 
-                if (products.Any())
+                // Thêm vào DbContext và lưu
+                if (productsToSeed.Any())
                 {
-                    await context.Products.AddRangeAsync(products);
+                    await context.Products.AddRangeAsync(productsToSeed);
                     await context.SaveChangesAsync();
-                    Console.WriteLine($"{products.Count} products seeded successfully (with 5 variants each)");
+
+                    var totalProducts = productsToSeed.Count;
+                    var totalVariants = productsToSeed.Sum(p => p.Variants.Count);
+                    Console.WriteLine("=== SEEDING COMPLETED ===");
+                    Console.WriteLine($"Total products seeded: {totalProducts}");
+                    Console.WriteLine($"Total variants seeded: {totalVariants}");
+                    Console.WriteLine($"Variants per product (expected 5): {totalVariants / totalProducts}");
                 }
             }
         }
 
         #endregion
+
 
         #region Seed Shipping Methods
 

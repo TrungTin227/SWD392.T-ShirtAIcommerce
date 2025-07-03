@@ -10,6 +10,7 @@
         public string PhoneNumbers { get; set; } = string.Empty;
         public DateTime CreateAt { get; set; }
         public DateTime UpdateAt { get; set; }
+        public bool IsActive { get; set; }
         public string? AccessToken { get; set; }
         public string? RefreshToken { get; set; }
         public List<string> Roles { get; set; } = new List<string>();

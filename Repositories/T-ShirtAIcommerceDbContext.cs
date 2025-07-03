@@ -193,6 +193,52 @@ namespace Repositories
                       .HasConversion<string>()
                       .HasMaxLength(50);
             });
+            modelBuilder.Entity<UserCoupon>()
+                   .HasOne(uc => uc.Coupon)
+                   .WithMany(c => c.UserCoupons)
+                   .HasForeignKey(uc => uc.CouponId)
+                   .IsRequired(false) // <-- make optional
+                   .OnDelete(DeleteBehavior.Restrict);
+
+            // Fix for Order <-> OrderItem
+            modelBuilder.Entity<OrderItem>()
+                .HasOne(oi => oi.Order)
+                .WithMany(o => o.OrderItems)
+                .HasForeignKey(oi => oi.OrderId)
+                .IsRequired(false) // <-- make optional
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Fix for Order <-> Payment
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.Order)
+                .WithMany(o => o.Payments)
+                .HasForeignKey(p => p.OrderId)
+                .IsRequired(false) // <-- make optional
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Fix for Product <-> ProductImage
+            modelBuilder.Entity<ProductImage>()
+                .HasOne(pi => pi.Product)
+                .WithMany(p => p.Images)
+                .HasForeignKey(pi => pi.ProductId)
+                .IsRequired(false) // <-- make optional
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Fix for Product <-> ProductVariant
+            modelBuilder.Entity<ProductVariant>()
+                .HasOne(pv => pv.Product)
+                .WithMany(p => p.Variants)
+                .HasForeignKey(pv => pv.ProductId)
+                .IsRequired(false) // <-- make optional
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Fix for Product <-> WishlistItem
+            modelBuilder.Entity<WishlistItem>()
+                .HasOne(wi => wi.Product)
+                .WithMany(p => p.WishlistItems)
+                .HasForeignKey(wi => wi.ProductId)
+                .IsRequired(false) // <-- make optional
+                .OnDelete(DeleteBehavior.Restrict);
 
             // === ProductVariant enum → string ===
             modelBuilder.Entity<ProductVariant>(entity =>

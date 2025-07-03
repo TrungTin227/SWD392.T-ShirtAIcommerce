@@ -12,8 +12,28 @@ namespace Repositories.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
+                name: "FK_OrderItems_Orders_OrderId",
+                table: "OrderItems");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Payments_Orders_OrderId",
+                table: "Payments");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_Products_AspNetUsers_CreatedBy",
                 table: "Products");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_ProductVariants_Products_ProductId",
+                table: "ProductVariants");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_UserCoupons_Coupons_CouponId",
+                table: "UserCoupons");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_WishlistItems_Products_ProductId",
+                table: "WishlistItems");
 
             migrationBuilder.DropIndex(
                 name: "IX_ProductVariants_VariantSku",
@@ -166,7 +186,7 @@ namespace Repositories.Migrations
                         column: x => x.ProductId,
                         principalTable: "Products",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateIndex(
@@ -187,19 +207,79 @@ namespace Repositories.Migrations
                 column: "ProductId");
 
             migrationBuilder.AddForeignKey(
+                name: "FK_OrderItems_Orders_OrderId",
+                table: "OrderItems",
+                column: "OrderId",
+                principalTable: "Orders",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Payments_Orders_OrderId",
+                table: "Payments",
+                column: "OrderId",
+                principalTable: "Orders",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
                 name: "FK_Products_AspNetUsers_ApplicationUserId",
                 table: "Products",
                 column: "ApplicationUserId",
                 principalTable: "AspNetUsers",
                 principalColumn: "Id");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_ProductVariants_Products_ProductId",
+                table: "ProductVariants",
+                column: "ProductId",
+                principalTable: "Products",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_UserCoupons_Coupons_CouponId",
+                table: "UserCoupons",
+                column: "CouponId",
+                principalTable: "Coupons",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_WishlistItems_Products_ProductId",
+                table: "WishlistItems",
+                column: "ProductId",
+                principalTable: "Products",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
+                name: "FK_OrderItems_Orders_OrderId",
+                table: "OrderItems");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Payments_Orders_OrderId",
+                table: "Payments");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_Products_AspNetUsers_ApplicationUserId",
                 table: "Products");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_ProductVariants_Products_ProductId",
+                table: "ProductVariants");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_UserCoupons_Coupons_CouponId",
+                table: "UserCoupons");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_WishlistItems_Products_ProductId",
+                table: "WishlistItems");
 
             migrationBuilder.DropTable(
                 name: "ProductImage");
@@ -370,11 +450,51 @@ namespace Repositories.Migrations
                 column: "CreatedBy");
 
             migrationBuilder.AddForeignKey(
+                name: "FK_OrderItems_Orders_OrderId",
+                table: "OrderItems",
+                column: "OrderId",
+                principalTable: "Orders",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Payments_Orders_OrderId",
+                table: "Payments",
+                column: "OrderId",
+                principalTable: "Orders",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
                 name: "FK_Products_AspNetUsers_CreatedBy",
                 table: "Products",
                 column: "CreatedBy",
                 principalTable: "AspNetUsers",
                 principalColumn: "Id");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_ProductVariants_Products_ProductId",
+                table: "ProductVariants",
+                column: "ProductId",
+                principalTable: "Products",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_UserCoupons_Coupons_CouponId",
+                table: "UserCoupons",
+                column: "CouponId",
+                principalTable: "Coupons",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_WishlistItems_Products_ProductId",
+                table: "WishlistItems",
+                column: "ProductId",
+                principalTable: "Products",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
         }
     }
 }

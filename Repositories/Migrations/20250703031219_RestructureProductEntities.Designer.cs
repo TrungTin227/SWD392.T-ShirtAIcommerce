@@ -12,7 +12,7 @@ using Repositories;
 namespace Repositories.Migrations
 {
     [DbContext(typeof(T_ShirtAIcommerceContext))]
-    [Migration("20250703025313_RestructureProductEntities")]
+    [Migration("20250703031219_RestructureProductEntities")]
     partial class RestructureProductEntities
     {
         /// <inheritdoc />
@@ -1328,8 +1328,7 @@ namespace Repositories.Migrations
                     b.HasOne("BusinessObjects.Coupons.Coupon", "Coupon")
                         .WithMany("UserCoupons")
                         .HasForeignKey("CouponId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("BusinessObjects.Identity.ApplicationUser", "User")
                         .WithMany("UserCoupons")
@@ -1410,8 +1409,7 @@ namespace Repositories.Migrations
                     b.HasOne("BusinessObjects.Orders.Order", "Order")
                         .WithMany("OrderItems")
                         .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("BusinessObjects.Products.Product", "Product")
                         .WithMany("OrderItems")
@@ -1435,8 +1433,7 @@ namespace Repositories.Migrations
                     b.HasOne("BusinessObjects.Orders.Order", "Order")
                         .WithMany("Payments")
                         .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Order");
                 });
@@ -1459,8 +1456,7 @@ namespace Repositories.Migrations
                     b.HasOne("BusinessObjects.Products.Product", "Product")
                         .WithMany("Images")
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Product");
                 });
@@ -1470,8 +1466,7 @@ namespace Repositories.Migrations
                     b.HasOne("BusinessObjects.Products.Product", "Product")
                         .WithMany("Variants")
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Product");
                 });
@@ -1504,8 +1499,7 @@ namespace Repositories.Migrations
                     b.HasOne("BusinessObjects.Products.Product", "Product")
                         .WithMany("WishlistItems")
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("BusinessObjects.Identity.ApplicationUser", "User")
                         .WithMany("WishlistItems")

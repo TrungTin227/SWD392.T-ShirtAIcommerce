@@ -96,6 +96,7 @@ namespace Services.Helpers.Mapers
                 PhoneNumbers = user.PhoneNumber,
                 CreateAt = user.CreatedAt,
                 UpdateAt = user.UpdatedAt,
+                IsActive = user.LockoutEnabled,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 Roles = roles.ToList()
