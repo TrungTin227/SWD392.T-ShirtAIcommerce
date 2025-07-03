@@ -128,6 +128,39 @@ namespace Services.Helpers.Mapers
             if (quantity <= 0) throw new ArgumentException("Quantity must be positive", nameof(quantity));
             return unitPrice * quantity;
         }
+
+        public static OrderItem CartItemToOrderItemWithoutOrderId(CartItem cartItem)
+        {
+            if (cartItem == null)
+                throw new ArgumentNullException(nameof(cartItem));
+
+            // Bắt buộc phải có một trong các ID
+            if (!cartItem.ProductId.HasValue
+             && !cartItem.CustomDesignId.HasValue
+             && !cartItem.ProductVariantId.HasValue)
+            {
+                throw new InvalidOperationException(
+                    "CartItem phải có ít nhất ProductId, CustomDesignId hoặc ProductVariantId");
+            }
+
+            // Tạo OrderItem mà không set OrderId (sẽ được set sau)
+            var item = new OrderItem
+            {
+                Id = Guid.NewGuid(),
+                OrderId = Guid.Empty, // Sẽ được set sau khi tạo Order
+                ProductId = cartItem.ProductId,
+                CustomDesignId = cartItem.CustomDesignId,
+                ProductVariantId = cartItem.ProductVariantId,
+                ItemName = GetItemName(cartItem),
+                SelectedColor = GetSelectedColor(cartItem),
+                SelectedSize = GetSelectedSize(cartItem),
+                Quantity = cartItem.Quantity,
+                UnitPrice = cartItem.UnitPrice,
+                TotalPrice = CalculateTotalPrice(cartItem.UnitPrice, cartItem.Quantity)
+            };
+
+            return item;
+        }
         public static OrderItem CartItemToOrderItemWithValidation(CartItem cartItem, Guid orderId)
         {
             if (cartItem == null)

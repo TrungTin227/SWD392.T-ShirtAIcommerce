@@ -160,8 +160,8 @@ namespace Services.Helpers
                 if (cartItem.Product.Status != ProductStatus.Active)
                     return (false, $"Sản phẩm '{cartItem.Product.Name}' hiện không được bán");
 
-                if (cartItem.Product.Quantity < cartItem.Quantity)
-                    return (false, $"Sản phẩm '{cartItem.Product.Name}' không đủ số lượng trong kho");
+                //if (cartItem.Product.Quantity < cartItem.Quantity)
+                //    return (false, $"Sản phẩm '{cartItem.Product.Name}' không đủ số lượng trong kho");
             }
 
             // Validate product variant availability

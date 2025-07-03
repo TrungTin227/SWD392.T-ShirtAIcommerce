@@ -54,7 +54,7 @@ namespace Repositories
         {
             base.OnModelCreating(modelBuilder);
 
-            // CustomDesign relationships - FIX lỗi multiple foreign key
+            // CustomDesign relationships 
             modelBuilder.Entity<CustomDesign>(entity =>
             {
                 entity.HasOne(cd => cd.User)
@@ -88,7 +88,7 @@ namespace Repositories
                       .HasMaxLength(50);
             });
 
-                        // Order relationships - FIX lỗi multiple foreign key
+            // Order relationships - FIX lỗi multiple foreign key
             modelBuilder.Entity<Order>(entity =>
             {
                 entity.HasOne(o => o.User)
@@ -112,9 +112,6 @@ namespace Repositories
             // Decimal precision configurations
             modelBuilder.Entity<Product>().Property(e => e.Price).HasColumnType("decimal(12,2)");
             modelBuilder.Entity<Product>().Property(e => e.SalePrice).HasColumnType("decimal(12,2)");
-            modelBuilder.Entity<Product>().Property(e => e.Weight).HasColumnType("decimal(6,2)");
-            modelBuilder.Entity<Product>().Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
-
             modelBuilder.Entity<CustomDesign>().Property(e => e.TotalPrice).HasColumnType("decimal(12,2)");
 
             modelBuilder.Entity<Order>().Property(e => e.TotalAmount).HasColumnType("decimal(12,2)");

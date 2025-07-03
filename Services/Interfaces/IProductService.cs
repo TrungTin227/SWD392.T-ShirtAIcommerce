@@ -16,6 +16,6 @@ namespace Services.Interfaces
         Task<ApiResult<BatchOperationResultDTO>> BulkRestoreAsync(BatchIdsRequest request);
         Task<ApiResult<List<ProductDto>>> GetBestSellersAsync(int count = 10);
         Task<ApiResult<List<ProductDto>>> GetFeaturedAsync(int count = 10);
-        Task<ApiResult<bool>> UpdateViewCountAsync(Guid id);
+        //Task<ApiResult<bool>> UpdateViewCountAsync(Guid id);
     }
 }

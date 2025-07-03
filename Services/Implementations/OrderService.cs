@@ -155,10 +155,11 @@ namespace Services.Implementations
                         throw new ArgumentException("Một số sản phẩm trong giỏ hàng không tồn tại hoặc không thuộc về bạn");
                     }
 
-                    // Step 4: Convert CartItems to OrderItems with enhanced mapping
+                    // Step 4: Convert CartItems to OrderItems - CREATE WITHOUT OrderId FIRST
                     try
                     {
-                        var cartOrderItems = cartItems.Select(ci => OrderItemMapper.CartItemToOrderItemWithValidation(ci, Guid.Empty)).ToList();
+                        // Tạo OrderItems từ CartItems nhưng chưa set OrderId
+                        var cartOrderItems = cartItems.Select(ci => OrderItemMapper.CartItemToOrderItemWithoutOrderId(ci)).ToList();
                         orderItems.AddRange(cartOrderItems);
                     }
                     catch (Exception ex)
@@ -261,10 +262,10 @@ namespace Services.Implementations
                 var createdOrder = await _orderRepository.AddAsync(order);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Update OrderItems with correct OrderId and save
+                // NOW Update OrderItems with correct OrderId and save
                 foreach (var orderItem in orderItems)
                 {
-                    orderItem.OrderId = createdOrder.Id;
+                    orderItem.OrderId = createdOrder.Id; // Set the actual Order ID here
                     await _orderItemRepository.AddAsync(orderItem);
                 }
                 await _unitOfWork.SaveChangesAsync();

@@ -332,8 +332,6 @@ namespace Repositories
             if (!await context.Products.AnyAsync())
             {
                 var categories = await context.Categories.ToListAsync();
-
-                // Đảm bảo có admin user
                 var adminUser = await context.Users.FirstOrDefaultAsync(u => u.UserName == "admin");
                 if (adminUser == null)
                 {
@@ -343,119 +341,129 @@ namespace Repositories
 
                 var products = new List<Product>();
 
-                // T-Shirt products
+                // Helper để sinh variants
+                List<ProductVariant> GenerateVariants(Product product, string baseSku, List<string> colors, List<string> sizes, int quantity = 20)
+                {
+                    var variants = new List<ProductVariant>();
+                    int idx = 1;
+                    foreach (var color in colors)
+                    {
+                        foreach (var size in sizes)
+                        {
+                            if (variants.Count >= 5) break;
+                            variants.Add(new ProductVariant
+                            {
+                                Product = product,
+                                Color = Enum.Parse<ProductColor>(color),
+                                Size = Enum.Parse<ProductSize>(size),
+                                VariantSku = $"{baseSku}-{color.ToUpper()}-{size.ToUpper()}",
+                                Quantity = quantity,
+                                PriceAdjustment = 0,
+                                ImageUrl = $"/images/products/{baseSku.ToLower()}-{color.ToLower()}-{size.ToLower()}.jpg",
+                                IsActive = true
+                            });
+                            idx++;
+                        }
+                        if (variants.Count >= 5) break;
+                    }
+                    return variants;
+                }
+
+                // T-Shirt
                 var tshirtCategory = categories.FirstOrDefault(c => c.Name == "T-Shirt");
                 if (tshirtCategory != null)
                 {
-                    products.AddRange(new[]
-{
-    new Product
-    {
-        Name = "Basic Cotton T-Shirt White",
-        Description = "100% cotton basic t-shirt in white color. Perfect for custom designs.",
-        Price = 150000,
-        SalePrice = 120000,
-        Sku = "TSHIRT-WHITE-001",
-        Quantity = 100,
-        CategoryId = tshirtCategory.Id,
-        Material = ProductMaterial.Cotton100,
-        Season = ProductSeason.AllSeason,
-        // Sử dụng thuộc tính JSON thay vì List
-        AvailableColorsJson = "[\"White\", \"Black\", \"Navy\", \"Gray\", \"Red\"]",
-        AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-        Images = "[\"/images/products/tshirt-white-1.jpg\", \"/images/products/tshirt-white-2.jpg\"]",
-        Status = ProductStatus.Active,
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow,
-        CreatedBy = adminUser.Id,
-        UpdatedBy = adminUser.Id
-    },
-    new Product
-    {
-        Name = "Basic Cotton T-Shirt Black",
-        Description = "100% cotton basic t-shirt in black color. Classic and versatile.",
-        Price = 150000,
-        SalePrice = 120000,
-        Sku = "TSHIRT-BLACK-002",
-        Quantity = 100,
-        CategoryId = tshirtCategory.Id,
-        Material = ProductMaterial.Cotton100,
-        Season = ProductSeason.AllSeason,
-        AvailableColorsJson = "[\"Black\", \"White\", \"Navy\", \"Gray\", \"Red\"]",
-        AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-        Images = "[\"/images/products/tshirt-black-1.jpg\", \"/images/products/tshirt-black-2.jpg\"]",
-        Status = ProductStatus.Active,
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow,
-        CreatedBy = adminUser.Id,
-        UpdatedBy = adminUser.Id
-    }
-});
+                    var tshirt1 = new Product
+                    {
+                        Name = "Basic Cotton T-Shirt White",
+                        Description = "100% cotton basic t-shirt in white color. Perfect for custom designs.",
+                        Price = 150000,
+                        SalePrice = 120000,
+                        Sku = "TSHIRT-WHITE-001",
+                        Slug = "basic-cotton-t-shirt-white",
+                        CategoryId = tshirtCategory.Id,
+                        Status = ProductStatus.Active,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        CreatedBy = adminUser.Id,
+                        UpdatedBy = adminUser.Id,
+                    };
+                    tshirt1.Variants = GenerateVariants(tshirt1, "TSHIRT-WHITE-001", new List<string> { "White", "Black", "Navy", "Gray", "Red" }, new List<string> { "S", "M", "L", "XL", "XXL" });
+
+                    var tshirt2 = new Product
+                    {
+                        Name = "Basic Cotton T-Shirt Black",
+                        Description = "100% cotton basic t-shirt in black color. Classic and versatile.",
+                        Price = 150000,
+                        SalePrice = 120000,
+                        Sku = "TSHIRT-BLACK-002",
+                        Slug = "basic-cotton-t-shirt-black",
+                        CategoryId = tshirtCategory.Id,
+                        Status = ProductStatus.Active,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        CreatedBy = adminUser.Id,
+                        UpdatedBy = adminUser.Id,
+                    };
+                    tshirt2.Variants = GenerateVariants(tshirt2, "TSHIRT-BLACK-002", new List<string> { "Black", "White", "Navy", "Gray", "Red" }, new List<string> { "S", "M", "L", "XL", "XXL" });
+
+                    products.Add(tshirt1);
+                    products.Add(tshirt2);
                 }
 
-                // Polo products
+                // Polo
                 var poloCategory = categories.FirstOrDefault(c => c.Name == "Polo");
                 if (poloCategory != null)
                 {
-                    products.AddRange(new[]
+                    var polo1 = new Product
                     {
-        new Product
-        {
-            Name = "Classic Polo Shirt Blue",
-            Description = "Cotton blend polo shirt with ribbed collar. Professional and comfortable.",
-            Price = 220000,
-            SalePrice = 180000,
-            Sku = "POLO-BLUE-001",
-            Quantity = 80,
-            CategoryId = poloCategory.Id,
-            Material = ProductMaterial.CottonPolyester,
-            Season = ProductSeason.AllSeason,
-            AvailableColorsJson = "[\"Blue\", \"White\", \"Black\", \"Navy\", \"Gray\"]",
-            AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-            Images = "[\"/images/products/polo-blue-1.jpg\", \"/images/products/polo-blue-2.jpg\"]",
-            Status = ProductStatus.Active,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            CreatedBy = adminUser.Id,
-            UpdatedBy = adminUser.Id
-        }
-    });
+                        Name = "Classic Polo Shirt Blue",
+                        Description = "Cotton blend polo shirt with ribbed collar. Professional and comfortable.",
+                        Price = 220000,
+                        SalePrice = 180000,
+                        Sku = "POLO-BLUE-001",
+                        Slug = "classic-polo-shirt-blue",
+                        CategoryId = poloCategory.Id,
+                        Status = ProductStatus.Active,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        CreatedBy = adminUser.Id,
+                        UpdatedBy = adminUser.Id,
+                    };
+                    polo1.Variants = GenerateVariants(polo1, "POLO-BLUE-001", new List<string> { "Blue", "White", "Black", "Navy", "Gray" }, new List<string> { "S", "M", "L", "XL", "XXL" });
+
+                    products.Add(polo1);
                 }
 
-                // Hoodie products
+                // Hoodie
                 var hoodieCategory = categories.FirstOrDefault(c => c.Name == "Hoodie");
                 if (hoodieCategory != null)
                 {
-                    products.AddRange(new[]
+                    var hoodie1 = new Product
                     {
-        new Product
-        {
-            Name = "Premium Hoodie Gray",
-            Description = "Premium fleece hoodie with front pockets. Perfect for cold weather.",
-            Price = 350000,
-            SalePrice = 300000,
-            Sku = "HOODIE-GRAY-001",
-            Quantity = 50,
-            CategoryId = hoodieCategory.Id,
-            Material = ProductMaterial.Cotton100,
-            Season = ProductSeason.Winter,
-            AvailableColorsJson = "[\"Gray\", \"Black\", \"Navy\", \"White\"]",
-            AvailableSizesJson = "[\"S\", \"M\", \"L\", \"XL\", \"XXL\"]",
-            Images = "[\"/images/products/hoodie-gray-1.jpg\", \"/images/products/hoodie-gray-2.jpg\"]",
-            Status = ProductStatus.Active,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            CreatedBy = adminUser.Id,
-            UpdatedBy = adminUser.Id
-        }
-    });
+                        Name = "Premium Hoodie Gray",
+                        Description = "Premium fleece hoodie with front pockets. Perfect for cold weather.",
+                        Price = 350000,
+                        SalePrice = 300000,
+                        Sku = "HOODIE-GRAY-001",
+                        Slug = "premium-hoodie-gray",
+                        CategoryId = hoodieCategory.Id,
+                        Status = ProductStatus.Active,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        CreatedBy = adminUser.Id,
+                        UpdatedBy = adminUser.Id,
+                    };
+                    hoodie1.Variants = GenerateVariants(hoodie1, "HOODIE-GRAY-001", new List<string> { "Gray", "Black", "Navy", "White" }, new List<string> { "S", "M", "L", "XL", "XXL" });
+
+                    products.Add(hoodie1);
                 }
 
                 if (products.Any())
                 {
                     await context.Products.AddRangeAsync(products);
                     await context.SaveChangesAsync();
-                    Console.WriteLine($"{products.Count} products seeded successfully");
+                    Console.WriteLine($"{products.Count} products seeded successfully (with 5 variants each)");
                 }
             }
         }

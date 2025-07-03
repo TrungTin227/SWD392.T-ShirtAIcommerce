@@ -1,46 +1,40 @@
 ﻿using BusinessObjects.Cart;
+using BusinessObjects.Identity;
 using BusinessObjects.Orders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BusinessObjects.Products
 {
-    public class ProductVariant
+    public class ProductVariant : BaseEntity
     {
         [Key]
-        public Guid Id { get; set; } = Guid.NewGuid();
-
-        [Required]
+        public Guid Id { get; set; }
         public Guid ProductId { get; set; }
 
-        [Required(ErrorMessage = "Màu sắc là bắt buộc")]
+        [Required]
         public ProductColor Color { get; set; }
 
-        [Required(ErrorMessage = "Kích thước là bắt buộc")]
+        [Required]
         public ProductSize Size { get; set; }
 
-        [Required(ErrorMessage = "SKU biến thể là bắt buộc")]
         [MaxLength(100)]
-        public string VariantSku { get; set; } = string.Empty;
+        public string? VariantSku { get; set; }
 
-        [Range(0, int.MaxValue, ErrorMessage = "Số lượng phải >= 0")]
         public int Quantity { get; set; } = 0;
 
-        [Range(0, double.MaxValue)]
         [Column(TypeName = "decimal(12,2)")]
-        public decimal? PriceAdjustment { get; set; } = 0; // Điều chỉnh giá so với sản phẩm gốc
+        public decimal? PriceAdjustment { get; set; } = 0m;
 
         [MaxLength(500)]
         public string? ImageUrl { get; set; }
 
         public bool IsActive { get; set; } = true;
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-
-        // Navigation properties
-        [ForeignKey("ProductId")]
+        // Navigation back to parent product
         public virtual Product Product { get; set; } = null!;
+
+        // Relations to cart and orders
         public virtual ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
     }

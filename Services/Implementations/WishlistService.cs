@@ -345,6 +345,9 @@ namespace Services.Implementations
 
         private async Task<WishlistItemDto> MapToWishlistItemDto(WishlistItem wishlistItem)
         {
+            int totalStock = wishlistItem.Product?.Variants?.Sum(v => v.Quantity) ?? 0;
+            string? imageUrl = wishlistItem.Product?.Images?.OrderByDescending(i => i.IsPrimary).FirstOrDefault()?.Url;
+
             return await Task.FromResult(new WishlistItemDto
             {
                 Id = wishlistItem.Id,
@@ -352,11 +355,11 @@ namespace Services.Implementations
                 UserName = wishlistItem.User?.UserName ?? "Unknown User",
                 ProductId = wishlistItem.ProductId,
                 ProductName = wishlistItem.Product?.Name ?? "Unknown Product",
-                ProductImageUrl = GetFirstImageFromJson(wishlistItem.Product?.Images),
+                ProductImageUrl = imageUrl,
                 ProductPrice = wishlistItem.Product?.Price ?? 0,
                 ProductDescription = wishlistItem.Product?.Description,
                 IsProductAvailable = wishlistItem.Product?.Status == ProductStatus.Active,
-                ProductStock = wishlistItem.Product?.Quantity ?? 0,
+                ProductStock = totalStock,
                 CreatedAt = wishlistItem.CreatedAt
             });
         }
@@ -365,22 +368,6 @@ namespace Services.Implementations
         {
             // This would need to check user roles - simplified implementation
             return false; // Implement based on your user context
-        }
-
-        private static string? GetFirstImageFromJson(string? imagesJson)
-        {
-            if (string.IsNullOrEmpty(imagesJson))
-                return null;
-
-            try
-            {
-                var images = System.Text.Json.JsonSerializer.Deserialize<List<string>>(imagesJson);
-                return images?.FirstOrDefault();
-            }
-            catch
-            {
-                return null;
-            }
         }
     }
 }

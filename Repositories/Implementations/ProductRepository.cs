@@ -2,8 +2,8 @@
 using DTOs.Product;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;
+using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
-using Repositories.WorkSeeds.Interfaces;
 
 namespace Repositories.Implementations
 {
@@ -17,7 +17,9 @@ namespace Repositories.Implementations
         {
             IQueryable<Product> query = GetQueryable();
 
-            query = query.Include(p => p.Category);
+            // Nếu có navigation property Category, hãy Include nếu cần filter/hiển thị category name
+            query = query.Include(p => p.Variants)
+                         .Include(p => p.Images);
 
             if (!string.IsNullOrWhiteSpace(filter.Name))
                 query = query.Where(x => x.Name.Contains(filter.Name));
@@ -31,30 +33,21 @@ namespace Repositories.Implementations
             if (filter.Status.HasValue)
                 query = query.Where(x => x.Status == filter.Status.Value);
 
+            // Price filter applies to base price of product
             if (filter.MinPrice.HasValue)
                 query = query.Where(x => x.Price >= filter.MinPrice.Value);
 
             if (filter.MaxPrice.HasValue)
                 query = query.Where(x => x.Price <= filter.MaxPrice.Value);
 
-            if (filter.IsFeatured.HasValue)
-                query = query.Where(x => x.IsFeatured == filter.IsFeatured.Value);
-
-            if (filter.IsBestseller.HasValue)
-                query = query.Where(x => x.IsBestseller == filter.IsBestseller.Value);
-
+            // InStock filter: kiểm tra có ít nhất 1 variant còn hàng
             if (filter.InStock.HasValue)
-                query = filter.InStock.Value
-                    ? query.Where(x => x.Quantity > 0)
-                    : query.Where(x => x.Quantity == 0);
-
-            // Filter by Material (enum)
-            if (filter.Material.HasValue)
-                query = query.Where(x => x.Material == filter.Material.Value);
-
-            // Filter by Season (enum)
-            if (filter.Season.HasValue)
-                query = query.Where(x => x.Season == filter.Season.Value);
+            {
+                if (filter.InStock.Value)
+                    query = query.Where(x => x.Variants.Any(v => v.Quantity > 0 && v.IsActive));
+                else
+                    query = query.Where(x => !x.Variants.Any(v => v.Quantity > 0 && v.IsActive));
+            }
 
             if (filter.CreatedFrom.HasValue)
                 query = query.Where(x => x.CreatedAt >= filter.CreatedFrom.Value);
@@ -94,46 +87,27 @@ namespace Repositories.Implementations
             return await AnyAsync(x => x.Slug == slug && !x.IsDeleted);
         }
 
+        // Trả về sản phẩm có nhiều variant bán chạy nhất (có thể cần custom thêm logic)
         public async Task<List<Product>> GetBestSellersAsync(int count = 10)
         {
+            // Nếu muốn sort theo tổng sold count từ các variant, cần điều chỉnh lại model và select cho phù hợp
             return await GetQueryable()
                 .Where(x => !x.IsDeleted && x.Status == ProductStatus.Active)
-                .OrderByDescending(x => x.SoldCount)
-                .Take(count)
-                .ToListAsync();
-        }
-
-        public async Task<List<Product>> GetFeaturedAsync(int count = 10)
-        {
-            return await GetQueryable()
-                .Where(x => !x.IsDeleted && x.Status == ProductStatus.Active && x.IsFeatured)
+                .Include(x => x.Variants)
+                // .OrderByDescending(x => x.Variants.Sum(v => v.SoldCount)) // nếu ProductVariant có SoldCount
                 .OrderByDescending(x => x.CreatedAt)
                 .Take(count)
                 .ToListAsync();
         }
 
-        public async Task UpdateViewCountAsync(Guid id)
+        // Trả về sản phẩm nổi bật (nếu cần trường IsFeatured thì thêm vào Product)
+        public async Task<List<Product>> GetFeaturedAsync(int count = 10)
         {
-            var product = await GetByIdAsync(id);
-            if (product != null && !product.IsDeleted)
-            {
-                product.ViewCount++;
-                await UpdateAsync(product);
-            }
-        }
-
-        public async Task UpdateSoldCountAsync(Guid id, int quantity)
-        {
-            var product = await GetByIdAsync(id);
-            if (product != null && !product.IsDeleted)
-            {
-                product.SoldCount += quantity;
-                if (product.Quantity >= quantity)
-                {
-                    product.Quantity -= quantity;
-                }
-                await UpdateAsync(product);
-            }
+            return await GetQueryable()
+                .Where(x => !x.IsDeleted && x.Status == ProductStatus.Active)
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(count)
+                .ToListAsync();
         }
 
         private static IQueryable<Product> ApplySorting(IQueryable<Product> query, string? sortBy, string? sortDirection)
@@ -144,8 +118,6 @@ namespace Repositories.Implementations
             {
                 "name" => isDescending ? query.OrderByDescending(x => x.Name) : query.OrderBy(x => x.Name),
                 "price" => isDescending ? query.OrderByDescending(x => x.Price) : query.OrderBy(x => x.Price),
-                "soldcount" => isDescending ? query.OrderByDescending(x => x.SoldCount) : query.OrderBy(x => x.SoldCount),
-                "viewcount" => isDescending ? query.OrderByDescending(x => x.ViewCount) : query.OrderBy(x => x.ViewCount),
                 _ => isDescending ? query.OrderByDescending(x => x.CreatedAt) : query.OrderBy(x => x.CreatedAt)
             };
         }

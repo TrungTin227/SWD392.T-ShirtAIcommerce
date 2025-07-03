@@ -19,10 +19,10 @@ namespace Services.Helpers
             {
                 if (item.ProductId.HasValue && products.TryGetValue(item.ProductId.Value, out var product))
                 {
-                    if (product.Quantity < item.Quantity)
-                    {
-                        errors.Add($"Sản phẩm '{product.Name}' không đủ số lượng trong kho. Còn lại: {product.Quantity}, yêu cầu: {item.Quantity}");
-                    }
+                    //if (product.Quantity < item.Quantity)
+                    //{
+                    //    errors.Add($"Sản phẩm '{product.Name}' không đủ số lượng trong kho. Còn lại: {product.Quantity}, yêu cầu: {item.Quantity}");
+                    //}
                 }
 
                 if (item.ProductVariantId.HasValue && variants.TryGetValue(item.ProductVariantId.Value, out var variant))
@@ -124,19 +124,19 @@ namespace Services.Helpers
             // Check products
             foreach (var product in products.Where(p => !p.IsDeleted && p.Status == ProductStatus.Active))
             {
-                if (product.Quantity <= lowStockThreshold)
-                {
-                    alerts.Add(new LowStockAlert
-                    {
-                        Type = "Product",
-                        ItemId = product.Id,
-                        ItemName = product.Name,
-                        CurrentStock = product.Quantity,
-                        Threshold = lowStockThreshold,
-                        Severity = product.Quantity == 0 ? "Critical" : "Warning",
-                        SuggestedReorderQuantity = CalculateReorderQuantity(product.Quantity, product.SoldCount)
-                    });
-                }
+                //if (product.Quantity <= lowStockThreshold)
+                //{
+                //    alerts.Add(new LowStockAlert
+                //    {
+                //        Type = "Product",
+                //        ItemId = product.Id,
+                //        ItemName = product.Name,
+                //        //CurrentStock = product.Quantity,
+                //        Threshold = lowStockThreshold,
+                //        //Severity = product.Quantity == 0 ? "Critical" : "Warning",
+                //        //SuggestedReorderQuantity = CalculateReorderQuantity(product.Quantity, product.SoldCount)
+                //    });
+                //}
             }
 
             // Check variants

@@ -9,8 +9,7 @@ namespace BusinessObjects.Payments
     {
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
-
-        [Required]
+    
         public Guid OrderId { get; set; }
 
         [Required]

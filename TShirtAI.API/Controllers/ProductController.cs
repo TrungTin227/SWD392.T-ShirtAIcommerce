@@ -71,13 +71,6 @@ namespace Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("{id}/view")]
-        public async Task<IActionResult> UpdateViewCount(Guid id)
-        {
-            var result = await _productService.UpdateViewCountAsync(id);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
         [HttpPost("bulk-delete")]
         public async Task<IActionResult> BulkDelete([FromBody] BatchIdsRequest request)
         {

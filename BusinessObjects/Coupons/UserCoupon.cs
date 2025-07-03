@@ -11,8 +11,6 @@ namespace BusinessObjects.Coupons
 
         [Required]
         public Guid UserId { get; set; }
-
-        [Required]
         public Guid CouponId { get; set; }
 
         [Range(0, int.MaxValue)]

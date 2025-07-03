@@ -110,11 +110,11 @@ namespace Repositories.Implementations
                 UserName = w.User?.UserName ?? "Unknown User",
                 ProductId = w.ProductId,
                 ProductName = w.Product?.Name ?? "Unknown Product",
-                ProductImageUrl = GetFirstImageFromJson(w.Product?.Images),
+                //ProductImageUrl = GetFirstImageFromJson(w.Product?.Images),
                 ProductPrice = w.Product?.Price ?? 0,
                 ProductDescription = w.Product?.Description,
                 IsProductAvailable = w.Product?.Status == BusinessObjects.Products.ProductStatus.Active,
-                ProductStock = w.Product?.Quantity ?? 0,
+                //ProductStock = w.Product?.Quantity ?? 0,
                 CreatedAt = w.CreatedAt
             }).ToList();
 
@@ -140,7 +140,7 @@ namespace Repositories.Implementations
                 {
                     ProductId = g.Key,
                     ProductName = g.First().Product!.Name,
-                    ProductImageUrl = GetFirstImageFromJson(g.First().Product!.Images),
+                    //ProductImageUrl = GetFirstImageFromJson(g.First().Product!.Images),
                     WishlistCount = g.Count(),
                     ProductPrice = g.First().Product!.Price
                 })

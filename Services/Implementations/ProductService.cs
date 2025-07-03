@@ -97,26 +97,16 @@ namespace Services.Implementations
                 {
                     // Validate unique constraints
                     if (!string.IsNullOrWhiteSpace(dto.Sku) && await _productRepository.IsSkuExistsAsync(dto.Sku))
-                    {
                         return ApiResult<ProductDto>.Failure("SKU already exists");
-                    }
 
                     if (!string.IsNullOrWhiteSpace(dto.Slug) && await _productRepository.IsSlugExistsAsync(dto.Slug))
-                    {
                         return ApiResult<ProductDto>.Failure("Slug already exists");
-                    }
 
                     // Validate business rules
                     if (dto.SalePrice.HasValue && dto.SalePrice >= dto.Price)
-                    {
                         return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
-                    }
 
-                    if (dto.MinOrderQuantity > dto.MaxOrderQuantity)
-                    {
-                        return ApiResult<ProductDto>.Failure("Minimum order quantity cannot exceed maximum order quantity");
-                    }
-
+                    // Map & create product
                     var product = MapToEntity(dto);
                     var result = await CreateAsync(product);
                     return ApiResult<ProductDto>.Success(MapToDto(result));
@@ -136,41 +126,26 @@ namespace Services.Implementations
                 {
                     var product = await _productRepository.GetByIdAsync(id);
                     if (product == null || product.IsDeleted)
-                    {
                         return ApiResult<ProductDto>.Failure("Product not found");
-                    }
 
                     // Validate unique constraints
                     if (!string.IsNullOrWhiteSpace(dto.Sku) && dto.Sku != product.Sku)
                     {
                         if (await _productRepository.IsSkuExistsAsync(dto.Sku, id))
-                        {
                             return ApiResult<ProductDto>.Failure("SKU already exists");
-                        }
                     }
 
                     if (!string.IsNullOrWhiteSpace(dto.Slug) && dto.Slug != product.Slug)
                     {
                         if (await _productRepository.IsSlugExistsAsync(dto.Slug, id))
-                        {
                             return ApiResult<ProductDto>.Failure("Slug already exists");
-                        }
                     }
 
                     // Validate business rules
                     var salePrice = dto.SalePrice ?? product.SalePrice;
                     var price = dto.Price ?? product.Price;
                     if (salePrice.HasValue && salePrice >= price)
-                    {
                         return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
-                    }
-
-                    var minOrder = dto.MinOrderQuantity ?? product.MinOrderQuantity;
-                    var maxOrder = dto.MaxOrderQuantity ?? product.MaxOrderQuantity;
-                    if (minOrder > maxOrder)
-                    {
-                        return ApiResult<ProductDto>.Failure("Minimum order quantity cannot exceed maximum order quantity");
-                    }
 
                     // Update product
                     UpdateProductFromDto(product, dto);
@@ -334,19 +309,21 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<ApiResult<bool>> UpdateViewCountAsync(Guid id)
-        {
-            try
-            {
-                await _productRepository.UpdateViewCountAsync(id);
-                await _unitOfWork.SaveChangesAsync();
-                return ApiResult<bool>.Success(true, "View count updated successfully");
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<bool>.Failure($"Error updating view count: {ex.Message}", ex);
-            }
-        }
+        //public async Task<ApiResult<bool>> UpdateViewCountAsync(Guid id)
+        //{
+        //    try
+        //    {
+        //        await _productRepository.UpdateViewCountAsync(id);
+        //        await _unitOfWork.SaveChangesAsync();
+        //        return ApiResult<bool>.Success(true, "View count updated successfully");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        return ApiResult<bool>.Failure($"Error updating view count: {ex.Message}", ex);
+        //    }
+        //}
+
+        // ----------- ONLY map real entity fields below -----------
 
         private static ProductDto MapToDto(Product product)
         {
@@ -358,31 +335,19 @@ namespace Services.Implementations
                 Price = product.Price,
                 SalePrice = product.SalePrice,
                 Sku = product.Sku,
-                Quantity = product.Quantity,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,
                 Material = product.Material,
                 Season = product.Season,
-                Weight = product.Weight,
-                Dimensions = product.Dimensions,
                 MetaTitle = product.MetaTitle,
                 MetaDescription = product.MetaDescription,
                 Slug = product.Slug,
-                ViewCount = product.ViewCount,
-                SoldCount = product.SoldCount,
-                MinOrderQuantity = product.MinOrderQuantity,
-                MaxOrderQuantity = product.MaxOrderQuantity,
-                IsFeatured = product.IsFeatured,
-                IsBestseller = product.IsBestseller,
-                DiscountPercentage = product.DiscountPercentage,
-                AvailableColors = product.AvailableColors?.ToList(),
-                AvailableSizes = product.AvailableSizes?.ToList(),
-                Images = product.Images,
                 Status = product.Status,
                 CreatedAt = product.CreatedAt,
                 UpdatedAt = product.UpdatedAt,
                 CreatedBy = product.CreatedBy,
                 UpdatedBy = product.UpdatedBy
+                // You can add Images and Variants mapping if your DTO supports it
             };
         }
 
@@ -396,23 +361,12 @@ namespace Services.Implementations
                 Price = dto.Price,
                 SalePrice = dto.SalePrice,
                 Sku = dto.Sku,
-                Quantity = dto.Quantity,
                 CategoryId = dto.CategoryId,
                 Material = dto.Material,
                 Season = dto.Season,
-                Weight = dto.Weight,
-                Dimensions = dto.Dimensions,
                 MetaTitle = dto.MetaTitle,
                 MetaDescription = dto.MetaDescription,
                 Slug = dto.Slug,
-                MinOrderQuantity = dto.MinOrderQuantity,
-                MaxOrderQuantity = dto.MaxOrderQuantity,
-                IsFeatured = dto.IsFeatured,
-                IsBestseller = dto.IsBestseller,
-                DiscountPercentage = dto.DiscountPercentage,
-                AvailableColors = dto.AvailableColors ?? new List<ProductColor>(),
-                AvailableSizes = dto.AvailableSizes ?? new List<ProductSize>(),
-                Images = dto.Images,
                 Status = dto.Status
             };
         }
@@ -434,9 +388,6 @@ namespace Services.Implementations
             if (!string.IsNullOrWhiteSpace(dto.Sku))
                 product.Sku = dto.Sku;
 
-            if (dto.Quantity.HasValue)
-                product.Quantity = dto.Quantity.Value;
-
             if (dto.CategoryId.HasValue)
                 product.CategoryId = dto.CategoryId;
 
@@ -446,12 +397,6 @@ namespace Services.Implementations
             if (dto.Season.HasValue)
                 product.Season = dto.Season.Value;
 
-            if (dto.Weight.HasValue)
-                product.Weight = dto.Weight.Value;
-
-            if (!string.IsNullOrWhiteSpace(dto.Dimensions))
-                product.Dimensions = dto.Dimensions;
-
             if (!string.IsNullOrWhiteSpace(dto.MetaTitle))
                 product.MetaTitle = dto.MetaTitle;
 
@@ -460,30 +405,6 @@ namespace Services.Implementations
 
             if (!string.IsNullOrWhiteSpace(dto.Slug))
                 product.Slug = dto.Slug;
-
-            if (dto.MinOrderQuantity.HasValue)
-                product.MinOrderQuantity = dto.MinOrderQuantity.Value;
-
-            if (dto.MaxOrderQuantity.HasValue)
-                product.MaxOrderQuantity = dto.MaxOrderQuantity.Value;
-
-            if (dto.IsFeatured.HasValue)
-                product.IsFeatured = dto.IsFeatured.Value;
-
-            if (dto.IsBestseller.HasValue)
-                product.IsBestseller = dto.IsBestseller.Value;
-
-            if (dto.DiscountPercentage.HasValue)
-                product.DiscountPercentage = dto.DiscountPercentage.Value;
-
-            if (dto.AvailableColors != null)
-                product.AvailableColors = dto.AvailableColors.ToList();
-
-            if (dto.AvailableSizes != null)
-                product.AvailableSizes = dto.AvailableSizes.ToList();
-
-            if (dto.Images != null)
-                product.Images = dto.Images;
 
             if (dto.Status.HasValue)
                 product.Status = dto.Status.Value;

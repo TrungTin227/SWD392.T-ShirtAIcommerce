@@ -9,10 +9,10 @@ namespace Services.Helpers
         /// </summary>
         public static bool IsProductAvailable(Product product)
         {
+            // Không còn Quantity ở Product, chỉ kiểm tra trạng thái
             return product != null &&
                    !product.IsDeleted &&
-                   product.Status == ProductStatus.Active &&
-                   product.Quantity > 0;
+                   product.Status == ProductStatus.Active;
         }
 
         /// <summary>
@@ -51,14 +51,17 @@ namespace Services.Helpers
         }
 
         /// <summary>
-        /// Calculates available stock for a product
+        /// Calculates available stock for a product (tổng tồn kho tất cả variant active)
         /// </summary>
         public static int GetAvailableStock(Product product)
         {
-            if (product == null || !IsProductAvailable(product))
+            if (product == null || !IsProductAvailable(product) || product.Variants == null)
                 return 0;
 
-            return Math.Max(0, product.Quantity);
+            // Tổng số lượng của tất cả variant active
+            return product.Variants
+                .Where(v => v.IsActive)
+                .Sum(v => v.Quantity);
         }
 
         /// <summary>
@@ -76,19 +79,14 @@ namespace Services.Helpers
         /// Validates quantity limits for a product
         /// </summary>
         public static (bool IsValid, string ErrorMessage) ValidateQuantityLimits(
-            Product product, 
+            Product product,
             int requestedQuantity)
         {
             if (product == null)
                 return (false, "Sản phẩm không tồn tại");
 
-            if (requestedQuantity < product.MinOrderQuantity)
-                return (false, $"Số lượng đặt hàng tối thiểu là {product.MinOrderQuantity}");
-
-            if (requestedQuantity > product.MaxOrderQuantity)
-                return (false, $"Số lượng đặt hàng tối đa là {product.MaxOrderQuantity}");
-
-            var availableStock = GetAvailableStock(product);
+            // Nếu có logic MinOrderQuantity, MaxOrderQuantity ở Product thì giữ lại, nếu không thì bỏ
+            int availableStock = GetAvailableStock(product);
             if (requestedQuantity > availableStock)
                 return (false, $"Không đủ hàng trong kho. Còn lại: {availableStock}");
 
@@ -96,21 +94,18 @@ namespace Services.Helpers
         }
 
         /// <summary>
-        /// Validates if product can be ordered with specific color and size
+        /// Validates quantity limits for a product variant
         /// </summary>
-        public static (bool IsValid, string ErrorMessage) ValidateProductVariant(
-            Product product,
-            ProductColor? color,
-            ProductSize? size)
+        public static (bool IsValid, string ErrorMessage) ValidateQuantityLimits(
+            ProductVariant variant,
+            int requestedQuantity)
         {
-            if (product == null)
-                return (false, "Sản phẩm không tồn tại");
+            if (variant == null)
+                return (false, "Biến thể sản phẩm không tồn tại");
 
-            if (color.HasValue && !product.AvailableColors.Contains(color.Value))
-                return (false, $"Màu {color.Value} không có sẵn cho sản phẩm này");
-
-            if (size.HasValue && !product.AvailableSizes.Contains(size.Value))
-                return (false, $"Size {size.Value} không có sẵn cho sản phẩm này");
+            int availableStock = GetAvailableStock(variant);
+            if (requestedQuantity > availableStock)
+                return (false, $"Không đủ hàng trong kho. Còn lại: {availableStock}");
 
             return (true, string.Empty);
         }
@@ -146,29 +141,9 @@ namespace Services.Helpers
         }
 
         /// <summary>
-        /// Updates inventory after order placement
+        /// Updates inventory after order placement (for variant)
         /// </summary>
-        public static (bool Success, string ErrorMessage) ReserveInventory(
-            Product product, 
-            int quantity)
-        {
-            if (product == null)
-                return (false, "Sản phẩm không tồn tại");
-
-            if (product.Quantity < quantity)
-                return (false, "Không đủ hàng trong kho");
-
-            // This would typically be handled in the repository/service layer
-            // but we provide the business logic here
-            return (true, string.Empty);
-        }
-
-        /// <summary>
-        /// Updates inventory for product variant after order placement
-        /// </summary>
-        public static (bool Success, string ErrorMessage) ReserveInventory(
-            ProductVariant variant, 
-            int quantity)
+        public static (bool Success, string ErrorMessage) ReserveInventory(ProductVariant variant, int quantity)
         {
             if (variant == null)
                 return (false, "Biến thể sản phẩm không tồn tại");
@@ -176,16 +151,8 @@ namespace Services.Helpers
             if (variant.Quantity < quantity)
                 return (false, "Không đủ hàng trong kho");
 
+            // Thường cập nhật trong repository/service
             return (true, string.Empty);
-        }
-
-        /// <summary>
-        /// Restores inventory after order cancellation
-        /// </summary>
-        public static void RestoreInventory(Product product, int quantity)
-        {
-            // Business logic for inventory restoration
-            // Actual implementation would be in repository layer
         }
 
         /// <summary>
@@ -198,7 +165,7 @@ namespace Services.Helpers
         }
 
         /// <summary>
-        /// Validates product data for creation/update
+        /// Validates product data for creation/update (chỉ kiểm tra các trường còn lại)
         /// </summary>
         public static (bool IsValid, List<string> Errors) ValidateProductData(Product product)
         {
@@ -213,17 +180,7 @@ namespace Services.Helpers
             if (product?.SalePrice != null && product.SalePrice >= product.Price)
                 errors.Add("Giá khuyến mãi phải nhỏ hơn giá gốc");
 
-            if (product?.Quantity < 0)
-                errors.Add("Số lượng không được âm");
-
-            if (product?.MinOrderQuantity < 1)
-                errors.Add("Số lượng đặt hàng tối thiểu phải >= 1");
-
-            if (product?.MaxOrderQuantity < product?.MinOrderQuantity)
-                errors.Add("Số lượng đặt hàng tối đa phải >= số lượng tối thiểu");
-
-            if (product?.Weight <= 0)
-                errors.Add("Trọng lượng phải lớn hơn 0");
+            // Có thể bổ sung validate khác cho Material, Season, Sku, Slug...
 
             return (!errors.Any(), errors);
         }

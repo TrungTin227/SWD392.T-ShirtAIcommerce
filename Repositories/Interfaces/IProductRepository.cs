@@ -1,8 +1,9 @@
 ﻿using BusinessObjects.Products;
 using Repositories.Helpers;
 using DTOs.Product;
+using Repositories.WorkSeeds.Interfaces;
 
-namespace Repositories.WorkSeeds.Interfaces
+namespace Repositories.Interfaces
 {
     public interface IProductRepository : IGenericRepository<Product, Guid>
     {
@@ -12,7 +13,5 @@ namespace Repositories.WorkSeeds.Interfaces
         Task<bool> IsSlugExistsAsync(string slug, Guid? excludeId = null);
         Task<List<Product>> GetBestSellersAsync(int count = 10);
         Task<List<Product>> GetFeaturedAsync(int count = 10);
-        Task UpdateViewCountAsync(Guid id);
-        Task UpdateSoldCountAsync(Guid id, int quantity);
     }
 }
