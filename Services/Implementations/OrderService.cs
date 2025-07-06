@@ -1,8 +1,6 @@
 ﻿using BusinessObjects.Cart;
-using BusinessObjects.CustomDesigns;
 using BusinessObjects.Orders;
 using BusinessObjects.Products;
-using DTOs.Cart;
 using DTOs.Common;
 using DTOs.Coupons;
 using DTOs.OrderItem;
@@ -12,7 +10,7 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
 using Services.Helpers;
-using Services.Helpers.Mapers;
+using Services.Helpers.Mappers;
 using Services.Interfaces;
 
 namespace Services.Implementations
@@ -20,8 +18,8 @@ namespace Services.Implementations
     public class OrderService : BaseService<Order, Guid>, IOrderService
     {
         private readonly IOrderRepository _orderRepository;
-        private readonly IOrderItemRepository _orderItemRepository; // Add this
-        private readonly ICartItemService _cartItemService; // Add this
+        private readonly IOrderItemRepository _orderItemRepository; 
+        private readonly ICartItemService _cartItemService;
         private readonly IUserAddressService _userAddressService;
         private readonly ICouponService _couponService;
         private readonly IShippingMethodService _shippingMethodService;
@@ -29,8 +27,8 @@ namespace Services.Implementations
 
         public OrderService(
             IOrderRepository repository,
-            IOrderItemRepository orderItemRepository, // Add this
-            ICartItemService cartItemService, // Add this
+            IOrderItemRepository orderItemRepository, 
+            ICartItemService cartItemService, 
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
             ICurrentTime currentTime,

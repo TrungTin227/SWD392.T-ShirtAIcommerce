@@ -112,10 +112,6 @@ namespace WebAPI.Controllers
                 {
                     unitPrice = await _cartItemService.GetUnitPriceFromProductVariant(createDto.ProductVariantId.Value);
                 }
-                else if (createDto.ProductId.HasValue)
-                {
-                    unitPrice = await _cartItemService.GetUnitPriceFromProduct(createDto.ProductId.Value);
-                }
                 else
                 {
                     return BadRequest(new ErrorResponse { Message = "Không xác định được sản phẩm để lấy giá" });
@@ -125,7 +121,6 @@ namespace WebAPI.Controllers
                 {
                     UserId = userId,
                     SessionId = userId.HasValue ? null : sessionId,
-                    ProductId = createDto.ProductId,
                     CustomDesignId = createDto.CustomDesignId,
                     ProductVariantId = createDto.ProductVariantId,
                     Quantity = createDto.Quantity,
@@ -342,7 +337,6 @@ namespace WebAPI.Controllers
                 // Convert to internal DTOs
                 var internalItems = items.Select(item => new InternalCreateCartItemDto
                 {
-                    ProductId = item.ProductId,
                     CustomDesignId = item.CustomDesignId,
                     ProductVariantId = item.ProductVariantId,
                     Quantity = item.Quantity,

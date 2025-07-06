@@ -9,7 +9,7 @@ using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
 using Services.Extensions;
 using Services.Helpers;
-using Services.Helpers.Mapers;
+using Services.Helpers.Mappers;
 using Services.Interfaces;
 using System.Data;
 

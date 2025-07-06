@@ -4,9 +4,8 @@ using DTOs.UserDTOs.Identities;
 using DTOs.UserDTOs.Request;
 using DTOs.UserDTOs.Response;
 using Microsoft.AspNetCore.Identity;
-using System.ComponentModel.DataAnnotations;
 
-namespace Services.Helpers.Mapers
+namespace Services.Helpers.Mappers
 {
     public static class UserMappings
     {

@@ -3,7 +3,7 @@ using DTOs.Products;
 using Repositories.Commons;
 using Repositories.Helpers;
 
-namespace Services.Mappers
+namespace Services.Helpers.Mappers
 {
     public static class ProductVariantMapper
     {

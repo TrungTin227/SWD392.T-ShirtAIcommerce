@@ -1,12 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using BusinessObjects.Cart;
+﻿using BusinessObjects.Cart;
 using BusinessObjects.Orders;
 using DTOs.OrderItem;
 using Repositories.Helpers;
 
-namespace Services.Helpers.Mapers
+namespace Services.Helpers.Mappers
 {
     public static class OrderItemMapper
     {

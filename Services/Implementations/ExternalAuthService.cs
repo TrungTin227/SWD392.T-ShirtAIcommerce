@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Repositories.Commons;
-using Services.Helpers.Mapers;
+using Services.Helpers.Mappers;
 using Services.Interfaces;
 using System.Security.Claims;
 
