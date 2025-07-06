@@ -2,7 +2,7 @@
 using Services.Interfaces;
 using System.ComponentModel.DataAnnotations;
 
-namespace WebAPI.Controllers.User
+namespace WebAPI.Controllers
 {
     [ApiController]
     [Route("api/shipping-methods")]
