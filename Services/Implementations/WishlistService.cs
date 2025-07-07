@@ -307,7 +307,7 @@ namespace Services.Implementations
                 foreach (var wishlistItem in itemsToMove)
                 {
                     // Check if product is already in cart
-                    var existingCartItem = await _cartItemRepository.FindExistingCartItemAsync(userId, null, wishlistItem.ProductId, null, null);
+                    var existingCartItem = await _cartItemRepository.FindExistingCartItemAsync(userId, null, null, null);
                     
                     if (existingCartItem == null && wishlistItem.Product != null)
                     {

@@ -52,8 +52,6 @@ namespace Services.Helpers
         {
             if (updateDto.Quantity <= 0)
                 return ApiResult<CartItemDto>.Failure("Số lượng không hợp lệ");
-            if (updateDto.UnitPrice <= 0)
-                return ApiResult<CartItemDto>.Failure("Đơn giá không hợp lệ");
             return ApiResult<CartItemDto>.Success(null);
         }
     }

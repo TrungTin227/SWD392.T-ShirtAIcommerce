@@ -1,30 +1,22 @@
 ﻿using BusinessObjects.Cart;
 using DTOs.Cart;
 using Repositories.Commons;
-using Repositories.Helpers;
 
 namespace Services.Interfaces
 {
     public interface ICartItemService
     {
         Task<ApiResult<CartItemDto>> GetByIdAsync(Guid id);
-        Task<ApiResult<PagedList<CartItemDto>>> GetCartItemsAsync(CartItemQueryDto query);
         Task<ApiResult<IEnumerable<CartItemDto>>> GetUserCartItemsAsync(Guid userId);
         Task<ApiResult<IEnumerable<CartItemDto>>> GetSessionCartItemsAsync(string sessionId);
         Task<ApiResult<CartSummaryDto>> GetCartSummaryAsync(Guid? userId, string? sessionId);
-        Task<ApiResult<CartItemDto>> AddToCartAsync(InternalCreateCartItemDto createDto);
         Task<ApiResult<CartItemDto>> UpdateCartItemAsync(Guid id, UpdateCartItemDto updateDto);
-        Task<ApiResult<bool>> RemoveFromCartAsync(Guid id);
         Task<ApiResult<bool>> ClearCartAsync(Guid? userId, string? sessionId);
         Task<ApiResult<bool>> MergeGuestCartToUserAsync(string sessionId, Guid userId);
-        Task<ApiResult<int>> GetCartItemCountAsync(Guid? userId, string? sessionId);
-        Task<ApiResult<decimal>> GetCartTotalAsync(Guid? userId, string? sessionId);
         Task<decimal> GetUnitPriceFromProduct(Guid productId);
         Task<decimal> GetUnitPriceFromProductVariant(Guid productVariantId);
 
-        Task<ApiResult<IEnumerable<CartItemDto>>> GetCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
         Task<ApiResult<bool>> ClearCartItemsByIdsAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
-        Task<ApiResult<IEnumerable<CartItem>>> GetCartItemsForCheckoutAsync(Guid? userId, string? sessionId);
         /// <summary>
         /// Kiểm tra cart có thể checkout không
         /// </summary>
@@ -58,26 +50,6 @@ namespace Services.Interfaces
         /// Bulk xóa nhiều items khỏi giỏ hàng
         /// </summary>
         Task<ApiResult<bool>> BulkRemoveFromCartAsync(List<Guid> cartItemIds, Guid? userId, string? sessionId);
-
-        /// <summary>
-        /// Lấy giỏ hàng đã hết hạn để dọn dẹp
-        /// </summary>
-        Task<ApiResult<List<Guid>>> GetExpiredCartItemsAsync(TimeSpan expirationTime);
-
-        /// <summary>
-        /// Dọn dẹp giỏ hàng đã hết hạn
-        /// </summary>
-        Task<ApiResult<bool>> CleanupExpiredCartItemsAsync(TimeSpan expirationTime);
-
-        /// <summary>
-        /// Khôi phục giỏ hàng cho người dùng
-        /// </summary>
-        Task<ApiResult<List<CartItemDto>>> RecoverAbandonedCartAsync(Guid userId, DateTime fromDate);
-
-        /// <summary>
-        /// Validate tồn kho real-time cho giỏ hàng
-        /// </summary>
-        Task<ApiResult<CartValidationDto>> ValidateCartInventoryAsync(Guid? userId, string? sessionId);
 
         /// <summary>
         /// Lấy thống kê giỏ hàng

@@ -13,7 +13,7 @@ namespace Repositories.Interfaces
         Task<IEnumerable<CartItem>> GetUserCartItemsAsync(Guid userId);
         Task<IEnumerable<CartItem>> GetSessionCartItemsAsync(string sessionId);
         Task<CartItem?> GetWithDetailsAsync(Guid id);
-        Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productId, Guid? customDesignId, Guid? productVariantId);
+        Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? customDesignId, Guid? productVariantId);
         Task<bool> ClearUserCartAsync(Guid userId);
         Task<bool> ClearSessionCartAsync(string sessionId);
         Task<decimal> GetCartTotalAsync(Guid? userId, string? sessionId);

@@ -70,16 +70,41 @@ namespace Repositories.Implementations
                 ci => ci.ProductVariant);
         }
 
-        public async Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productId, Guid? customDesignId, Guid? productVariantId)
+        public async Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productVariantId, Guid? customDesignId)
         {
-            Expression<Func<CartItem, bool>> predicate = ci =>
-                ci.UserId == userId &&
-                ci.SessionId == sessionId &&
-                ci.ProductId == productId &&
-                ci.CustomDesignId == customDesignId &&
-                ci.ProductVariantId == productVariantId;
+            // Must have at least one item identifier
+            if (!productVariantId.HasValue && !customDesignId.HasValue)
+                return null;
 
-            return await FirstOrDefaultAsync(predicate);
+            // Must have user or session identifier
+            if (!userId.HasValue && string.IsNullOrEmpty(sessionId))
+                return null;
+
+            // Build the base query
+            IQueryable<CartItem> query = _context.Set<CartItem>();
+
+            // Add user/session filter
+            if (userId.HasValue)
+            {
+                query = query.Where(ci => ci.UserId == userId.Value);
+            }
+            else
+            {
+                query = query.Where(ci => ci.SessionId == sessionId && ci.UserId == null);
+            }
+
+            // Add item-specific filters
+            if (productVariantId.HasValue)
+            {
+                query = query.Where(ci => ci.ProductVariantId == productVariantId.Value);
+            }
+
+            if (customDesignId.HasValue)
+            {
+                query = query.Where(ci => ci.CustomDesignId == customDesignId.Value);
+            }
+
+            return await query.FirstOrDefaultAsync();
         }
 
         public async Task<bool> ClearUserCartAsync(Guid userId)
@@ -159,7 +184,7 @@ namespace Repositories.Implementations
             {
                 // Tìm item tương tự trong cart của user
                 var existingUserItem = await FindExistingCartItemAsync(
-                    userId, null, guestItem.ProductId, guestItem.CustomDesignId,
+                    userId, null, guestItem.CustomDesignId,
                     guestItem.ProductVariantId);
 
                 if (existingUserItem != null)

@@ -37,7 +37,6 @@ namespace Services.Helpers.Mappers
                 Id = Guid.NewGuid(),
                 UserId = dto.UserId,
                 SessionId = dto.SessionId,
-                ProductId = dto.ProductId,
                 CustomDesignId = dto.CustomDesignId,
                 ProductVariantId = dto.ProductVariantId,
                 Quantity = dto.Quantity,
@@ -51,7 +50,6 @@ namespace Services.Helpers.Mappers
         public static void UpdateEntity(CartItem entity, UpdateCartItemDto dto)
         {
             entity.Quantity = dto.Quantity;
-            entity.UnitPrice = dto.UnitPrice;
             entity.UpdatedAt = DateTime.UtcNow;
         }
 
@@ -81,9 +79,8 @@ namespace Services.Helpers.Mappers
                 TotalItems = items.Count,
                 TotalQuantity = items.Sum(ci => ci.Quantity),
                 SubTotal = subtotal,
-                EstimatedShipping = estimatedShipping,
                 EstimatedTax = estimatedTax,
-                EstimatedTotal = subtotal + estimatedShipping + estimatedTax,
+                EstimatedTotal = subtotal  + estimatedTax,
                 Items = ToDtoList(items).ToList()
             };
         }

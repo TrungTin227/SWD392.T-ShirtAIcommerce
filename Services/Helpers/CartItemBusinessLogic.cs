@@ -16,7 +16,7 @@ namespace Services.Helpers
         public static bool ValidateCartItemData(Guid? productId, Guid? customDesignId, Guid? productVariantId)
         {
             // Ít nhất một trong các ID phải có giá trị
-            return productId.HasValue || customDesignId.HasValue || productVariantId.HasValue;
+            return customDesignId.HasValue || productVariantId.HasValue;
         }
 
         public static bool ValidateUserOrSession(Guid? userId, string? sessionId)
@@ -41,7 +41,7 @@ namespace Services.Helpers
         }
 
         // Enhanced methods for proper ecommerce logic
-        
+
         /// <summary>
         /// Validates if requested quantity is available in stock
         /// </summary>
@@ -64,10 +64,10 @@ namespace Services.Helpers
         public static bool ValidatePriceConsistency(decimal cartPrice, decimal currentPrice, decimal tolerancePercentage = 0.01m)
         {
             if (currentPrice == 0) return false;
-            
+
             var difference = Math.Abs(cartPrice - currentPrice);
             var tolerance = currentPrice * tolerancePercentage;
-            
+
             return difference <= tolerance;
         }
 
@@ -84,9 +84,9 @@ namespace Services.Helpers
         /// Validates if cart item can be added with specified quantity
         /// </summary>
         public static (bool IsValid, string ErrorMessage) ValidateAddToCart(
-            int requestedQuantity, 
-            int availableStock, 
-            int maxOrderQuantity, 
+            int requestedQuantity,
+            int availableStock,
+            int maxOrderQuantity,
             int minOrderQuantity,
             int currentCartQuantity = 0)
         {
@@ -128,7 +128,7 @@ namespace Services.Helpers
         public static (bool IsValid, List<string> Errors) ValidateBulkCartItems(List<(Guid Id, int Quantity)> items)
         {
             var errors = new List<string>();
-            
+
             if (!items.Any())
             {
                 errors.Add("Danh sách sản phẩm không được rỗng");
@@ -140,10 +140,11 @@ namespace Services.Helpers
                 errors.Add("Không thể xử lý quá 50 sản phẩm cùng lúc");
             }
 
+            // Fix: Check for duplicate ProductVariantId + CustomDesignId combinations
             var duplicateIds = items.GroupBy(x => x.Id)
                                   .Where(g => g.Count() > 1)
                                   .Select(g => g.Key);
-            
+
             if (duplicateIds.Any())
             {
                 errors.Add("Có sản phẩm bị trùng lặp trong danh sách");
@@ -151,6 +152,11 @@ namespace Services.Helpers
 
             foreach (var item in items)
             {
+                if (item.Id == Guid.Empty)
+                {
+                    errors.Add("ID sản phẩm không hợp lệ");
+                }
+
                 if (!IsValidQuantity(item.Quantity))
                 {
                     errors.Add($"Số lượng không hợp lệ cho sản phẩm {item.Id}");
@@ -177,8 +183,8 @@ namespace Services.Helpers
                 return false;
 
             // Should be at least 10 characters and not contain invalid characters
-            return sessionId.Length >= 10 && 
-                   sessionId.Length <= 255 && 
+            return sessionId.Length >= 10 &&
+                   sessionId.Length <= 255 &&
                    !sessionId.Contains('\0') &&
                    !sessionId.Contains('\n') &&
                    !sessionId.Contains('\r');
