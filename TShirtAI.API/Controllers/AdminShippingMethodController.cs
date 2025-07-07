@@ -7,7 +7,7 @@ namespace WebAPI.Controllers
 {
     [ApiController]
     [Route("api/admin/shipping-methods")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = "Admin,Staff,Customer")]
     public class AdminShippingMethodController : ControllerBase
     {
         private readonly IShippingMethodService _shippingMethodService;
