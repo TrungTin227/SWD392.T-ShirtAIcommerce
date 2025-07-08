@@ -39,12 +39,15 @@ namespace DTOs.Orders.Validation
         {
             if (value is not CreateOrderItemRequest item) return false;
 
-            return item.ProductId.HasValue || item.CustomDesignId.HasValue || item.ProductVariantId.HasValue;
+            // Kiểm tra có ít nhất một reference đến sản phẩm
+            return item.CartItemId.HasValue ||
+                   item.CustomDesignId.HasValue ||
+                   item.ProductVariantId.HasValue;
         }
 
         public override string FormatErrorMessage(string name)
         {
-            return "Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: ProductId, CustomDesignId, hoặc ProductVariantId";
+            return "Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: CartItemId, ProductId, CustomDesignId, hoặc ProductVariantId";
         }
     }
 
@@ -79,21 +82,16 @@ namespace DTOs.Orders.Validation
         {
             if (value is not IList<CreateOrderItemRequest> items) return false;
 
-            if (!items.Any()) return false;
-
             foreach (var item in items)
             {
-                // Each item must have at least one product reference
-                if (!item.ProductId.HasValue && !item.CustomDesignId.HasValue && !item.ProductVariantId.HasValue)
+                // Phải có ít nhất 1 reference đến sản phẩm
+                if (!(item.CartItemId.HasValue ||
+                      item.CustomDesignId.HasValue ||
+                      item.ProductVariantId.HasValue))
                     return false;
 
-                // If not from cart, must have required fields
-                if (!item.CartItemId.HasValue)
-                {
-                    if (!item.UnitPrice.HasValue || item.UnitPrice <= 0) return false;
-                    if (!item.Quantity.HasValue || item.Quantity <= 0) return false;
-                    if (string.IsNullOrWhiteSpace(item.ItemName)) return false;
-                }
+                // Quantity phải hợp lệ
+                if (item.Quantity <= 0) return false;
             }
 
             return true;

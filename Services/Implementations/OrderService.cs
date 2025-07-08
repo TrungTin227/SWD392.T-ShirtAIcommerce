@@ -23,6 +23,8 @@ namespace Services.Implementations
         private readonly IUserAddressService _userAddressService;
         private readonly ICouponService _couponService;
         private readonly IShippingMethodService _shippingMethodService;
+        private readonly IProductVariantRepository _productVariantRepository;
+        private readonly ICustomDesignRepository _customDesignRepository;
         private readonly ILogger<OrderService> _logger;
 
         public OrderService(
@@ -35,6 +37,8 @@ namespace Services.Implementations
             IUserAddressService userAddressService,
             ICouponService couponService,
             IShippingMethodService shippingMethodService,
+            IProductVariantRepository productVariantRepository,
+            ICustomDesignRepository customDesignRepository,
             ILogger<OrderService> logger)
             : base(repository, currentUserService, unitOfWork, currentTime)
         {
@@ -44,6 +48,8 @@ namespace Services.Implementations
             _userAddressService = userAddressService;
             _couponService = couponService;
             _shippingMethodService = shippingMethodService;
+            _productVariantRepository = productVariantRepository;
+            _customDesignRepository = customDesignRepository;
             _logger = logger;
         }
 
@@ -102,18 +108,14 @@ namespace Services.Implementations
                 _logger.LogInformation("Creating order with request {@Request}", request);
 
                 // Validate order items
-                if (request.OrderItems == null || !request.OrderItems.Any())
-                {
-                    throw new ArgumentException("Đơn hàng phải có ít nhất một sản phẩm");
-                }
+                //if (request.OrderItems == null || !request.OrderItems.Any())
+                //    throw new ArgumentException("Đơn hàng phải có ít nhất một sản phẩm");
 
                 var userId = createdBy ?? _currentUserService.GetUserId();
                 if (!userId.HasValue)
-                {
                     throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
-                }
 
-                // Separate cart items from direct items
+                // Phân loại cart item và item đặt trực tiếp
                 var cartItemIds = request.OrderItems
                     .Where(item => item.CartItemId.HasValue)
                     .Select(item => item.CartItemId!.Value)
@@ -125,10 +127,10 @@ namespace Services.Implementations
 
                 var orderItems = new List<OrderItem>();
 
-                // Process cart items with enhanced validation
+                // 1. Xử lý các sản phẩm từ giỏ hàng (CartItem)
                 if (cartItemIds.Any())
                 {
-                    // Step 1: Validate cart before proceeding
+                    // Validate cart
                     var cartValidationResult = await _cartItemService.ValidateCartForCheckoutDetailedAsync(userId, null);
                     if (!cartValidationResult.IsSuccess || !cartValidationResult.Data.IsValid)
                     {
@@ -138,103 +140,110 @@ namespace Services.Implementations
                         throw new InvalidOperationException($"Giỏ hàng không hợp lệ: {errorMsg}");
                     }
 
-                    // Step 2: Get cart item entities with full navigation properties
+                    // Lấy CartItem từ DB, bao gồm thông tin giá, tồn kho
                     var cartItemsResult = await _cartItemService.GetCartItemEntitiesForCheckoutAsync(userId, null);
                     if (!cartItemsResult.IsSuccess)
-                    {
                         throw new ArgumentException($"Lỗi khi lấy cart items: {cartItemsResult.Message}");
-                    }
 
                     var cartItems = cartItemsResult.Data?.Where(ci => cartItemIds.Contains(ci.Id)) ?? Enumerable.Empty<CartItem>();
 
-                    // Step 3: Validate all requested cart items were found
+                    // Validate đủ số lượng cart item
                     if (cartItems.Count() != cartItemIds.Count)
-                    {
                         throw new ArgumentException("Một số sản phẩm trong giỏ hàng không tồn tại hoặc không thuộc về bạn");
-                    }
 
-                    // Step 4: Convert CartItems to OrderItems - CREATE WITHOUT OrderId FIRST
-                    try
+                    // Map CartItem sang OrderItem (giá lấy từ CartItem)
+                    foreach (var ci in cartItems)
                     {
-                        // Tạo OrderItems từ CartItems nhưng chưa set OrderId
-                        var cartOrderItems = cartItems.Select(ci => OrderItemMapper.CartItemToOrderItemWithoutOrderId(ci)).ToList();
-                        orderItems.AddRange(cartOrderItems);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new InvalidOperationException($"Lỗi khi chuyển đổi cart items: {ex.Message}", ex);
+                        orderItems.Add(OrderItemMapper.CartItemToOrderItemWithoutOrderId(ci));
                     }
                 }
 
-                // Process direct items (existing logic)
+                // 2. Xử lý sản phẩm đặt trực tiếp (không qua cart)
                 foreach (var directItem in directItems)
                 {
-                    // Validate direct item data
+                    // Validate ID sản phẩm
                     if (!directItem.ProductId.HasValue && !directItem.CustomDesignId.HasValue && !directItem.ProductVariantId.HasValue)
-                    {
                         throw new ArgumentException("Mỗi sản phẩm trong đơn hàng phải có ít nhất một trong các ID: ProductId, CustomDesignId, hoặc ProductVariantId");
-                    }
-
-                    if (!directItem.UnitPrice.HasValue || directItem.UnitPrice <= 0)
-                    {
-                        throw new ArgumentException("Giá sản phẩm phải lớn hơn 0");
-                    }
-
                     if (!directItem.Quantity.HasValue || directItem.Quantity <= 0)
-                    {
                         throw new ArgumentException("Số lượng sản phẩm phải lớn hơn 0");
+
+                    decimal unitPrice = 0;
+                    string itemName = "";
+                    // Lấy giá sản phẩm từ DB
+                    if (directItem.ProductVariantId.HasValue)
+                    {
+                        // Lấy cả Product để dùng giá
+                        var variant = await _productVariantRepository.GetByIdWithProductAsync(directItem.ProductVariantId.Value);
+                        if (variant == null)
+                            throw new ArgumentException("Không tìm thấy sản phẩm biến thể");
+
+                        decimal basePrice = variant.Product?.Price ?? 0;
+                        decimal priceAdjustment = variant.PriceAdjustment ?? 0;
+                        unitPrice = basePrice + priceAdjustment;
+
+                        itemName = variant.Product?.Name ?? ""; // hoặc gộp thêm thông tin màu/size nếu muốn
+                                                                // Check stock
+                        if (variant.Quantity < directItem.Quantity.Value)
+                            throw new ArgumentException($"Sản phẩm {itemName} không đủ hàng tồn kho");
+                    }
+                    else if (directItem.CustomDesignId.HasValue)
+                    {
+                        var design = await _customDesignRepository.GetByIdAsync(directItem.CustomDesignId.Value);
+                        if (design == null)
+                            throw new ArgumentException("Không tìm thấy thiết kế tùy chỉnh");
+                        unitPrice = design.TotalPrice;
+                        itemName = design.DesignName ?? "";
+                        // Custom design thường không cần check stock
                     }
 
-                    var orderItem = new OrderItem
+                    orderItems.Add(new OrderItem
                     {
                         Id = Guid.NewGuid(),
-                        OrderId = Guid.Empty, // Will set after order creation
+                        OrderId = Guid.Empty,
                         ProductId = directItem.ProductId,
                         CustomDesignId = directItem.CustomDesignId,
                         ProductVariantId = directItem.ProductVariantId,
-                        ItemName = directItem.ItemName ?? "Unknown Item",
                         SelectedColor = directItem.SelectedColor?.ToString(),
                         SelectedSize = directItem.SelectedSize?.ToString(),
                         Quantity = directItem.Quantity.Value,
-                        UnitPrice = directItem.UnitPrice.Value,
-                        TotalPrice = directItem.UnitPrice.Value * directItem.Quantity.Value
-                    };
-
-                    orderItems.Add(orderItem);
+                        UnitPrice = unitPrice,
+                        TotalPrice = unitPrice * directItem.Quantity.Value,
+                        ItemName = itemName
+                    });
                 }
 
-                // Resolve shipping address
+                // 3. Lấy thông tin địa chỉ giao hàng
                 var (shippingAddress, receiverName, receiverPhone) = await ResolveShippingAddressAsync(request, userId.Value);
 
-                // Validate coupon if provided
+                // 4. Tính tổng tiền hàng (subtotal), thuế, phí ship, giảm giá
+                var subtotal = orderItems.Sum(oi => oi.TotalPrice);
+
+                // 5. Coupon
                 decimal discountAmount = 0;
                 if (request.CouponId.HasValue)
                 {
                     var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
                     if (!couponResult.IsSuccess || couponResult.Data == null)
-                    {
                         throw new ArgumentException("Mã giảm giá không hợp lệ");
-                    }
-                    discountAmount = CalculateDiscount(couponResult.Data, orderItems.Sum(oi => oi.TotalPrice));
+                    discountAmount = CalculateDiscount(couponResult.Data, subtotal);
                 }
 
-                // Get shipping fee
+                // 6. Phí vận chuyển
                 decimal shippingFee = 0;
                 if (request.ShippingMethodId.HasValue)
                 {
                     var shippingMethodResult = await _shippingMethodService.GetByIdAsync(request.ShippingMethodId.Value);
                     if (shippingMethodResult.IsSuccess && shippingMethodResult.Data != null)
-                    {
                         shippingFee = shippingMethodResult.Data.Fee;
-                    }
                 }
 
-                // Calculate totals
-                var subtotal = orderItems.Sum(oi => oi.TotalPrice);
+                // 7. Thuế (VAT)
                 var taxAmount = subtotal * 0.1m; // 10% VAT
+
+                // 8. Tổng thanh toán
                 var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
 
-                // Create Order
+                // 9. Tạo đơn hàng
                 var order = new Order
                 {
                     Id = Guid.NewGuid(),
@@ -256,41 +265,36 @@ namespace Services.Implementations
                     CreatedBy = userId.Value
                 };
 
-                // Save Order
+                // 10. Lưu đơn hàng
                 var createdOrder = await _orderRepository.AddAsync(order);
                 await _unitOfWork.SaveChangesAsync();
 
-                // NOW Update OrderItems with correct OrderId and save
+                // 11. Lưu OrderItem
                 foreach (var orderItem in orderItems)
                 {
-                    orderItem.OrderId = createdOrder.Id; // Set the actual Order ID here
+                    orderItem.OrderId = createdOrder.Id;
                     await _orderItemRepository.AddAsync(orderItem);
                 }
                 await _unitOfWork.SaveChangesAsync();
 
-                // Clear cart items that were used - Enhanced with proper error handling
+                // 12. Xóa cart item đã dùng nếu có
                 if (cartItemIds.Any())
                 {
                     try
                     {
                         var clearResult = await _cartItemService.ClearCartItemsAfterCheckoutAsync(cartItemIds, userId, null);
                         if (!clearResult.IsSuccess)
-                        {
                             _logger.LogWarning("Failed to clear cart items after order creation: {Message}", clearResult.Message);
-                            // Consider whether to rollback the entire transaction or just log the warning
-                            // For now, we'll continue since the order was created successfully
-                        }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error clearing cart items after successful order creation {OrderId}", createdOrder.Id);
-                        // Don't fail the entire operation since order was created successfully
                     }
                 }
 
                 await transaction.CommitAsync();
 
-                // Return created order with details
+                // 13. Trả về OrderDTO
                 var orderWithDetails = await _orderRepository.GetOrderWithDetailsAsync(createdOrder.Id);
                 return orderWithDetails != null ? ConvertToOrderDTO(orderWithDetails) : null;
             }

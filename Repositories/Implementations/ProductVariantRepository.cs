@@ -25,5 +25,11 @@ namespace Repositories.Implementations
             var query = _dbSet.Where(x => x.ProductId == productId);
             return await PagedList<ProductVariant>.ToPagedListAsync(query, pageNumber, pageSize);
         }
+        public async Task<ProductVariant?> GetByIdWithProductAsync(Guid variantId)
+        {
+            return await _dbSet
+                .Include(x => x.Product)
+                .FirstOrDefaultAsync(x => x.Id == variantId);
+        }
     }
 }

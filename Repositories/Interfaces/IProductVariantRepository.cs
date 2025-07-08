@@ -8,5 +8,6 @@ namespace Repositories.Interfaces
     {
         Task<IReadOnlyList<ProductVariant>> GetVariantsByProductIdAsync(Guid productId);
         Task<PagedList<ProductVariant>> GetPagedVariantsByProductIdAsync(Guid productId, int pageNumber, int pageSize);
+        Task<ProductVariant?> GetByIdWithProductAsync(Guid variantId);
     }
 }

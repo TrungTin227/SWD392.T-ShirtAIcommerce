@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using BusinessObjects.Products;
 using DTOs.Orders.Validation;
 using DTOs.UserAddressDTOs.Request;
 
@@ -50,16 +51,12 @@ namespace DTOs.Orders
         public Guid? ProductId { get; set; }
         public Guid? CustomDesignId { get; set; }
         public Guid? ProductVariantId { get; set; }
-
-        [MaxLength(255)]
-        public string? ItemName { get; set; }
-        public BusinessObjects.Products.ProductColor? SelectedColor { get; set; }
-        public BusinessObjects.Products.ProductSize? SelectedSize { get; set; }
+        public ProductColor? SelectedColor { get; set; }
+        public ProductSize? SelectedSize { get; set; }
 
         [Range(1, int.MaxValue)]
         public int? Quantity { get; set; }
-
-        [Range(0.01, double.MaxValue, ErrorMessage = "Giá sản phẩm phải lớn hơn 0")]
-        public decimal? UnitPrice { get; set; }
+        [MaxLength(500)]
+        public string? Notes { get; set; }
     }
 }
