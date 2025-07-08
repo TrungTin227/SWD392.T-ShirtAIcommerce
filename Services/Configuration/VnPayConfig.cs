@@ -1,4 +1,4 @@
-﻿namespace Configuration
+﻿namespace Services.Configuration
 {
     public class VnPayConfig
     {

@@ -1,6 +1,6 @@
-﻿using Configuration;
-using DTOs.Payments.VnPay;
+﻿using DTOs.Payments.VnPay;
 using Microsoft.Extensions.Options;
+using Services.Configuration;
 using Services.Helpers;
 using Services.Interfaces;
 
@@ -131,23 +131,43 @@ namespace Services.Implementations
             {
                 var vnpay = new VnPayLibrary();
 
-                vnpay.AddResponseData("vnp_TmnCode", callback.vnp_TmnCode);
-                vnpay.AddResponseData("vnp_Amount", callback.vnp_Amount);
-                vnpay.AddResponseData("vnp_BankCode", callback.vnp_BankCode);
-                vnpay.AddResponseData("vnp_BankTranNo", callback.vnp_BankTranNo);
-                vnpay.AddResponseData("vnp_CardType", callback.vnp_CardType);
-                vnpay.AddResponseData("vnp_PayDate", callback.vnp_PayDate);
-                vnpay.AddResponseData("vnp_OrderInfo", callback.vnp_OrderInfo);
-                vnpay.AddResponseData("vnp_TransactionNo", callback.vnp_TransactionNo);
-                vnpay.AddResponseData("vnp_ResponseCode", callback.vnp_ResponseCode);
-                vnpay.AddResponseData("vnp_TransactionStatus", callback.vnp_TransactionStatus);
-                vnpay.AddResponseData("vnp_TxnRef", callback.vnp_TxnRef);
-                vnpay.AddResponseData("vnp_SecureHashType", callback.vnp_SecureHashType);
+                // Thêm các tham số theo thứ tự alphabet (bỏ qua vnp_SecureHash và vnp_SecureHashType)
+                var parameters = new Dictionary<string, string>
+        {
+            { "vnp_Amount", callback.vnp_Amount },
+            { "vnp_BankCode", callback.vnp_BankCode },
+            { "vnp_BankTranNo", callback.vnp_BankTranNo },
+            { "vnp_CardType", callback.vnp_CardType },
+            { "vnp_OrderInfo", callback.vnp_OrderInfo },
+            { "vnp_PayDate", callback.vnp_PayDate },
+            { "vnp_ResponseCode", callback.vnp_ResponseCode },
+            { "vnp_TmnCode", callback.vnp_TmnCode },
+            { "vnp_TransactionNo", callback.vnp_TransactionNo },
+            { "vnp_TransactionStatus", callback.vnp_TransactionStatus },
+            { "vnp_TxnRef", callback.vnp_TxnRef }
+        };
+
+                // Chỉ thêm vnp_SecureHashType nếu có giá trị
+                if (!string.IsNullOrEmpty(callback.vnp_SecureHashType))
+                {
+                    parameters.Add("vnp_SecureHashType", callback.vnp_SecureHashType);
+                }
+
+                // Sắp xếp theo alphabet và thêm vào VnPayLibrary
+                foreach (var param in parameters.OrderBy(x => x.Key))
+                {
+                    if (!string.IsNullOrEmpty(param.Value))
+                    {
+                        vnpay.AddResponseData(param.Key, param.Value);
+                    }
+                }
 
                 return vnpay.ValidateSignature(callback.vnp_SecureHash, _config.HashSecret);
             }
-            catch
+            catch (Exception ex)
             {
+                // Log lỗi để debug
+                Console.WriteLine($"ValidateCallback error: {ex.Message}");
                 return false;
             }
         }
@@ -180,14 +200,28 @@ namespace Services.Implementations
 
             foreach (var pair in pairs)
             {
-                var keyValue = pair.Split('=');
+                var keyValue = pair.Split('=', 2); // Limit to 2 parts only
                 if (keyValue.Length == 2)
                 {
-                    result[keyValue[0]] = Uri.UnescapeDataString(keyValue[1]);
+                    var key = keyValue[0];
+                    var value = keyValue[1];
+
+                    // Try different decoding methods
+                    try
+                    {
+                        value = System.Web.HttpUtility.UrlDecode(value, System.Text.Encoding.UTF8);
+                    }
+                    catch
+                    {
+                        value = Uri.UnescapeDataString(value);
+                    }
+
+                    result[key] = value;
                 }
             }
 
             return result;
         }
+
     }
 }

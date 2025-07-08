@@ -1,14 +1,13 @@
 ﻿using BusinessObjects.Payments;
 using BusinessObjects.Products;
-using Configuration;
 using DTOs.Payments;
 using DTOs.Payments.VnPay;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Repositories.Interfaces;
+using Services.Configuration;
 using Services.Helpers;
 using Services.Interfaces;
-using System.ComponentModel;
 
 namespace Services.Implementations
 {
@@ -93,34 +92,68 @@ namespace Services.Implementations
             return await UpdatePaymentStatusAsync(id, status, transactionId);
         }
 
-        public async Task<VnPayCreatePaymentResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request)
+        public async Task<VnPayCreateResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request)
         {
-            // Create payment record first
-            var payment = await CreatePaymentAsync(request);
-
-            var txnRef = $"{DateTime.Now:yyyyMMddHHmmss}_{payment.Id}";
-            var createDate = DateTime.Now.ToString("yyyyMMddHHmmss");
-            var ipAddr = VnPayLibrary.GetIpAddress(_httpContextAccessor.HttpContext!);
-
-            var vnPayRequest = new VnPayCreatePaymentRequest
+            try
             {
-                vnp_TxnRef = txnRef,
-                vnp_OrderInfo = request.Description ?? $"Payment for Order {request.OrderId}",
-                vnp_Amount = (long)request.Amount,
-                vnp_CreateDate = createDate,
-                vnp_IpAddr = ipAddr,
-                vnp_BankCode = request.BankCode ?? ""
-            };
+                // Create payment record first
+                var payment = await CreatePaymentAsync(request);
 
-            var response = await _vnPayService.CreatePaymentUrlAsync(vnPayRequest);
+                var txnRef = $"{DateTime.Now:yyyyMMddHHmmss}_{payment.Id}";
+                var createDate = DateTime.Now.ToString("yyyyMMddHHmmss");
+                var ipAddr = VnPayLibrary.GetIpAddress(_httpContextAccessor.HttpContext!);
 
-            // Update payment with transaction ID if successful
-            if (response.Success)
-            {
-                await UpdatePaymentStatusAsync(payment.Id, PaymentStatus.Processing, txnRef);
+                var vnPayRequest = new VnPayCreatePaymentRequest
+                {
+                    vnp_TxnRef = txnRef,
+                    vnp_OrderInfo = request.Description ?? $"Payment for Order {request.OrderId}",
+                    vnp_Amount = (long)request.Amount,
+                    vnp_CreateDate = createDate,
+                    vnp_IpAddr = ipAddr,
+                    vnp_BankCode = request.BankCode ?? ""
+                };
+
+                var vnPayResponse = await _vnPayService.CreatePaymentUrlAsync(vnPayRequest);
+
+                // Update payment with transaction ID if successful
+                if (vnPayResponse.Success)
+                {
+                    var updatedPayment = await UpdatePaymentStatusAsync(payment.Id, PaymentStatus.Processing, txnRef);
+
+                    return new VnPayCreateResponse
+                    {
+                        Success = true,
+                        PaymentId = payment.Id,
+                        PaymentUrl = vnPayResponse.PaymentUrl,
+                        Payment = updatedPayment,
+                        Message = "VnPay payment URL created successfully"
+                    };
+                }
+                else
+                {
+                    return new VnPayCreateResponse
+                    {
+                        Success = false,
+                        PaymentId = payment.Id,
+                        PaymentUrl = string.Empty,
+                        Payment = payment,
+                        Message = vnPayResponse.Message,
+                        Errors = new List<string> { vnPayResponse.Message }
+                    };
+                }
             }
-
-            return response;
+            catch (Exception ex)
+            {
+                return new VnPayCreateResponse
+                {
+                    Success = false,
+                    PaymentId = Guid.Empty,
+                    PaymentUrl = string.Empty,
+                    Payment = null,
+                    Message = $"Error creating VnPay payment: {ex.Message}",
+                    Errors = new List<string> { ex.Message }
+                };
+            }
         }
 
         public async Task<VnPayQueryResponse> QueryVnPayPaymentAsync(string txnRef)

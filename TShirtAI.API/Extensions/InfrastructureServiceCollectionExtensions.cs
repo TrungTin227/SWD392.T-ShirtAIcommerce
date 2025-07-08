@@ -1,5 +1,4 @@
 ﻿using BusinessObjects.Identity;
-using Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +10,7 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons.Gmail.Implementations;
+using Services.Configuration;
 using Services.Implementations;
 using Services.Implements;
 using Services.Interfaces;

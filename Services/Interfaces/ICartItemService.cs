@@ -55,6 +55,6 @@ namespace Services.Interfaces
         /// Lấy thống kê giỏ hàng
         /// </summary>
         Task<ApiResult<CartAnalyticsDto>> GetCartAnalyticsAsync(Guid? userId, string? sessionId);
-
+        Task<List<CartItem>> GetValidatedCartItemsByIds(List<Guid> cartItemIds, Guid? userId, string? sessionId);
     }
 }

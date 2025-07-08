@@ -2,6 +2,7 @@
 using DTOs.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Services.Implementations;
 using Services.Interfaces;
 using WebAPI.Middlewares;
 
@@ -320,6 +321,53 @@ namespace WebAPI.Controllers
                 return StatusCode(500, new ErrorResponse
                 {
                     Message = "Có lỗi xảy ra khi cập nhật giá giỏ hàng",
+                    Details = ex.Message
+                });
+            }
+        }
+        /// <summary>
+        /// Tính tổng tiền các sản phẩm được chọn trong giỏ hàng (theo danh sách cartItemId)
+        /// </summary>
+        [HttpPost("calculate-total")]
+        public async Task<ActionResult<CartTotalDto>> CalculateTotal([FromBody] List<Guid> cartItemIds)
+        {
+            try
+            {
+                var userId = _currentUserService.GetUserId();
+                var sessionId = HttpContext.Session.Id;
+
+                // Dùng helper nội bộ của Service, bạn có thể cho phép controller gọi nó như sau:
+                var cartItems = await ((CartItemService)_cartItemService)
+                    .GetValidatedCartItemsByIds(cartItemIds, userId, sessionId);
+
+                if (!cartItems.Any())
+                    return BadRequest(new ErrorResponse { Message = "Không tìm thấy sản phẩm hợp lệ để tính tổng tiền" });
+
+                var items = cartItems.Select(x => new CartItemDto
+                {
+                    Id = x.Id,
+                    ProductVariantId = x.ProductVariantId,
+                    Quantity = x.Quantity,
+                    UnitPrice = x.UnitPrice,
+                    TotalPrice = x.UnitPrice * x.Quantity
+                }).ToList();
+
+                var total = items.Sum(i => i.TotalPrice);
+
+                var dto = new CartTotalDto
+                {
+                    Items = items,
+                    TotalAmount = total
+                };
+
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating total for selected cart items");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Message = "Có lỗi xảy ra khi tính tổng tiền sản phẩm",
                     Details = ex.Message
                 });
             }

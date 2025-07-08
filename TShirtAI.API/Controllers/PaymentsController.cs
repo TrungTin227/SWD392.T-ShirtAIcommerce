@@ -1,10 +1,11 @@
-using DTOs.Orders;
+﻿using DTOs.Orders;
 using DTOs.Payments;
 using DTOs.Payments.VnPay;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 
-namespace Controllers
+namespace WebAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -18,7 +19,7 @@ namespace Controllers
         }
 
         [HttpPost("create")]
-        public async Task<ActionResult<PaymentResponse>> CreatePayment([FromBody] PaymentCreateRequest request)
+        public async Task<ActionResult<PaymentCreateResponse>> CreatePayment([FromBody] PaymentCreateRequest request)
         {
             try
             {
@@ -28,46 +29,50 @@ namespace Controllers
 
                     if (vnPayResponse.Success)
                     {
-                        return Ok(new
+                        return Ok(new PaymentCreateResponse
                         {
-                            success = true,
-                            data = new
-                            {
-                                paymentUrl = vnPayResponse.PaymentUrl,
-                                message = vnPayResponse.Message
-                            },
-                            message = "VnPay payment URL created successfully"
+                            Success = true,
+                            PaymentId = vnPayResponse.PaymentId,           // ← Thêm PaymentId
+                            PaymentUrl = vnPayResponse.PaymentUrl,         // ← URL redirect
+                            Payment = vnPayResponse.Payment,               // ← Full payment info
+                            Message = "VnPay payment URL created successfully",
+                            RequiresRedirect = true                        // ← Flag để client biết cần redirect
                         });
                     }
                     else
                     {
-                        return BadRequest(new
+                        return BadRequest(new PaymentCreateResponse
                         {
-                            success = false,
-                            message = vnPayResponse.Message
+                            Success = false,
+                            Message = vnPayResponse.Message,
+                            Errors = vnPayResponse.Errors
                         });
                     }
                 }
                 else
                 {
                     var payment = await _paymentService.CreatePaymentAsync(request);
-                    return Ok(new
+                    return Ok(new PaymentCreateResponse
                     {
-                        success = true,
-                        data = payment,
-                        message = "Payment created successfully"
+                        Success = true,
+                        PaymentId = payment.Id,
+                        Payment = payment,
+                        Message = "Payment created successfully",
+                        RequiresRedirect = false                           // ← Không cần redirect
                     });
                 }
             }
             catch (Exception ex)
             {
-                return BadRequest(new
+                return BadRequest(new PaymentCreateResponse
                 {
-                    success = false,
-                    message = ex.Message
+                    Success = false,
+                    Message = ex.Message,
+                    Errors = new List<string> { ex.Message }
                 });
             }
         }
+
 
         [HttpGet("{id}")]
         public async Task<ActionResult<PaymentResponse>> GetPayment(Guid id)
@@ -122,6 +127,7 @@ namespace Controllers
             }
         }
 
+        [AllowAnonymous]
         [HttpGet("vnpay/return")]
         public async Task<IActionResult> VnPayReturn([FromQuery] VnPayCallbackRequest callback)
         {

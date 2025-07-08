@@ -338,7 +338,7 @@ namespace Services.Implementations
                 : await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
         }
 
-        private async Task<List<CartItem>> GetValidatedCartItemsByIds(List<Guid> cartItemIds, Guid? userId, string? sessionId)
+        public async Task<List<CartItem>> GetValidatedCartItemsByIds(List<Guid> cartItemIds, Guid? userId, string? sessionId)
         {
             var cartItems = new List<CartItem>();
             foreach (var cartItemId in cartItemIds)

@@ -10,7 +10,7 @@ namespace Services.Interfaces
         Task<PaymentResponse?> GetPaymentByIdAsync(Guid id);
         Task<IEnumerable<PaymentResponse>> GetPaymentsByOrderIdAsync(Guid orderId);
         Task<PaymentResponse> UpdatePaymentStatusAsync(Guid id, PaymentStatus status, string? transactionId = null);
-        Task<VnPayCreatePaymentResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request);
+        Task<VnPayCreateResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request);
         Task<VnPayQueryResponse> QueryVnPayPaymentAsync(string txnRef);
         Task<bool> HandleVnPayCallbackAsync(VnPayCallbackRequest callback);
     }
