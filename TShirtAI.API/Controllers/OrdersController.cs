@@ -68,25 +68,45 @@ namespace WebAPI.Controllers
         /// Tạo đơn hàng mới (user)
         /// </summary>
         [HttpPost]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
-        public async Task<ActionResult<OrderDTO>> CreateOrder([FromBody] CreateOrderRequest request)
+        public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest req)
         {
-            var userId = GetCurrentUserIdOrUnauthorized();
-            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập"));
+            var result = await _orderService.CreateOrderAsync(req, _currentUserService.GetUserId());
 
-            return await ExecuteAsync(async () =>
+            // Nếu VNPAY, trả về URL và order data, FE sẽ redirect
+            if (req.PaymentMethod == PaymentMethod.VNPAY)
             {
-                var order = await _orderService.CreateOrderAsync(request, userId);
-                return order == null
-                    ? BadRequest(ErrorResponse("Không thể tạo đơn hàng"))
-                    : CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
-            }, "Error creating order {@Request}", request);
+                if (string.IsNullOrEmpty(result.RedirectUrl))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Không tạo được URL thanh toán VNPAY"
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    order = result.Order,
+                    redirectUrl = result.RedirectUrl
+                });
+            }
+
+            // Với COD (hoặc phương thức khác), trả về Created + dữ liệu đơn
+            return CreatedAtAction(
+                nameof(GetOrder),
+                new { id = result.Order.Id },
+                new
+                {
+                    success = true,
+                    order = result.Order
+                });
         }
 
-            /// <summary>
-            /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)
-            /// </summary>
-            [HttpPatch("{id}/status")]
+        /// <summary>
+        /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)
+        /// </summary>
+        [HttpPatch("{id}/status")]
             [Authorize(Roles = "Admin,Staff")]
             public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
             {
@@ -206,10 +226,12 @@ namespace WebAPI.Controllers
         [HttpPost("{orderId}/confirm")]
         public async Task<IActionResult> ConfirmOrder(Guid orderId)
         {
-            var success = await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Completed);
-            return success
-                ? Ok()
-                : BadRequest("Không thể xác nhận đơn");
+            var order = await _orderService.GetOrderByIdAsync(orderId);
+            if (order == null || order.Status != OrderStatus.Paid)
+                return BadRequest("Đơn chưa ở trạng thái Paid");
+
+            await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Completed);
+            return Ok(new { Message = "Đơn đã được staff xác nhận (Completed)" });
         }
 
         #region Helper Methods

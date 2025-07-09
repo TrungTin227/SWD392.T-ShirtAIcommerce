@@ -8,7 +8,7 @@ namespace Services.Interfaces
     {
         Task<PagedResponse<OrderDTO>> GetOrdersAsync(OrderFilterRequest filter);
         Task<OrderDTO?> GetOrderByIdAsync(Guid orderId);
-        Task<OrderDTO?> CreateOrderAsync(CreateOrderRequest request, Guid? createdBy = null);
+        Task<CreateOrderResult> CreateOrderAsync(CreateOrderRequest request, Guid? userId);
         Task<OrderDTO?> UpdateOrderAsync(Guid orderId, UpdateOrderRequest request, Guid? updatedBy = null);
         Task<bool> DeleteOrderAsync(Guid orderId, Guid? deletedBy = null);
         Task<IEnumerable<OrderDTO>> GetUserOrdersAsync(Guid userId);

@@ -4,6 +4,7 @@ using DTOs.Common;
 using DTOs.Coupons;
 using DTOs.OrderItem;
 using DTOs.Orders;
+using DTOs.Payments;
 using Microsoft.Extensions.Logging;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
@@ -18,18 +19,21 @@ namespace Services.Implementations
     {
         private readonly IOrderRepository _orderRepository;
         private readonly IOrderItemRepository _orderItemRepository; 
-        private readonly ICartItemRepository _cartItemRepository; 
+        private readonly ICartItemRepository _cartItemRepository;
+        private readonly IPaymentRepository _paymentRepository;
         private readonly ICartItemService _cartItemService;
         private readonly IUserAddressService _userAddressService;
         private readonly ICouponService _couponService;
         private readonly IShippingMethodService _shippingMethodService;
         private readonly IProductVariantRepository _productVariantRepository;
         private readonly ICustomDesignRepository _customDesignRepository;
+        private readonly IPaymentService _paymentService;
         private readonly ILogger<OrderService> _logger;
 
         public OrderService(
             IOrderRepository repository,
             IOrderItemRepository orderItemRepository, 
+            IPaymentRepository paymentRepository,
             ICartItemService cartItemService, 
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
@@ -40,18 +44,23 @@ namespace Services.Implementations
             IProductVariantRepository productVariantRepository,
             ICustomDesignRepository customDesignRepository,
             ICartItemRepository cartItemRepository,
+            IPaymentService paymentService,
+
+
             ILogger<OrderService> logger)
             : base(repository, currentUserService, unitOfWork, currentTime)
         {
             _orderRepository = repository;
             _orderItemRepository = orderItemRepository;
             _cartItemRepository = cartItemRepository;
+            _paymentRepository = paymentRepository;
             _cartItemService = cartItemService; 
             _userAddressService = userAddressService;
             _couponService = couponService;
             _shippingMethodService = shippingMethodService;
             _productVariantRepository = productVariantRepository;
             _customDesignRepository = customDesignRepository;
+            _paymentService = paymentService;
             _logger = logger;
         }
 
@@ -102,13 +111,15 @@ namespace Services.Implementations
             }
         }
 
-        public async Task<OrderDTO?> CreateOrderAsync(CreateOrderRequest request, Guid? createdBy = null)
+        public async Task<CreateOrderResult> CreateOrderAsync(
+            CreateOrderRequest request,
+            Guid? createdBy = null)
         {
-            // 1 transaction cho toàn bộ quá trình
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                _logger.LogInformation("Creating order for user {UserRequest}", request);
+                _logger.LogInformation("Creating order (PaymentMethod={PaymentMethod}) for request {@Request}",
+                    request.PaymentMethod, request);
 
                 // 1. Xác định user
                 var userId = createdBy ?? _currentUserService.GetUserId();
@@ -120,24 +131,26 @@ namespace Services.Implementations
                     .Where(i => i.CartItemId.HasValue)
                     .Select(i => i.CartItemId!.Value)
                     .ToList();
-
                 var directItems = request.OrderItems
                     .Where(i => !i.CartItemId.HasValue)
                     .ToList();
 
+                // 3. Lấy địa chỉ giao hàng
+                var (shippingAddress, receiverName, receiverPhone) =
+                    await ResolveShippingAddressAsync(request, userId.Value);
+
+                // 4. Build danh sách OrderItem và giảm tồn kho
                 var orderItems = new List<OrderItem>();
 
-                // 3. Lấy và map CartItem -> OrderItem
-                var (shippingAddress, receiverName, receiverPhone) = await ResolveShippingAddressAsync(request, userId.Value);
-
+                // 4.1. Cart items
                 if (cartItemIds.Any())
                 {
-                     var cartEntities = await _cartItemRepository.GetAllAsync(
-                     ci => cartItemIds.Contains(ci.Id),    // predicate
-                     null,                                 // orderBy (không cần sắp xếp)
-                     ci => ci.ProductVariant,              // includes[0]
-                     ci => ci.Product                      // includes[1]
-                 );
+                    var cartEntities = await _cartItemRepository.GetAllAsync(
+                        ci => cartItemIds.Contains(ci.Id),
+                        orderBy: null,
+                        ci => ci.ProductVariant,
+                        ci => ci.Product);
+
                     if (cartEntities.Count != cartItemIds.Count)
                         throw new ArgumentException("Một số CartItem không tồn tại.");
 
@@ -145,9 +158,9 @@ namespace Services.Implementations
                     {
                         if (ci.ProductVariant != null)
                         {
-                            // Giảm stock
                             if (ci.ProductVariant.Quantity < ci.Quantity)
-                                throw new ArgumentException($"'{ci.ProductVariant.Product?.Name}' không đủ tồn kho.");
+                                throw new ArgumentException(
+                                    $"Sản phẩm '{ci.ProductVariant.Product?.Name}' không đủ tồn kho.");
 
                             ci.ProductVariant.Quantity -= ci.Quantity;
                             await _productVariantRepository.UpdateAsync(ci.ProductVariant);
@@ -155,34 +168,33 @@ namespace Services.Implementations
 
                         orderItems.Add(new OrderItem
                         {
-                            Id             = Guid.NewGuid(),
-                            ProductId      = ci.ProductId,
+                            Id               = Guid.NewGuid(),
+                            ProductId        = ci.ProductId,
                             ProductVariantId = ci.ProductVariantId,
-                            CustomDesignId = ci.CustomDesignId,
-                            Quantity       = ci.Quantity,
-                            UnitPrice      = ci.UnitPrice,
-                            TotalPrice     = ci.TotalPrice,
-                            ItemName       = ci.Product?.Name
+                            CustomDesignId   = ci.CustomDesignId,
+                            Quantity         = ci.Quantity,
+                            UnitPrice        = ci.UnitPrice,
+                            TotalPrice       = ci.TotalPrice,
+                            ItemName         = ci.Product?.Name ?? string.Empty
                         });
                     }
                 }
 
-                // 4. Xử lý direct items
+                // 4.2. Direct items
                 foreach (var di in directItems)
                 {
-                    // Validate…
                     if (!di.ProductVariantId.HasValue)
                         throw new ArgumentException("Direct item phải có ProductVariantId.");
 
                     var variant = await _productVariantRepository
                         .GetByIdWithProductAsync(di.ProductVariantId.Value);
                     if (variant == null)
-                        throw new ArgumentException("Không tìm thấy biến thể.");
+                        throw new ArgumentException("Không tìm thấy sản phẩm biến thể.");
 
                     if (variant.Quantity < di.Quantity)
-                        throw new ArgumentException($"'{variant.Product?.Name}' không đủ tồn kho.");
+                        throw new ArgumentException(
+                            $"Sản phẩm '{variant.Product?.Name}' không đủ tồn kho.");
 
-                    // Giảm stock
                     variant.Quantity -= di.Quantity.Value;
                     await _productVariantRepository.UpdateAsync(variant);
 
@@ -194,43 +206,49 @@ namespace Services.Implementations
                         Quantity         = di.Quantity.Value,
                         UnitPrice        = unitPrice,
                         TotalPrice       = unitPrice * di.Quantity.Value,
-                        ItemName         = variant.Product?.Name
+                        ItemName         = variant.Product?.Name ?? string.Empty
                     });
                 }
 
-                // 5. Tính subtotal, phí ship, discount
+                // 5. Tính toán subtotal, discount, shipping fee, totalAmount
                 var subtotal = orderItems.Sum(oi => oi.TotalPrice);
-                var discount = 0m;
-                if (request.CouponId.HasValue) { /* tương tự CalculateDiscount… */ }
 
-                var shippingFee = 0m;
-                if (request.ShippingMethodId.HasValue) { /* get fee */ }
+                // 5.1. Discount
+                decimal discount = 0m;
+                if (request.CouponId.HasValue)
+                {
+                    var couponRes = await _couponService.GetByIdAsync(request.CouponId.Value);
+                    if (couponRes.IsSuccess && couponRes.Data != null)
+                        discount = CalculateDiscount(couponRes.Data, subtotal);
+                    else
+                        _logger.LogWarning("Coupon {CouponId} không hợp lệ", request.CouponId);
+                }
 
+                // 5.2. Shipping fee
+                decimal shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
                 var totalAmount = subtotal + shippingFee - discount;
 
+                // 6. Tạo Order
                 var order = new Order
                 {
                     Id               = Guid.NewGuid(),
                     OrderNumber      = await _orderRepository.GenerateOrderNumberAsync(),
                     UserId           = userId.Value,
+                    ShippingAddress  = shippingAddress,
+                    ReceiverName     = receiverName,
+                    ReceiverPhone    = receiverPhone,
+                    CustomerNotes    = request.CustomerNotes,
+                    CouponId         = request.CouponId,
+                    ShippingMethodId = request.ShippingMethodId,
                     ShippingFee      = shippingFee,
                     DiscountAmount   = discount,
                     TotalAmount      = totalAmount,
                     Status           = OrderStatus.Pending,
                     PaymentStatus    = PaymentStatus.Unpaid,
-                    ShippingAddress  = shippingAddress,
-                    ReceiverName     = receiverName,
-                    ReceiverPhone    = receiverPhone,
-
-                    CustomerNotes    = request.CustomerNotes,
-                    CouponId         = request.CouponId,
-                    ShippingMethodId = request.ShippingMethodId,
-
                     CreatedAt        = _currentTime.GetVietnamTime(),
                     CreatedBy        = userId.Value
                 };
                 await _orderRepository.AddAsync(order);
-                await _unitOfWork.SaveChangesAsync();
 
                 // 7. Lưu OrderItems
                 foreach (var oi in orderItems)
@@ -238,19 +256,63 @@ namespace Services.Implementations
                     oi.OrderId = order.Id;
                     await _orderItemRepository.AddAsync(oi);
                 }
-                await _unitOfWork.SaveChangesAsync();
 
                 // 8. Xóa cart items đã order
                 if (cartItemIds.Any())
                 {
                     await _cartItemRepository.DeleteRangeAsync(cartItemIds);
-                    await _unitOfWork.SaveChangesAsync();
                 }
 
-                // 9. Commit & trả về DTO
+                // 9. Commit transaction
+                await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
-                var fullOrder = await _orderRepository.GetOrderWithDetailsAsync(order.Id);
-                return fullOrder != null ? ConvertToOrderDTO(fullOrder) : null;
+
+
+                // Lấy lại OrderDTO
+                var createdOrder = await _orderRepository.GetOrderWithDetailsAsync(order.Id);
+                var orderDto = ConvertToOrderDTO(createdOrder!);
+
+                // Tạo Payment sao cho đúng phương thức
+                var payReq = new PaymentCreateRequest
+                {
+                    OrderId       = order.Id,
+                    PaymentMethod = request.PaymentMethod,   // enum COD hoặc VNPAY
+                    Description   = $"Thanh toán đơn {order.OrderNumber}"
+                };
+
+                if (request.PaymentMethod == PaymentMethod.COD)
+                {
+                    // COD: map thẳng xuống DB, đánh dấu  (hoặc Unpaid tuỳ nghiệp vụ)
+                    var paymentResp = await _paymentService.CreatePaymentAsync(payReq);
+
+                    // Đồng bộ lại Order: coi là đã có tiền, chuyển sang Paid
+                    order.PaymentStatus = PaymentStatus.Unpaid;
+                    order.Status        = OrderStatus.Pending;
+                    await _orderRepository.UpdateAsync(order);
+                    await _orderRepository.SaveChangesAsync();
+
+                    return new CreateOrderResult
+                    {
+                        Order   = orderDto,
+                        Payment = paymentResp,
+                        // RedirectUrl = null
+                    };
+                }
+                else
+                {
+                    // VNPAY: sẽ sinh URL redirect
+                    var vnPayResp = await _paymentService.CreateVnPayPaymentAsync(payReq);
+                    if (!vnPayResp.Success)
+                        throw new InvalidOperationException(
+                            $"Tạo URL VNPAY thất bại: {string.Join(", ", vnPayResp.Errors)}");
+
+                    return new CreateOrderResult
+                    {
+                        Order       = orderDto,
+                        Payment     = vnPayResp.Payment,
+                        RedirectUrl = vnPayResp.PaymentUrl
+                    };
+                }
             }
             catch
             {
@@ -258,7 +320,6 @@ namespace Services.Implementations
                 throw;
             }
         }
-
         private decimal CalculateDiscount(CouponDto coupon, decimal subtotal)
         {
             // Validate coupon is active and not expired
@@ -296,27 +357,20 @@ namespace Services.Implementations
 
         public async Task<OrderDTO?> UpdateOrderAsync(Guid orderId, UpdateOrderRequest request, Guid? updatedBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null || order.IsDeleted)
-                {
                     throw new ArgumentException("Đơn hàng không tồn tại");
-                }
 
-                // Only allow updates for certain statuses
                 if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
-                {
                     throw new InvalidOperationException("Không thể cập nhật đơn hàng đã giao hoặc đã hủy");
-                }
 
                 var userId = updatedBy ?? _currentUserService.GetUserId();
                 if (!userId.HasValue)
-                {
                     throw new UnauthorizedAccessException("Không thể xác định người dùng hiện tại");
-                }
 
-                // ✅ Chỉ cập nhật các trường có trong UpdateOrderRequest
                 if (!string.IsNullOrWhiteSpace(request.ShippingAddress))
                     order.ShippingAddress = request.ShippingAddress.Trim();
 
@@ -331,60 +385,45 @@ namespace Services.Implementations
 
                 if (request.CouponId.HasValue)
                 {
-                    // Validate the new coupon before applying
                     var couponResult = await _couponService.GetByIdAsync(request.CouponId.Value);
                     if (!couponResult.IsSuccess || couponResult.Data == null)
-                    {
                         throw new ArgumentException("Mã giảm giá không tồn tại");
-                    }
 
-                    // Validate coupon eligibility
                     var validationResult = await _couponService.ValidateCouponAsync(couponResult.Data.Code, order.TotalAmount, order.UserId);
                     if (!validationResult.IsSuccess || !validationResult.Data)
-                    {
                         throw new ArgumentException("Mã giảm giá không hợp lệ hoặc không áp dụng được: " + (validationResult.Message ?? ""));
-                    }
 
                     order.CouponId = request.CouponId;
-                    // Recalculate discount and total if coupon changed
                     var (discountAmount, _) = await CalculateDiscountAndTaxAsync(request.CouponId, order.TotalAmount);
                     order.DiscountAmount = discountAmount;
                 }
                 else if (request.CouponId == null && order.CouponId.HasValue)
                 {
-                    // Remove coupon if explicitly set to null
                     order.CouponId = null;
                     order.DiscountAmount = 0;
                 }
 
                 if (request.ShippingMethodId.HasValue)
                 {
-                    // Validate shipping method exists and is active
                     var shippingMethodValidation = await _shippingMethodService.ValidateShippingMethodAsync(request.ShippingMethodId.Value);
                     if (!shippingMethodValidation.IsSuccess)
-                    {
                         throw new ArgumentException("Phương thức vận chuyển không hợp lệ: " + (shippingMethodValidation.Message ?? ""));
-                    }
 
                     order.ShippingMethodId = request.ShippingMethodId;
-                    // Recalculate shipping fee if method changed
                     order.ShippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, order.TotalAmount);
                 }
 
-                // ❌ Loại bỏ những dòng này vì không còn trong UpdateOrderRequest:
-                // - EstimatedDeliveryDate
-                // - TrackingNumber 
-                // - AssignedStaffId
-
-                // Update audit fields
                 order.UpdatedAt = DateTime.UtcNow;
                 order.UpdatedBy = userId.Value;
 
                 var updatedOrder = await UpdateAsync(order);
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
                 return ConvertToOrderDTO(updatedOrder);
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error updating order {OrderId}", orderId);
                 throw;
             }
@@ -392,27 +431,31 @@ namespace Services.Implementations
 
         public async Task<bool> DeleteOrderAsync(Guid orderId, Guid? deletedBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null || order.IsDeleted)
                     return false;
 
-                // Only allow deletion for pending orders
                 if (order.Status != OrderStatus.Pending)
-                {
                     throw new InvalidOperationException("Chỉ có thể xóa đơn hàng đang chờ xử lý");
-                }
 
-                return await DeleteAsync(orderId);
+                var result = await DeleteAsync(orderId);
+                if (result)
+                {
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                return result;
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error deleting order {OrderId}", orderId);
                 throw;
             }
         }
-
         public async Task<IEnumerable<OrderDTO>> GetUserOrdersAsync(Guid userId)
         {
             try
@@ -442,6 +485,7 @@ namespace Services.Implementations
 
         public async Task<bool> UpdateOrderStatusAsync(Guid orderId, OrderStatus status, Guid? updatedBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 var order = await _orderRepository.GetByIdAsync(orderId);
@@ -450,19 +494,22 @@ namespace Services.Implementations
 
                 var result = await _orderRepository.UpdateOrderStatusAsync(orderId, status, updatedBy);
                 if (result)
+                {
                     await _unitOfWork.SaveChangesAsync();
-
+                    await transaction.CommitAsync();
+                }
                 return result;
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error updating order status {OrderId} to {Status}", orderId, status);
                 throw;
             }
         }
-
         public async Task<bool> UpdatePaymentStatusAsync(Guid orderId, PaymentStatus paymentStatus, Guid? updatedBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 var order = await _orderRepository.GetByIdAsync(orderId);
@@ -471,17 +518,19 @@ namespace Services.Implementations
 
                 var result = await _orderRepository.UpdatePaymentStatusAsync(orderId, paymentStatus, updatedBy);
                 if (result)
+                {
                     await _unitOfWork.SaveChangesAsync();
-
+                    await transaction.CommitAsync();
+                }
                 return result;
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error updating payment status {OrderId} to {PaymentStatus}", orderId, paymentStatus);
                 throw;
             }
         }
-
         public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
         {
             using var transaction = await _unitOfWork.BeginTransactionAsync();
@@ -780,37 +829,34 @@ namespace Services.Implementations
 
         public async Task<bool> UpdateTrackingNumberAsync(Guid orderId, string trackingNumber, Guid? updatedBy = null)
         {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
                 if (string.IsNullOrWhiteSpace(trackingNumber))
-                {
                     throw new ArgumentException("Mã vận đơn không được để trống");
-                }
 
                 var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null || order.IsDeleted)
-                {
                     throw new ArgumentException("Đơn hàng không tồn tại");
-                }
 
                 if (order.Status != OrderStatus.Shipping && order.Status != OrderStatus.Processing)
-                {
                     throw new InvalidOperationException("Chỉ có thể cập nhật mã vận đơn cho đơn hàng đã xác nhận hoặc đang giao");
-                }
 
                 var result = await _orderRepository.UpdateTrackingNumberAsync(orderId, trackingNumber.Trim(), updatedBy);
                 if (result)
+                {
                     await _unitOfWork.SaveChangesAsync();
-
+                    await transaction.CommitAsync();
+                }
                 return result;
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Error updating tracking number {OrderId}", orderId);
                 throw;
             }
         }
-
         #region Private Helper Methods
 
         private async Task<decimal> CalculateShippingFeeAsync(Guid? shippingMethodId, decimal subtotal)

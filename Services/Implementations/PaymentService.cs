@@ -46,25 +46,45 @@ namespace Services.Implementations
 
         public async Task<PaymentResponse> CreatePaymentAsync(PaymentCreateRequest request)
         {
-            if (!Enum.TryParse<PaymentMethod>(request.PaymentMethod, true, out var paymentMethod))
-                throw new ArgumentException("Invalid payment method");
+            // 1. Parse phương thức thanh toán
+            if (!Enum.TryParse<PaymentMethod>(request.PaymentMethod.ToString(), true, out var paymentMethod))
+                throw new ArgumentException($"Invalid payment method: {request.PaymentMethod}");
 
-            var order = await _orderRepository.GetOrderWithDetailsAsync(request.OrderId);
-            if (order == null)
-                throw new Exception("Order not found");
+            // 2. Lấy đơn hàng kèm chi tiết
+            var order = await _orderRepository.GetOrderWithDetailsAsync(request.OrderId)
+                        ?? throw new KeyNotFoundException($"Order {request.OrderId} not found");
 
-            var totalAmount = order.TotalAmount + order.ShippingFee - order.DiscountAmount;
+            // 3. Tính subtotal qua navigation property, rồi tổng thanh toán
+            var subtotal = order.SubtotalAmount;
+            var totalAmount = subtotal + order.ShippingFee - order.DiscountAmount;
+
+            // 4. Tạo đối tượng Payment mới
             var payment = new Payment
             {
-                OrderId = request.OrderId,
-                PaymentMethod = paymentMethod,
-                Amount = totalAmount,
-                Status = PaymentStatus.Unpaid,
+                OrderId        = order.Id,
+                PaymentMethod  = paymentMethod,
+                Amount         = totalAmount,
+                // COD coi như khách đã đồng ý trả, ta mark Completed ngay
+                Status         = paymentMethod == PaymentMethod.COD
+                                 ? PaymentStatus.Completed
+                                 : PaymentStatus.Unpaid,
+                CreatedAt      = GetVietnamTime()
             };
 
+            // 5. Lưu Payment
             await _paymentRepository.AddAsync(payment);
             await _paymentRepository.SaveChangesAsync();
 
+            // 6. Nếu COD, cập nhật luôn Order
+            if (paymentMethod == PaymentMethod.COD)
+            {
+                order.PaymentStatus = PaymentStatus.Unpaid;  // đã có tiền
+                order.Status        = OrderStatus.Processing;    
+                await _orderRepository.UpdateAsync(order);
+                await _orderRepository.SaveChangesAsync();
+            }
+
+            // 7. Trả về DTO
             return MapToResponse(payment);
         }
 
@@ -168,7 +188,6 @@ namespace Services.Implementations
                     vnp_TxnRef = txnRef,
                     vnp_OrderInfo = request.Description ?? $"Thanh toán đơn hàng {order.Id}",
                     vnp_OrderType = "other",
-                    vnp_BankCode = request.BankCode ?? "",
                     vnp_Amount    = vnpAmountXu,
                     vnp_CreateDate = createDate,
                     vnp_IpAddr = ipAddr
@@ -278,7 +297,7 @@ namespace Services.Implementations
 
                         // Nếu thanh toán thành công, chuyển Order sang Confirmed
                         if (status == PaymentStatus.Completed)
-                            order.Status = OrderStatus.Completed;
+                            order.Status = OrderStatus.Paid;
                         else
                             order.Status = OrderStatus.Pending; // hoặc tuỳ logic của bạn
 

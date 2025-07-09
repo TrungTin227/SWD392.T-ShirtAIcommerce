@@ -1,4 +1,5 @@
-﻿using DTOs.Orders;
+﻿using BusinessObjects.Common;
+using DTOs.Orders;
 using DTOs.Payments;
 using DTOs.Payments.VnPay;
 using Microsoft.AspNetCore.Authorization;
@@ -19,32 +20,27 @@ namespace WebAPI.Controllers
         }
 
         [HttpPost("create")]
-        public async Task<IActionResult> CreatePayment([FromBody] PaymentCreateRequest request)
+        public async Task<IActionResult> CreatePayment([FromBody] PaymentCreateRequest req)
         {
-            if (string.Equals(request.PaymentMethod, "vnpay", StringComparison.OrdinalIgnoreCase))
+            if (req.PaymentMethod == PaymentMethod.VNPAY)
             {
-                var vnPayResponse = await _paymentService.CreateVnPayPaymentAsync(request);
-                if (!vnPayResponse.Success)
-                    return BadRequest(vnPayResponse);
+                var vn = await _paymentService.CreateVnPayPaymentAsync(req);
+                if (!vn.Success)
+                    return BadRequest(new { success = false, errors = vn.Errors });
 
-                // Trả về cho client URL để redirect hoặc open popup
                 return Ok(new
                 {
                     success = true,
-                    paymentId = vnPayResponse.PaymentId,
-                    paymentUrl = vnPayResponse.PaymentUrl,
-                    message = "VNPAY payment URL created"
+                    paymentId = vn.PaymentId,
+                    paymentUrl = vn.PaymentUrl
                 });
             }
 
-            // Xử lý các phương thức khác
-            var payment = await _paymentService.CreatePaymentAsync(request);
-            return Ok(new
-            {
-                success = true,
-                data = payment
-            });
+            // COD (hoặc các method khác)
+            var pay = await _paymentService.CreatePaymentAsync(req);
+            return Ok(new { success = true, data = pay });
         }
+
 
         [AllowAnonymous]
         [HttpGet("vnpay/return")]

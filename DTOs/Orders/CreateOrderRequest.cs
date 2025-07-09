@@ -29,6 +29,9 @@ namespace DTOs.Orders
         [ValidOrderItems]
         public List<CreateOrderItemRequest> OrderItems { get; set; } = new();
 
+        [Required]
+        public PaymentMethod PaymentMethod { get; set; }
+
         /// <summary>
         /// Rule: 
         /// - Nếu UserAddressId có giá trị thì NewAddress phải null (và ngược lại).

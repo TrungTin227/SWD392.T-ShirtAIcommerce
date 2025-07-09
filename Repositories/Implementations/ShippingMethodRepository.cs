@@ -137,9 +137,9 @@ namespace Repositories.Implementations
                 return 0;
 
             // Check if order qualifies for free shipping
-            if (shippingMethod.FreeShippingThreshold.HasValue &&
-                orderAmount >= shippingMethod.FreeShippingThreshold.Value)
-                return 0;
+            //if (shippingMethod.FreeShippingThreshold.HasValue &&
+            //    orderAmount >= shippingMethod.FreeShippingThreshold.Value)
+            //    return 0;
 
             return shippingMethod.Fee;
         }

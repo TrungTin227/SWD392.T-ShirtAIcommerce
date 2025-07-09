@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using BusinessObjects.Common;
+using System.ComponentModel.DataAnnotations;
 
 namespace DTOs.Payments
 {
@@ -6,12 +7,7 @@ namespace DTOs.Payments
     {
         [Required]
         public Guid OrderId { get; set; }
-
-        [Required]
-        [MaxLength(50)]
-        public string PaymentMethod { get; set; } = string.Empty;
+        public PaymentMethod PaymentMethod { get; set; } 
         public string? Description { get; set; }
-
-        public string? BankCode { get; set; } // For VnPay bank selection
     }
 }

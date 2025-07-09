@@ -16,9 +16,8 @@ namespace BusinessObjects.Orders
         public Guid? CustomDesignId { get; set; }
         public Guid? ProductVariantId { get; set; }
 
-        [Required]
         [MaxLength(255)]
-        public string ItemName { get; set; } = string.Empty;
+        public string? ItemName { get; set; }
 
         [MaxLength(50)]
         public string? SelectedColor { get; set; }

@@ -36,6 +36,6 @@ namespace DTOs.Orders
         public string? CouponCode { get; set; }
         public string? ShippingMethodName { get; set; }
         public List<OrderItemDto> OrderItems { get; set; } = new();
-        public decimal FinalTotal => TotalAmount + ShippingFee - DiscountAmount;
+        public decimal FinalTotal => TotalAmount ;
     }
 }
