@@ -237,11 +237,8 @@ namespace Services.Implementations
                         shippingFee = shippingMethodResult.Data.Fee;
                 }
 
-                // 7. Thuế (VAT)
-                var taxAmount = subtotal * 0.1m; // 10% VAT
-
                 // 8. Tổng thanh toán
-                var totalAmount = subtotal + shippingFee + taxAmount - discountAmount;
+                var totalAmount = subtotal + shippingFee  - discountAmount;
 
                 // 9. Tạo đơn hàng
                 var order = new Order
@@ -256,7 +253,6 @@ namespace Services.Implementations
                     CouponId = request.CouponId,
                     ShippingMethodId = request.ShippingMethodId,
                     ShippingFee = shippingFee,
-                    TaxAmount = taxAmount,
                     DiscountAmount = discountAmount,
                     TotalAmount = totalAmount,
                     Status = OrderStatus.Pending,
@@ -888,8 +884,8 @@ namespace Services.Implementations
         {
             try
             {
+                decimal taxAmount = 0;
                 decimal discountAmount = 0;
-                decimal taxAmount = subtotal * 0.1m; // 10% VAT
 
                 if (couponId.HasValue)
                 {
@@ -991,7 +987,6 @@ namespace Services.Implementations
                 TotalAmount = order.TotalAmount,
                 ShippingFee = order.ShippingFee,
                 DiscountAmount = order.DiscountAmount,
-                TaxAmount = order.TaxAmount,
                 Status = order.Status,
                 PaymentStatus = order.PaymentStatus,
                 ShippingAddress = order.ShippingAddress,
@@ -1101,8 +1096,7 @@ namespace Services.Implementations
 
                 order.ShippingFee = shippingFee;
                 order.DiscountAmount = discountAmount;
-                order.TaxAmount = taxAmount;
-                order.TotalAmount = subtotal + shippingFee + taxAmount - discountAmount;
+                order.TotalAmount = subtotal + shippingFee - discountAmount;
 
                 // Save order
                 var createdOrder = await CreateAsync(order);
@@ -1186,8 +1180,7 @@ namespace Services.Implementations
                 result.ShippingFee = await CalculateShippingFeeAsync(null, subtotal);
                 var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(null, subtotal);
                 result.DiscountAmount = discountAmount;
-                result.TaxAmount = taxAmount;
-                result.EstimatedTotal = subtotal + result.ShippingFee + result.TaxAmount - result.DiscountAmount;
+                result.EstimatedTotal = subtotal + result.ShippingFee  - result.DiscountAmount;
 
                 return result;
             }
@@ -1251,7 +1244,7 @@ namespace Services.Implementations
                 if (order == null) return 0;
 
                 var subtotal = order.OrderItems.Sum(oi => oi.TotalPrice);
-                var total = subtotal + order.ShippingFee + order.TaxAmount - order.DiscountAmount;
+                var total = subtotal + order.ShippingFee - order.DiscountAmount;
 
                 if (Math.Abs(order.TotalAmount - total) > 0.01m)
                 {

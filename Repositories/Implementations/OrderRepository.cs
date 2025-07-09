@@ -235,7 +235,7 @@ namespace Repositories.Implementations
         {
             return await _dbSet
                 .Where(o => o.Id == orderId && !o.IsDeleted)
-                .Select(o => o.TotalAmount + o.ShippingFee + o.TaxAmount - o.DiscountAmount)
+                .Select(o => o.TotalAmount + o.ShippingFee  - o.DiscountAmount)
                 .FirstOrDefaultAsync();
         }
 

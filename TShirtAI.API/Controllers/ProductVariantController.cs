@@ -1,5 +1,4 @@
 ﻿using DTOs.Products;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 
@@ -7,7 +6,7 @@ namespace WebAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
+    //[Authorize]
     public class ProductVariantController : ControllerBase
     {
         private readonly IProductVariantService _productVariantService;

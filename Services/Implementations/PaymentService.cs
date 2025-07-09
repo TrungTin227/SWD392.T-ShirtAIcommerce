@@ -14,46 +14,53 @@ namespace Services.Implementations
     public class PaymentService : IPaymentService
     {
         private readonly IPaymentRepository _paymentRepository;
+        private readonly IOrderRepository _orderRepository;
         private readonly IVnPayService _vnPayService;
         private readonly VnPayConfig _vnPayConfig;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public PaymentService(
             IPaymentRepository paymentRepository,
+            IOrderRepository orderRepository,
             IVnPayService vnPayService,
             IOptions<VnPayConfig> vnPayConfig,
             IHttpContextAccessor httpContextAccessor)
         {
             _paymentRepository = paymentRepository;
+            _orderRepository = orderRepository;
             _vnPayService = vnPayService;
             _vnPayConfig = vnPayConfig.Value;
             _httpContextAccessor = httpContextAccessor;
-        }
-
-        public async Task<PaymentResponse> CreatePaymentAsync(PaymentCreateRequest request)
-        {
-            // Chuyển đổi string sang enum
-            if (!Enum.TryParse<PaymentMethod>(request.PaymentMethod, true, out var paymentMethod))
-                throw new ArgumentException("Invalid payment method");
-
-            var payment = new Payment
-            {
-                OrderId = request.OrderId,
-                PaymentMethod = paymentMethod,
-                Amount = request.Amount,
-                Status = PaymentStatus.Unpaid
-            };
-
-            await _paymentRepository.AddAsync(payment);
-            await _paymentRepository.SaveChangesAsync();
-
-            return MapToResponse(payment);
         }
 
         private DateTime GetVietnamTime()
         {
             var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+        }
+
+        public async Task<PaymentResponse> CreatePaymentAsync(PaymentCreateRequest request)
+        {
+            if (!Enum.TryParse<PaymentMethod>(request.PaymentMethod, true, out var paymentMethod))
+                throw new ArgumentException("Invalid payment method");
+
+            var order = await _orderRepository.GetOrderWithDetailsAsync(request.OrderId);
+            if (order == null)
+                throw new Exception("Order not found");
+
+            var totalAmount = order.TotalAmount + order.ShippingFee - order.DiscountAmount;
+            var payment = new Payment
+            {
+                OrderId = request.OrderId,
+                PaymentMethod = paymentMethod,
+                Amount = totalAmount,
+                Status = PaymentStatus.Unpaid,
+            };
+
+            await _paymentRepository.AddAsync(payment);
+            await _paymentRepository.SaveChangesAsync();
+
+            return MapToResponse(payment);
         }
 
         public async Task<PaymentResponse?> GetPaymentByIdAsync(Guid id)
@@ -96,28 +103,49 @@ namespace Services.Implementations
         {
             try
             {
-                // Create payment record first
-                var payment = await CreatePaymentAsync(request);
+                // Lấy đơn hàng
+                var order = await _orderRepository.GetOrderWithDetailsAsync(request.OrderId);
+                if (order == null)
+                    throw new Exception("Order not found");
 
-                var txnRef = $"{DateTime.Now:yyyyMMddHHmmss}_{payment.Id}";
-                var createDate = DateTime.Now.ToString("yyyyMMddHHmmss");
-                var ipAddr = VnPayLibrary.GetIpAddress(_httpContextAccessor.HttpContext!);
+                var totalAmount = order.TotalAmount + order.ShippingFee - order.DiscountAmount; //vẫn lấy được tiền
+                long vnpAmountXu = Convert.ToInt64(totalAmount * 100m);
+                // Tạo payment trong DB với trạng thái Unpaid
+                var payment = new Payment
+                {
+                    OrderId = request.OrderId,
+                    PaymentMethod = PaymentMethod.VNPAY,
+                    Amount = totalAmount,
+                    Status = PaymentStatus.Unpaid,
+                };
 
+                await _paymentRepository.AddAsync(payment);
+                await _paymentRepository.SaveChangesAsync();
+
+                // Sinh các trường kỹ thuật chuẩn VNPAY
+                var vnNow = GetVietnamTime();
+                var txnRef = $"{vnNow:yyyyMMddHHmmss}_{payment.Id}";
+                var createDate = vnNow.ToString("yyyyMMddHHmmss");
+                var ipAddr = Utils.GetIpAddress(_httpContextAccessor.HttpContext!);
+
+                // Build request cho VNPAY Service
                 var vnPayRequest = new VnPayCreatePaymentRequest
                 {
                     vnp_TxnRef = txnRef,
-                    vnp_OrderInfo = request.Description ?? $"Payment for Order {request.OrderId}",
-                    vnp_Amount = (long)request.Amount,
+                    vnp_OrderInfo = request.Description ?? $"Thanh toán đơn hàng {order.Id}",
+                    vnp_OrderType = "other",
+                    vnp_BankCode = request.BankCode ?? "",
+                    vnp_Amount    = vnpAmountXu,
                     vnp_CreateDate = createDate,
-                    vnp_IpAddr = ipAddr,
-                    vnp_BankCode = request.BankCode ?? ""
+                    vnp_IpAddr = ipAddr
                 };
 
+                // Xây dựng URL thanh toán VNPAY
                 var vnPayResponse = await _vnPayService.CreatePaymentUrlAsync(vnPayRequest);
 
-                // Update payment with transaction ID if successful
                 if (vnPayResponse.Success)
                 {
+                    // Cập nhật trạng thái Payment sang "Processing" và lưu TxnRef vào TransactionId
                     var updatedPayment = await UpdatePaymentStatusAsync(payment.Id, PaymentStatus.Processing, txnRef);
 
                     return new VnPayCreateResponse
@@ -131,13 +159,14 @@ namespace Services.Implementations
                 }
                 else
                 {
+                    // Trả về response với thông tin lỗi và trạng thái Payment ban đầu
                     return new VnPayCreateResponse
                     {
                         Success = false,
                         PaymentId = payment.Id,
                         PaymentUrl = string.Empty,
-                        Payment = payment,
-                        Message = vnPayResponse.Message,
+                        Payment = MapToResponse(payment),
+                        Message = $"Failed to create VnPay payment URL: {vnPayResponse.Message}",
                         Errors = new List<string> { vnPayResponse.Message }
                     };
                 }
@@ -158,15 +187,15 @@ namespace Services.Implementations
 
         public async Task<VnPayQueryResponse> QueryVnPayPaymentAsync(string txnRef)
         {
+            var vnNow = GetVietnamTime();
             var request = new VnPayQueryRequest
             {
                 vnp_TxnRef = txnRef,
                 vnp_OrderInfo = $"Query payment {txnRef}",
-                vnp_TransDate = DateTime.Now.ToString("yyyyMMdd"),
-                vnp_CreateDate = DateTime.Now.ToString("yyyyMMddHHmmss"),
-                vnp_IpAddr = VnPayLibrary.GetIpAddress(_httpContextAccessor.HttpContext!)
+                vnp_TransDate = vnNow.ToString("yyyyMMdd"),
+                vnp_CreateDate = vnNow.ToString("yyyyMMddHHmmss"),
+                vnp_IpAddr = Utils.GetIpAddress(_httpContextAccessor.HttpContext!)
             };
-
             return await _vnPayService.QueryPaymentAsync(request);
         }
 
@@ -175,7 +204,6 @@ namespace Services.Implementations
             if (!_vnPayService.ValidateCallback(callback))
                 return false;
 
-            // Extract payment ID from transaction reference
             var txnRefParts = callback.vnp_TxnRef.Split('_');
             if (txnRefParts.Length != 2 || !Guid.TryParse(txnRefParts[1], out var paymentId))
                 return false;

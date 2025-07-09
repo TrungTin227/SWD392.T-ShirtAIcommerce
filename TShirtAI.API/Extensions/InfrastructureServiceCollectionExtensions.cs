@@ -26,6 +26,7 @@ namespace WebAPI.Extensions
             this IServiceCollection services,
             IConfiguration configuration)
         {
+            services.AddMemoryCache();
             // === 0. Cấu hình Cache + Session (nếu cần) ===
             services.AddDistributedMemoryCache();
             services.AddSession(opts =>
@@ -41,6 +42,7 @@ namespace WebAPI.Extensions
             services.Configure<VnPayConfig>(
                 configuration.GetSection("VnPay"));
             services.AddHttpContextAccessor();
+            services.Configure<VnPayConfig>(configuration.GetSection("VnPay"));
 
             // === 2. EF Core DbContext ===
             services.AddDbContext<T_ShirtAIcommerceContext>(opt =>
@@ -114,7 +116,7 @@ namespace WebAPI.Extensions
                 googleOptions.ClientId = configuration["Authentication:Google:ClientId"];
                 googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
             });
-
+            
             // === 5. HTTP Clients (Ví dụ VnPay) ===
             services.AddHttpClient<IVnPayService, VnPayService>();
 

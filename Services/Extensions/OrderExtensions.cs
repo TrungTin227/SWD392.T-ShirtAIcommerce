@@ -25,7 +25,7 @@ namespace Services.Extensions
 
         public static decimal GetFinalTotal(this Order order)
         {
-            return order.TotalAmount + order.ShippingFee + order.TaxAmount - order.DiscountAmount;
+            return order.TotalAmount + order.ShippingFee  - order.DiscountAmount;
         }
 
         public static bool RequiresShipping(this Order order)

@@ -14,7 +14,6 @@ namespace DTOs.Orders
         public decimal TotalAmount { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal DiscountAmount { get; set; }
-        public decimal TaxAmount { get; set; }
         public decimal RefundAmount { get; set; }
         public OrderStatus Status { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
@@ -42,8 +41,8 @@ namespace DTOs.Orders
         public List<OrderItemDto> OrderItems { get; set; } = new();
         
         // Calculated properties
-        public decimal FinalTotal => TotalAmount + ShippingFee + TaxAmount - DiscountAmount;
-        public decimal SubTotal => TotalAmount - ShippingFee - TaxAmount + DiscountAmount;
+        public decimal FinalTotal => TotalAmount + ShippingFee - DiscountAmount;
+        public decimal SubTotal => TotalAmount - ShippingFee  + DiscountAmount;
         public bool IsEditable => Status == OrderStatus.Pending || Status == OrderStatus.Processing;
         public bool IsCancellable => Status != OrderStatus.Delivered && Status != OrderStatus.Cancelled;
     }

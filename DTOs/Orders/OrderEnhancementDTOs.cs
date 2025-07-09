@@ -18,7 +18,6 @@
         public decimal EstimatedTotal { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal DiscountAmount { get; set; }
-        public decimal TaxAmount { get; set; }
         public int TotalItems { get; set; }
         public List<OrderItemValidationDto> Items { get; set; } = new();
     }

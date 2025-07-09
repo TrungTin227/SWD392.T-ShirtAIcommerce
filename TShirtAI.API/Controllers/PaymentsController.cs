@@ -19,59 +19,32 @@ namespace WebAPI.Controllers
         }
 
         [HttpPost("create")]
-        public async Task<ActionResult<PaymentCreateResponse>> CreatePayment([FromBody] PaymentCreateRequest request)
+        public async Task<IActionResult> CreatePayment([FromBody] PaymentCreateRequest request)
         {
-            try
+            if (string.Equals(request.PaymentMethod, "vnpay", StringComparison.OrdinalIgnoreCase))
             {
-                if (request.PaymentMethod.ToLower() == "vnpay")
-                {
-                    var vnPayResponse = await _paymentService.CreateVnPayPaymentAsync(request);
+                var vnPayResponse = await _paymentService.CreateVnPayPaymentAsync(request);
+                if (!vnPayResponse.Success)
+                    return BadRequest(vnPayResponse);
 
-                    if (vnPayResponse.Success)
-                    {
-                        return Ok(new PaymentCreateResponse
-                        {
-                            Success = true,
-                            PaymentId = vnPayResponse.PaymentId,           // ← Thêm PaymentId
-                            PaymentUrl = vnPayResponse.PaymentUrl,         // ← URL redirect
-                            Payment = vnPayResponse.Payment,               // ← Full payment info
-                            Message = "VnPay payment URL created successfully",
-                            RequiresRedirect = true                        // ← Flag để client biết cần redirect
-                        });
-                    }
-                    else
-                    {
-                        return BadRequest(new PaymentCreateResponse
-                        {
-                            Success = false,
-                            Message = vnPayResponse.Message,
-                            Errors = vnPayResponse.Errors
-                        });
-                    }
-                }
-                else
-                {
-                    var payment = await _paymentService.CreatePaymentAsync(request);
-                    return Ok(new PaymentCreateResponse
-                    {
-                        Success = true,
-                        PaymentId = payment.Id,
-                        Payment = payment,
-                        Message = "Payment created successfully",
-                        RequiresRedirect = false                           // ← Không cần redirect
-                    });
-                }
+                // Lấy URL VNPAY đã sinh ra
+                var vnpUrl = vnPayResponse.PaymentUrl;
+                var uri = new Uri(vnpUrl);
+
+                // Build lại URL gọi về callback của bạn
+                // Url.Action sẽ tạo: "/api/payments/vnpay/return"
+                var callbackPath = Url.Action(nameof(VnPayReturn), "Payments");
+                var callbackUrl = $"{Request.Scheme}://{Request.Host}{callbackPath}{uri.Query}";
+
+                // Redirect thẳng đến VnPayReturn để bạn breakpoint và debug
+                return Redirect(callbackUrl);
             }
-            catch (Exception ex)
-            {
-                return BadRequest(new PaymentCreateResponse
-                {
-                    Success = false,
-                    Message = ex.Message,
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+
+            // xử lý phương thức thanh toán khác...
+            var payment = await _paymentService.CreatePaymentAsync(request);
+            return Ok(payment);
         }
+
 
 
         [HttpGet("{id}")]

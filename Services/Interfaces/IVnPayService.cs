@@ -7,6 +7,5 @@ namespace Services.Interfaces
         Task<VnPayCreatePaymentResponse> CreatePaymentUrlAsync(VnPayCreatePaymentRequest request);
         Task<VnPayQueryResponse> QueryPaymentAsync(VnPayQueryRequest request);
         bool ValidateCallback(VnPayCallbackRequest callback);
-        string CreateQueryUrl(VnPayQueryRequest request);
     }
 }

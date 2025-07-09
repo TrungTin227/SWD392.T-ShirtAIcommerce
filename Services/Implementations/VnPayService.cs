@@ -8,220 +8,115 @@ namespace Services.Implementations
 {
     public class VnPayService : IVnPayService
     {
-        private readonly VnPayConfig _config;
-        private readonly HttpClient _httpClient;
+        private readonly VnPayConfig _cfg;
+        private readonly HttpClient _http;
 
-        public VnPayService(IOptions<VnPayConfig> config, HttpClient httpClient)
+        public VnPayService(IOptions<VnPayConfig> cfg, HttpClient http)
         {
-            _config = config.Value;
-            _httpClient = httpClient;
+            _cfg = cfg.Value;
+            _http = http;
         }
 
-        private DateTime GetVietnamTime()
+        public async Task<VnPayCreatePaymentResponse> CreatePaymentUrlAsync(VnPayCreatePaymentRequest req)
         {
-            var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById(_config.TimeZoneId);
-            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+            var lib = new VnPayLibrary();
+            // Thêm đúng các trường chuẩn theo tài liệu
+            lib.AddRequestData("vnp_Version", _cfg.Version);
+            lib.AddRequestData("vnp_Command", "pay");
+            lib.AddRequestData("vnp_TmnCode", _cfg.TmnCode);
+            lib.AddRequestData("vnp_Amount", (req.vnp_Amount * 100).ToString());
+            lib.AddRequestData("vnp_CurrCode", _cfg.CurrCode);
+            lib.AddRequestData("vnp_TxnRef", req.vnp_TxnRef);
+            lib.AddRequestData("vnp_OrderInfo", req.vnp_OrderInfo);
+            lib.AddRequestData("vnp_OrderType", req.vnp_OrderType);
+            lib.AddRequestData("vnp_Locale", req.vnp_Locale);
+            lib.AddRequestData("vnp_ReturnUrl", _cfg.ReturnUrl);
+            lib.AddRequestData("vnp_IpAddr", req.vnp_IpAddr);
+            lib.AddRequestData("vnp_CreateDate", req.vnp_CreateDate);
+            if (!string.IsNullOrEmpty(req.vnp_BankCode))
+                lib.AddRequestData("vnp_BankCode", req.vnp_BankCode);
+
+            // Build URL đúng chuẩn tài liệu
+            var url = lib.CreateRequestUrl(_cfg.BaseUrl, _cfg.HashSecret);
+
+            return new VnPayCreatePaymentResponse
+            {
+                Success = true,
+                PaymentUrl = url,
+                Message = "Create payment URL success"
+            };
         }
 
-        public async Task<VnPayCreatePaymentResponse> CreatePaymentUrlAsync(VnPayCreatePaymentRequest request)
+        public async Task<VnPayQueryResponse> QueryPaymentAsync(VnPayQueryRequest req)
         {
-            try
+            var lib = new VnPayLibrary();
+            lib.AddRequestData("vnp_Version", _cfg.Version);
+            lib.AddRequestData("vnp_Command", "querydr");
+            lib.AddRequestData("vnp_TmnCode", _cfg.TmnCode);
+            lib.AddRequestData("vnp_TxnRef", req.vnp_TxnRef);
+            lib.AddRequestData("vnp_OrderInfo", req.vnp_OrderInfo);
+            lib.AddRequestData("vnp_TransDate", req.vnp_TransDate);
+            lib.AddRequestData("vnp_CreateDate", req.vnp_CreateDate);
+            lib.AddRequestData("vnp_IpAddr", req.vnp_IpAddr);
+
+            var url = lib.CreateRequestUrl(_cfg.ApiUrl, _cfg.HashSecret);
+            var resp = await _http.GetStringAsync(url);
+
+            // Parse kết quả trả về
+            var dict = resp.Split('&')
+                .Select(p => p.Split('=', 2))
+                .Where(a => a.Length == 2)
+                .ToDictionary(a => a[0], a => Uri.UnescapeDataString(a[1]));
+
+            return new VnPayQueryResponse
             {
-                var vnpay = new VnPayLibrary();
-
-                vnpay.AddRequestData("vnp_Version", _config.Version);
-                vnpay.AddRequestData("vnp_Command", _config.Command);
-                vnpay.AddRequestData("vnp_TmnCode", _config.TmnCode);
-                vnpay.AddRequestData("vnp_Amount", (request.vnp_Amount * 100).ToString());
-                vnpay.AddRequestData("vnp_CreateDate", request.vnp_CreateDate);
-                vnpay.AddRequestData("vnp_CurrCode", _config.CurrCode);
-                vnpay.AddRequestData("vnp_IpAddr", request.vnp_IpAddr);
-                vnpay.AddRequestData("vnp_Locale", _config.Locale);
-                vnpay.AddRequestData("vnp_OrderInfo", request.vnp_OrderInfo);
-                vnpay.AddRequestData("vnp_OrderType", request.vnp_OrderType);
-                vnpay.AddRequestData("vnp_ReturnUrl", _config.ReturnUrl);
-                vnpay.AddRequestData("vnp_TxnRef", request.vnp_TxnRef);
-
-                if (!string.IsNullOrEmpty(request.vnp_BankCode))
-                {
-                    vnpay.AddRequestData("vnp_BankCode", request.vnp_BankCode);
-                }
-
-                var paymentUrl = vnpay.CreateRequestUrl(_config.BaseUrl, _config.HashSecret);
-
-                return new VnPayCreatePaymentResponse
-                {
-                    Success = true,
-                    PaymentUrl = paymentUrl,
-                    Message = "Create payment URL success"
-                };
-            }
-            catch (Exception ex)
-            {
-                return new VnPayCreatePaymentResponse
-                {
-                    Success = false,
-                    PaymentUrl = string.Empty,
-                    Message = $"Error creating VnPay payment URL: {ex.Message}"
-                };
-            }
+                vnp_ResponseCode = dict.GetValueOrDefault("vnp_ResponseCode", ""),
+                vnp_Message = dict.GetValueOrDefault("vnp_Message", ""),
+                vnp_TmnCode = dict.GetValueOrDefault("vnp_TmnCode", ""),
+                vnp_TxnRef = dict.GetValueOrDefault("vnp_TxnRef", ""),
+                vnp_Amount = long.TryParse(dict.GetValueOrDefault("vnp_Amount", "0"), out var a) ? a : 0,
+                vnp_OrderInfo = dict.GetValueOrDefault("vnp_OrderInfo", ""),
+                vnp_BankCode = dict.GetValueOrDefault("vnp_BankCode", ""),
+                vnp_PayDate = dict.GetValueOrDefault("vnp_PayDate", ""),
+                vnp_TransactionNo = dict.GetValueOrDefault("vnp_TransactionNo", ""),
+                vnp_TransactionType = dict.GetValueOrDefault("vnp_TransactionType", ""),
+                vnp_TransactionStatus = dict.GetValueOrDefault("vnp_TransactionStatus", ""),
+                vnp_SecureHash = dict.GetValueOrDefault("vnp_SecureHash", "")
+            };
         }
 
-        public async Task<VnPayQueryResponse> QueryPaymentAsync(VnPayQueryRequest request)
+        public bool ValidateCallback(VnPayCallbackRequest cb)
         {
-            try
-            {
-                var queryUrl = CreateQueryUrl(request);
+            var lib = new VnPayLibrary();
 
-                // Add timeout and error handling for API calls
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var response = await _httpClient.GetAsync(queryUrl, cts.Token);
+            // Thêm tất cả các trường có trong callback (trừ vnp_SecureHash và vnp_SecureHashType)
+            // Thứ tự không quan trọng vì VnPayLibrary sẽ sort lại
+            if (!string.IsNullOrEmpty(cb.vnp_TmnCode))
+                lib.AddResponseData("vnp_TmnCode", cb.vnp_TmnCode);
+            if (!string.IsNullOrEmpty(cb.vnp_Amount))
+                lib.AddResponseData("vnp_Amount", cb.vnp_Amount);
+            if (!string.IsNullOrEmpty(cb.vnp_BankCode))
+                lib.AddResponseData("vnp_BankCode", cb.vnp_BankCode);
+            if (!string.IsNullOrEmpty(cb.vnp_BankTranNo))
+                lib.AddResponseData("vnp_BankTranNo", cb.vnp_BankTranNo);
+            if (!string.IsNullOrEmpty(cb.vnp_CardType))
+                lib.AddResponseData("vnp_CardType", cb.vnp_CardType);
+            if (!string.IsNullOrEmpty(cb.vnp_OrderInfo))
+                lib.AddResponseData("vnp_OrderInfo", cb.vnp_OrderInfo);
+            if (!string.IsNullOrEmpty(cb.vnp_PayDate))
+                lib.AddResponseData("vnp_PayDate", cb.vnp_PayDate);
+            if (!string.IsNullOrEmpty(cb.vnp_ResponseCode))
+                lib.AddResponseData("vnp_ResponseCode", cb.vnp_ResponseCode);
+            if (!string.IsNullOrEmpty(cb.vnp_TransactionNo))
+                lib.AddResponseData("vnp_TransactionNo", cb.vnp_TransactionNo);
+            if (!string.IsNullOrEmpty(cb.vnp_TransactionStatus))
+                lib.AddResponseData("vnp_TransactionStatus", cb.vnp_TransactionStatus);
+            if (!string.IsNullOrEmpty(cb.vnp_TxnRef))
+                lib.AddResponseData("vnp_TxnRef", cb.vnp_TxnRef);
+            if (!string.IsNullOrEmpty(cb.vnp_SecureHashType))
+                lib.AddResponseData("vnp_SecureHashType", cb.vnp_SecureHashType);
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    return new VnPayQueryResponse
-                    {
-                        vnp_ResponseCode = "99",
-                        vnp_Message = $"API call failed with status: {response.StatusCode}"
-                    };
-                }
-
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                // Parse response content (VnPay returns query string format)
-                var queryData = ParseQueryString(responseContent);
-
-                return new VnPayQueryResponse
-                {
-                    vnp_ResponseCode = queryData.GetValueOrDefault("vnp_ResponseCode", ""),
-                    vnp_Message = queryData.GetValueOrDefault("vnp_Message", ""),
-                    vnp_TmnCode = queryData.GetValueOrDefault("vnp_TmnCode", ""),
-                    vnp_TxnRef = queryData.GetValueOrDefault("vnp_TxnRef", ""),
-                    vnp_Amount = long.TryParse(queryData.GetValueOrDefault("vnp_Amount", "0"), out var amount) ? amount : 0,
-                    vnp_OrderInfo = queryData.GetValueOrDefault("vnp_OrderInfo", ""),
-                    vnp_BankCode = queryData.GetValueOrDefault("vnp_BankCode", ""),
-                    vnp_PayDate = queryData.GetValueOrDefault("vnp_PayDate", ""),
-                    vnp_TransactionNo = queryData.GetValueOrDefault("vnp_TransactionNo", ""),
-                    vnp_TransactionType = queryData.GetValueOrDefault("vnp_TransactionType", ""),
-                    vnp_TransactionStatus = queryData.GetValueOrDefault("vnp_TransactionStatus", ""),
-                    vnp_SecureHash = queryData.GetValueOrDefault("vnp_SecureHash", "")
-                };
-            }
-            catch (TaskCanceledException)
-            {
-                return new VnPayQueryResponse
-                {
-                    vnp_ResponseCode = "99",
-                    vnp_Message = "Request timeout"
-                };
-            }
-            catch (Exception ex)
-            {
-                return new VnPayQueryResponse
-                {
-                    vnp_ResponseCode = "99",
-                    vnp_Message = $"Query payment error: {ex.Message}"
-                };
-            }
+            return lib.ValidateSignature(cb.vnp_SecureHash, _cfg.HashSecret);
         }
-
-        public bool ValidateCallback(VnPayCallbackRequest callback)
-        {
-            try
-            {
-                var vnpay = new VnPayLibrary();
-
-                // Thêm các tham số theo thứ tự alphabet (bỏ qua vnp_SecureHash và vnp_SecureHashType)
-                var parameters = new Dictionary<string, string>
-        {
-            { "vnp_Amount", callback.vnp_Amount },
-            { "vnp_BankCode", callback.vnp_BankCode },
-            { "vnp_BankTranNo", callback.vnp_BankTranNo },
-            { "vnp_CardType", callback.vnp_CardType },
-            { "vnp_OrderInfo", callback.vnp_OrderInfo },
-            { "vnp_PayDate", callback.vnp_PayDate },
-            { "vnp_ResponseCode", callback.vnp_ResponseCode },
-            { "vnp_TmnCode", callback.vnp_TmnCode },
-            { "vnp_TransactionNo", callback.vnp_TransactionNo },
-            { "vnp_TransactionStatus", callback.vnp_TransactionStatus },
-            { "vnp_TxnRef", callback.vnp_TxnRef }
-        };
-
-                // Chỉ thêm vnp_SecureHashType nếu có giá trị
-                if (!string.IsNullOrEmpty(callback.vnp_SecureHashType))
-                {
-                    parameters.Add("vnp_SecureHashType", callback.vnp_SecureHashType);
-                }
-
-                // Sắp xếp theo alphabet và thêm vào VnPayLibrary
-                foreach (var param in parameters.OrderBy(x => x.Key))
-                {
-                    if (!string.IsNullOrEmpty(param.Value))
-                    {
-                        vnpay.AddResponseData(param.Key, param.Value);
-                    }
-                }
-
-                return vnpay.ValidateSignature(callback.vnp_SecureHash, _config.HashSecret);
-            }
-            catch (Exception ex)
-            {
-                // Log lỗi để debug
-                Console.WriteLine($"ValidateCallback error: {ex.Message}");
-                return false;
-            }
-        }
-
-        public string CreateQueryUrl(VnPayQueryRequest request)
-        {
-            var vnpay = new VnPayLibrary();
-
-            vnpay.AddRequestData("vnp_Version", _config.Version);
-            vnpay.AddRequestData("vnp_Command", "querydr");
-            vnpay.AddRequestData("vnp_TmnCode", _config.TmnCode);
-            vnpay.AddRequestData("vnp_TxnRef", request.vnp_TxnRef);
-            vnpay.AddRequestData("vnp_OrderInfo", request.vnp_OrderInfo);
-            vnpay.AddRequestData("vnp_TransactionNo", request.vnp_TransactionNo);
-            vnpay.AddRequestData("vnp_TransDate", request.vnp_TransDate);
-            vnpay.AddRequestData("vnp_CreateDate", request.vnp_CreateDate);
-            vnpay.AddRequestData("vnp_IpAddr", request.vnp_IpAddr);
-
-            return vnpay.CreateRequestUrl(_config.ApiUrl, _config.HashSecret);
-        }
-
-        private static Dictionary<string, string> ParseQueryString(string queryString)
-        {
-            var result = new Dictionary<string, string>();
-
-            if (string.IsNullOrEmpty(queryString))
-                return result;
-
-            var pairs = queryString.Split('&');
-
-            foreach (var pair in pairs)
-            {
-                var keyValue = pair.Split('=', 2); // Limit to 2 parts only
-                if (keyValue.Length == 2)
-                {
-                    var key = keyValue[0];
-                    var value = keyValue[1];
-
-                    // Try different decoding methods
-                    try
-                    {
-                        value = System.Web.HttpUtility.UrlDecode(value, System.Text.Encoding.UTF8);
-                    }
-                    catch
-                    {
-                        value = Uri.UnescapeDataString(value);
-                    }
-
-                    result[key] = value;
-                }
-            }
-
-            return result;
-        }
-
     }
 }
