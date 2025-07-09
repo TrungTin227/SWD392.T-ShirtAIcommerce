@@ -1,8 +1,14 @@
 ﻿using DTOs.Payments.VnPay;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Services.Configuration;
 using Services.Helpers;
 using Services.Interfaces;
+using System.Net;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Services.Implementations
 {
@@ -10,11 +16,14 @@ namespace Services.Implementations
     {
         private readonly VnPayConfig _cfg;
         private readonly HttpClient _http;
+        private readonly ILogger<VnPayService> _logger;
 
-        public VnPayService(IOptions<VnPayConfig> cfg, HttpClient http)
+        public VnPayService(IOptions<VnPayConfig> cfg, HttpClient http, ILogger<VnPayService> logger)
         {
             _cfg = cfg.Value;
             _http = http;
+            _logger = logger;
+
         }
 
         public async Task<VnPayCreatePaymentResponse> CreatePaymentUrlAsync(VnPayCreatePaymentRequest req)
@@ -87,36 +96,72 @@ namespace Services.Implementations
 
         public bool ValidateCallback(VnPayCallbackRequest cb)
         {
-            var lib = new VnPayLibrary();
+            // 1. Log toàn bộ object callback
+            _logger.LogDebug("Incoming VNPAY callback content: {@Callback}", cb);
 
-            // Thêm tất cả các trường có trong callback (trừ vnp_SecureHash và vnp_SecureHashType)
-            // Thứ tự không quan trọng vì VnPayLibrary sẽ sort lại
-            if (!string.IsNullOrEmpty(cb.vnp_TmnCode))
-                lib.AddResponseData("vnp_TmnCode", cb.vnp_TmnCode);
-            if (!string.IsNullOrEmpty(cb.vnp_Amount))
-                lib.AddResponseData("vnp_Amount", cb.vnp_Amount);
-            if (!string.IsNullOrEmpty(cb.vnp_BankCode))
-                lib.AddResponseData("vnp_BankCode", cb.vnp_BankCode);
-            if (!string.IsNullOrEmpty(cb.vnp_BankTranNo))
-                lib.AddResponseData("vnp_BankTranNo", cb.vnp_BankTranNo);
-            if (!string.IsNullOrEmpty(cb.vnp_CardType))
-                lib.AddResponseData("vnp_CardType", cb.vnp_CardType);
-            if (!string.IsNullOrEmpty(cb.vnp_OrderInfo))
-                lib.AddResponseData("vnp_OrderInfo", cb.vnp_OrderInfo);
-            if (!string.IsNullOrEmpty(cb.vnp_PayDate))
-                lib.AddResponseData("vnp_PayDate", cb.vnp_PayDate);
-            if (!string.IsNullOrEmpty(cb.vnp_ResponseCode))
-                lib.AddResponseData("vnp_ResponseCode", cb.vnp_ResponseCode);
-            if (!string.IsNullOrEmpty(cb.vnp_TransactionNo))
-                lib.AddResponseData("vnp_TransactionNo", cb.vnp_TransactionNo);
-            if (!string.IsNullOrEmpty(cb.vnp_TransactionStatus))
-                lib.AddResponseData("vnp_TransactionStatus", cb.vnp_TransactionStatus);
-            if (!string.IsNullOrEmpty(cb.vnp_TxnRef))
-                lib.AddResponseData("vnp_TxnRef", cb.vnp_TxnRef);
-            if (!string.IsNullOrEmpty(cb.vnp_SecureHashType))
-                lib.AddResponseData("vnp_SecureHashType", cb.vnp_SecureHashType);
 
-            return lib.ValidateSignature(cb.vnp_SecureHash, _cfg.HashSecret);
+
+            // 1. Build map từ DTO
+            var data = new SortedDictionary<string, string>();
+            foreach (var prop in typeof(VnPayCallbackRequest).GetProperties())
+            {
+                var key = prop.Name;
+                var value = prop.GetValue(cb)?.ToString();
+                if (string.IsNullOrEmpty(value) ||
+                    key.Equals("vnp_SecureHash", StringComparison.OrdinalIgnoreCase) ||
+                    key.Equals("vnp_SecureHashType", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                data[key] = value;
+            }
+
+            // 2. Log từng tham số đã lấy được
+            foreach (var kv in data)
+            {
+                _logger.LogDebug("Response param: {Key} = {Value}", kv.Key, kv.Value);
+            }
+
+            // 3. Tạo rawData và log
+            var rawData = string.Join("&", data.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            _logger.LogDebug("RawData for HMAC: {RawData}", rawData);
+
+            // 4. Tính và log chữ ký
+            var computedHash = Utils.HmacSHA512(_cfg.HashSecret, rawData);
+            _logger.LogDebug("ComputedHash: {Computed}  |  ReceivedHash: {Received}",
+                             computedHash, cb.vnp_SecureHash);
+
+            // 5. So sánh
+            var isValid = string.Equals(computedHash, cb.vnp_SecureHash,
+                                        StringComparison.OrdinalIgnoreCase);
+            _logger.LogDebug("Signature valid: {IsValid}", isValid);
+            return isValid;
         }
+        public bool ValidateCallbackFromQuery(HttpRequest request)
+        {
+            // 1. Lấy tất cả param vnp_*
+            var list = request.Query
+                .Where(kv => kv.Key.StartsWith("vnp_"))
+                .Where(kv => kv.Key != "vnp_SecureHash" && kv.Key != "vnp_SecureHashType")
+                .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                .Select(kv =>
+                    WebUtility.UrlEncode(kv.Key)
+                    + "="
+                    + WebUtility.UrlEncode(kv.Value.ToString())
+                );
+
+            // 2. Tạo rawData
+            var rawData = string.Join("&", list);
+            _logger.LogDebug("RawData from Query: {RawData}", rawData);
+
+            // 3. Tính HMAC-SHA512
+            var computed = Utils.HmacSHA512(_cfg.HashSecret, rawData);
+            var received = request.Query["vnp_SecureHash"].ToString();
+
+            _logger.LogDebug("Computed={Computed} | Received={Received}", computed, received);
+
+            // 4. So khớp
+            return string.Equals(computed, received, StringComparison.OrdinalIgnoreCase);
+        }
+
     }
 }

@@ -3,7 +3,7 @@ using DTOs.Reviews;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
-using BusinessObjects.Products;
+using BusinessObjects.Common;
 
 namespace Repositories.Implementations
 {

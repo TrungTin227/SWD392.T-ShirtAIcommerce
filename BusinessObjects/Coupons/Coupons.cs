@@ -1,6 +1,6 @@
-﻿using BusinessObjects.Identity;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Identity;
 using BusinessObjects.Orders;
-using BusinessObjects.Products;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
 using System.ComponentModel.DataAnnotations;
 
 namespace DTOs.Products

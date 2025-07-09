@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
 using BusinessObjects.Shipping;
 using DTOs.Common;
 using DTOs.Shipping;

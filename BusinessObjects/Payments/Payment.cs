@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Orders;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Orders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

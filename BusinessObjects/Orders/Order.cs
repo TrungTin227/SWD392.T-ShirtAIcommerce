@@ -4,8 +4,8 @@ using BusinessObjects.Shipping;
 using BusinessObjects.Reviews;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using BusinessObjects.Products;
 using BusinessObjects.Payments;
+using BusinessObjects.Common;
 
 namespace BusinessObjects.Orders
 {

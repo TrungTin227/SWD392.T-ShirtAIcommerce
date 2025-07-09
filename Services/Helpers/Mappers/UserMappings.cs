@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Identity;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Identity;
 using DTOs.UserDTOs.Identities;
 using DTOs.UserDTOs.Request;
 using DTOs.UserDTOs.Response;

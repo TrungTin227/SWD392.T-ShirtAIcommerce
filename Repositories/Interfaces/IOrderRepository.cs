@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Orders;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Orders;
 using DTOs.Orders;
 using Repositories.Helpers;
 using Repositories.WorkSeeds.Interfaces;

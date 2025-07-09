@@ -209,5 +209,8 @@ namespace Repositories.WorkSeeds.Implements
 
             return false;
         }
+        public async Task SaveChangesAsync()
+                    => await _context.SaveChangesAsync();
+
     }
 }

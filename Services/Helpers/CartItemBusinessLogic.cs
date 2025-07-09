@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
 
 namespace Services.Helpers
 {

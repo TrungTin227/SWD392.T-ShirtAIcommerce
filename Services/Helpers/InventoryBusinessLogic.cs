@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Orders;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Orders;
 using BusinessObjects.Products;
 
 namespace Services.Helpers
@@ -84,32 +85,37 @@ namespace Services.Helpers
         /// Validates inventory restoration for order cancellation
         /// </summary>
         public static (bool CanRestore, List<string> Warnings) ValidateInventoryRestoration(
-            List<OrderItem> orderItems,
-            OrderStatus currentStatus)
+    List<OrderItem> orderItems,
+    OrderStatus currentStatus)
         {
             var warnings = new List<string>();
-            var canRestore = true;
 
-            // Only allow restoration for certain order statuses
-            var allowedStatuses = new[] { OrderStatus.Pending, OrderStatus.Confirmed, OrderStatus.Processing };
-            
+            // Chỉ cho phép restore khi đơn đã hủy hoặc đã trả/hoàn trả
+            var allowedStatuses = new[]
+            {
+        OrderStatus.Cancelled,
+        OrderStatus.Returned
+    };
+
             if (!allowedStatuses.Contains(currentStatus))
             {
                 warnings.Add($"Không thể hoàn trả tồn kho cho đơn hàng có trạng thái: {currentStatus}");
-                canRestore = false;
+                return (false, warnings);
             }
 
-            // Check for very large quantities that might indicate data issues
+            // Cảnh báo nếu số lượng bất thường
             foreach (var item in orderItems)
             {
                 if (item.Quantity > 1000)
                 {
-                    warnings.Add($"Số lượng lớn bất thường cho sản phẩm {item.ItemName}: {item.Quantity}. Kiểm tra dữ liệu.");
+                    warnings.Add(
+                        $"Số lượng lớn bất thường cho sản phẩm {item.ItemName}: {item.Quantity}. Kiểm tra dữ liệu.");
                 }
             }
 
-            return (canRestore, warnings);
+            return (true, warnings);
         }
+
 
         /// <summary>
         /// Calculates low stock alerts

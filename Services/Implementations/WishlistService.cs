@@ -1,5 +1,4 @@
 using BusinessObjects.Wishlists;
-using BusinessObjects.Products;
 using DTOs.Wishlists;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Commons;
@@ -8,6 +7,7 @@ using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
 using Services.Interfaces;
+using BusinessObjects.Common;
 
 namespace Services.Implementations
 {

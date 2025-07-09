@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Orders;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Orders;
 
 namespace Services.Extensions
 {

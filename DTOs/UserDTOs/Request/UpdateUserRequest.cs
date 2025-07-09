@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
 using DTOs.UserAddressDTOs.Request;
 
 namespace DTOs.UserDTOs.Request

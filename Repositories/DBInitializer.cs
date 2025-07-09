@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Coupons;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Coupons;
 using BusinessObjects.Identity;
 using BusinessObjects.Products;
 using BusinessObjects.Shipping;

@@ -41,5 +41,7 @@ namespace Repositories.WorkSeeds.Interfaces
         // Soft delete support (nếu entity có IsDeleted property)
         Task<bool> SoftDeleteAsync(TKey id, Guid? deletedBy = null);
         Task<bool> RestoreAsync(TKey id, Guid? restoredBy = null);
+        /// <summary>Commit các thay đổi đang chờ trong DbContext</summary>
+        Task SaveChangesAsync();
     }
 }

@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Products;
 using DTOs.Product;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;

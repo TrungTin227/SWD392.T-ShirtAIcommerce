@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel;
 
 
-namespace BusinessObjects.Products
+namespace BusinessObjects.Common
 {
     public enum Gender { Male, Female, Other }
 
@@ -192,13 +192,14 @@ namespace BusinessObjects.Products
     }
     public enum OrderStatus
     {
-        Pending,
-        Confirmed,
-        Processing,
-        Shipping,
-        Delivered,
-        Cancelled,
-        Returned
+        Pending,      // 1. Mới tạo, chưa thanh toán
+        Paid,         // 2. Thanh toán thành công (chờ staff xác nhận)
+        Completed,    // 3. Staff đã xác nhận, đơn chính thức hoàn thành
+        Processing,   // 4. Đang xử lý – đóng gói, chuẩn bị giao
+        Shipping,     // 5. Đang vận chuyển
+        Delivered,    // 6. Đã giao thành công
+        Cancelled,    // Đã hủy
+        Returned      // Đã trả/hoàn trả
     }
 
     public enum PaymentStatus

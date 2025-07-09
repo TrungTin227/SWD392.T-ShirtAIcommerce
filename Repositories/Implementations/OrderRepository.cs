@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Orders;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Orders;
 using DTOs.Orders;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;
@@ -175,7 +175,7 @@ namespace Repositories.Implementations
                 case OrderStatus.Cancelled:
                     order.PaymentStatus = PaymentStatus.Refunded;
                     break;
-                case OrderStatus.Confirmed:
+                case OrderStatus.Completed:
                     if (!order.EstimatedDeliveryDate.HasValue)
                         order.EstimatedDeliveryDate = DateTime.UtcNow.AddDays(7); // Default 7 days
                     break;

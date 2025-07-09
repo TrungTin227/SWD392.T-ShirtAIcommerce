@@ -27,24 +27,57 @@ namespace WebAPI.Controllers
                 if (!vnPayResponse.Success)
                     return BadRequest(vnPayResponse);
 
-                // Lấy URL VNPAY đã sinh ra
-                var vnpUrl = vnPayResponse.PaymentUrl;
-                var uri = new Uri(vnpUrl);
-
-                // Build lại URL gọi về callback của bạn
-                // Url.Action sẽ tạo: "/api/payments/vnpay/return"
-                var callbackPath = Url.Action(nameof(VnPayReturn), "Payments");
-                var callbackUrl = $"{Request.Scheme}://{Request.Host}{callbackPath}{uri.Query}";
-
-                // Redirect thẳng đến VnPayReturn để bạn breakpoint và debug
-                return Redirect(callbackUrl);
+                // Trả về cho client URL để redirect hoặc open popup
+                return Ok(new
+                {
+                    success = true,
+                    paymentId = vnPayResponse.PaymentId,
+                    paymentUrl = vnPayResponse.PaymentUrl,
+                    message = "VNPAY payment URL created"
+                });
             }
 
-            // xử lý phương thức thanh toán khác...
+            // Xử lý các phương thức khác
             var payment = await _paymentService.CreatePaymentAsync(request);
-            return Ok(payment);
+            return Ok(new
+            {
+                success = true,
+                data = payment
+            });
         }
 
+        [AllowAnonymous]
+        [HttpGet("vnpay/return")]
+        public async Task<IActionResult> VnPayReturn([FromQuery] VnPayCallbackRequest callback)
+        {
+            try
+            {
+                var isValid = await _paymentService.HandleVnPayCallbackAsync(callback);
+                if (!isValid)
+                    return BadRequest(new { success = false, message = "Invalid signature" });
+
+                var respCode = callback.vnp_ResponseCode;
+                var isSuccess = respCode == "00";
+
+                return Ok(new
+                {
+                    success = isSuccess,
+                    message = isSuccess ? "Payment successful" : "Payment failed",
+                    responseCode = respCode,
+                    data = isSuccess ? new
+                    {
+                        transactionId = callback.vnp_TransactionNo,
+                        amount = callback.vnp_Amount,
+                        orderInfo = callback.vnp_OrderInfo,
+                        payDate = callback.vnp_CreateDate
+                    } : null
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
 
 
         [HttpGet("{id}")]
@@ -89,60 +122,6 @@ namespace WebAPI.Controllers
                     success = true,
                     data = payments
                 });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = ex.Message
-                });
-            }
-        }
-
-        [AllowAnonymous]
-        [HttpGet("vnpay/return")]
-        public async Task<IActionResult> VnPayReturn([FromQuery] VnPayCallbackRequest callback)
-        {
-            try
-            {
-                var isValid = await _paymentService.HandleVnPayCallbackAsync(callback);
-
-                if (isValid)
-                {
-                    if (callback.vnp_ResponseCode == "00")
-                    {
-                        return Ok(new
-                        {
-                            success = true,
-                            message = "Payment successful",
-                            data = new
-                            {
-                                transactionId = callback.vnp_TransactionNo,
-                                amount = callback.vnp_Amount,
-                                orderInfo = callback.vnp_OrderInfo,
-                                payDate = callback.vnp_PayDate
-                            }
-                        });
-                    }
-                    else
-                    {
-                        return Ok(new
-                        {
-                            success = false,
-                            message = "Payment failed",
-                            responseCode = callback.vnp_ResponseCode
-                        });
-                    }
-                }
-                else
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Invalid signature"
-                    });
-                }
             }
             catch (Exception ex)
             {

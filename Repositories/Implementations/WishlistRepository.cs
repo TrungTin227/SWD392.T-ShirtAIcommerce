@@ -1,3 +1,4 @@
+using BusinessObjects.Common;
 using BusinessObjects.Wishlists;
 using DTOs.Wishlists;
 using Microsoft.EntityFrameworkCore;
@@ -113,7 +114,7 @@ namespace Repositories.Implementations
                 //ProductImageUrl = GetFirstImageFromJson(w.Product?.Images),
                 ProductPrice = w.Product?.Price ?? 0,
                 ProductDescription = w.Product?.Description,
-                IsProductAvailable = w.Product?.Status == BusinessObjects.Products.ProductStatus.Active,
+                IsProductAvailable = w.Product?.Status == ProductStatus.Active,
                 //ProductStock = w.Product?.Quantity ?? 0,
                 CreatedAt = w.CreatedAt
             }).ToList();

@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Cart;
+using BusinessObjects.Common;
 using BusinessObjects.Identity;
 using BusinessObjects.Orders;
 using BusinessObjects.Reviews;

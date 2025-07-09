@@ -1,5 +1,5 @@
-﻿using BusinessObjects.Coupons;
-using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Coupons;
 using DTOs.Coupons;
 using Repositories.Helpers;
 using Repositories.WorkSeeds.Interfaces;

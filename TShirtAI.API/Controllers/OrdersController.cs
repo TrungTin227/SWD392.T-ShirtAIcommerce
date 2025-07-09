@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Products;
+﻿using BusinessObjects.Common;
 using DTOs.Common;
 using DTOs.Orders;
 using Microsoft.AspNetCore.Authorization;
@@ -201,6 +201,15 @@ namespace WebAPI.Controllers
                 var total = await _orderService.CalculateOrderTotalAsync(id);
                 return Ok(total);
             }, "Error calculating order total {OrderId}", id);
+        }
+
+        [HttpPost("{orderId}/confirm")]
+        public async Task<IActionResult> ConfirmOrder(Guid orderId)
+        {
+            var success = await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Completed);
+            return success
+                ? Ok()
+                : BadRequest("Không thể xác nhận đơn");
         }
 
         #region Helper Methods

@@ -1,4 +1,4 @@
-﻿using BusinessObjects.Products; // Add this using
+﻿using BusinessObjects.Common;
 
 namespace DTOs.Cart
 {

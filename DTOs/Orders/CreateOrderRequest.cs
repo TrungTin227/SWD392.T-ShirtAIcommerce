@@ -1,5 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using BusinessObjects.Products;
+using BusinessObjects.Common;
 using DTOs.Orders.Validation;
 using DTOs.UserAddressDTOs.Request;
 
