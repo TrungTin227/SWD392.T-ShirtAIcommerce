@@ -194,8 +194,9 @@ namespace Services.Implementations
 
         public async Task<ApiResult<CouponDiscountResultDto>> ApplyCouponAsync(ApplyCouponDto applyDto)
         {
-            try
+            return await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
+                // 1. Lấy coupon theo mã và kiểm tra tồn tại
                 var coupon = await _couponRepository.GetByCodeAsync(applyDto.Code);
                 if (coupon == null)
                 {
@@ -206,10 +207,11 @@ namespace Services.Implementations
                     });
                 }
 
-                // Validate coupon
+                // 2. Validate coupon với đơn hàng và user (nếu có)
                 var isValid = await _couponRepository.ValidateCouponForOrderAsync(
-                    coupon.Id, applyDto.OrderAmount, applyDto.UserId);
-
+                    coupon.Id,
+                    applyDto.OrderAmount,
+                    applyDto.UserId);
                 if (!isValid)
                 {
                     return ApiResult<CouponDiscountResultDto>.Success(new CouponDiscountResultDto
@@ -219,25 +221,53 @@ namespace Services.Implementations
                     });
                 }
 
-                // Calculate discount
-                var discountAmount = await _couponRepository.CalculateDiscountAmountAsync(
-                    coupon.Id, applyDto.OrderAmount);
-
-                var result = new CouponDiscountResultDto
+                // 3. Tăng lượt dùng toàn cục
+                var incrementOk = await _couponRepository.IncrementUsageCountAsync(coupon.Id);
+                if (!incrementOk)
                 {
-                    IsValid = true,
-                    Message = "Áp dụng coupon thành công",
+                    return ApiResult<CouponDiscountResultDto>.Failure("Không thể cập nhật lượt dùng coupon");
+                }
+
+                // 4. Ghi nhận lượt dùng cho user
+                var db = _unitOfWork.Context;
+                var userCoupon = await db.Set<UserCoupon>()
+                    .FirstOrDefaultAsync(uc => uc.CouponId == coupon.Id && uc.UserId == applyDto.UserId);
+
+                if (userCoupon == null)
+                {
+                    userCoupon = new UserCoupon
+                    {
+                        Id            = Guid.NewGuid(),
+                        CouponId      = coupon.Id,
+                        UserId        = applyDto.UserId.Value,
+                        UsedCount     = 1,
+                        FirstUsedAt   = _currentTime.GetVietnamTime(),
+                        LastUsedAt    = _currentTime.GetVietnamTime(),
+                    };
+                    await db.Set<UserCoupon>().AddAsync(userCoupon);
+                }
+                else
+                {
+                    userCoupon.UsedCount++;
+                    userCoupon.LastUsedAt = _currentTime.GetVietnamTime();
+                }
+
+                // 5. Tính toán số tiền giảm
+                var discountAmount = await _couponRepository.CalculateDiscountAmountAsync(
+                    coupon.Id,
+                    applyDto.OrderAmount);
+
+                var resultDto = new CouponDiscountResultDto
+                {
+                    IsValid        = true,
+                    Message        = "Áp dụng coupon thành công",
                     DiscountAmount = discountAmount,
-                    FinalAmount = applyDto.OrderAmount - discountAmount,
-                    Coupon = CouponMapper.ToDto(coupon)
+                    FinalAmount    = applyDto.OrderAmount - discountAmount,
+                    Coupon         = CouponMapper.ToDto(coupon)
                 };
 
-                return ApiResult<CouponDiscountResultDto>.Success(result);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<CouponDiscountResultDto>.Failure("Lỗi khi áp dụng coupon", ex);
-            }
+                return ApiResult<CouponDiscountResultDto>.Success(resultDto);
+            });
         }
 
         public async Task<ApiResult<bool>> ValidateCouponAsync(string code, decimal orderAmount, Guid? userId = null)

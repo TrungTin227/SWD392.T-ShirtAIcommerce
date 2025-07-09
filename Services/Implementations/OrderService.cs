@@ -6,6 +6,7 @@ using DTOs.OrderItem;
 using DTOs.Orders;
 using DTOs.Payments;
 using Microsoft.Extensions.Logging;
+using Repositories.Implementations;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
@@ -210,18 +211,39 @@ namespace Services.Implementations
                     });
                 }
 
-                // 5. Tính toán subtotal, discount, shipping fee, totalAmount
+                // 5. Tính toán subtotal
                 var subtotal = orderItems.Sum(oi => oi.TotalPrice);
 
-                // 5.1. Discount
+                // 5.1. Validate và tính discount
                 decimal discount = 0m;
+                CouponDto? validatedCoupon = null;
+
                 if (request.CouponId.HasValue)
                 {
+                    // Validate coupon trước khi tạo order
                     var couponRes = await _couponService.GetByIdAsync(request.CouponId.Value);
-                    if (couponRes.IsSuccess && couponRes.Data != null)
-                        discount = CalculateDiscount(couponRes.Data, subtotal);
-                    else
-                        _logger.LogWarning("Coupon {CouponId} không hợp lệ", request.CouponId);
+                    if (!couponRes.IsSuccess || couponRes.Data == null)
+                    {
+                        throw new ArgumentException("Coupon không tồn tại.");
+                    }
+
+                    validatedCoupon = couponRes.Data;
+
+                    // Sử dụng repository để validate coupon với order
+                    var isValidCoupon = await _unitOfWork.CouponRepository.ValidateCouponForOrderAsync(
+                        request.CouponId.Value,
+                        subtotal,
+                        userId.Value);
+
+                    if (!isValidCoupon)
+                    {
+                        throw new ArgumentException("Coupon không hợp lệ hoặc không thể sử dụng cho đơn hàng này.");
+                    }
+
+                    // Tính discount
+                    discount = await _unitOfWork.CouponRepository.CalculateDiscountAmountAsync(
+                        request.CouponId.Value,
+                        subtotal);
                 }
 
                 // 5.2. Shipping fee
@@ -257,35 +279,49 @@ namespace Services.Implementations
                     await _orderItemRepository.AddAsync(oi);
                 }
 
-                // 8. Xóa cart items đã order
+                // 8. Ghi nhận sử dụng coupon SAU KHI order được tạo thành công
+                if (request.CouponId.HasValue && validatedCoupon != null)
+                {
+                    var useCouponRes = await _couponService.UseCouponAsync(
+                        request.CouponId.Value,
+                        userId.Value);
+
+                    if (!useCouponRes.IsSuccess)
+                    {
+                        _logger.LogError("Failed to use coupon {CouponId} for user {UserId}: {Error}",
+                            request.CouponId.Value, userId.Value, useCouponRes.Message);
+                        // Rollback sẽ tự động xảy ra trong catch block
+                        throw new InvalidOperationException($"Không thể sử dụng coupon: {useCouponRes.Message}");
+                    }
+                }
+
+                // 9. Xóa cart items đã order
                 if (cartItemIds.Any())
                 {
                     await _cartItemRepository.DeleteRangeAsync(cartItemIds);
                 }
 
-                // 9. Commit transaction
+                // 10. Commit transaction
                 await _unitOfWork.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-
-                // Lấy lại OrderDTO
+                // 11. Lấy lại OrderDTO
                 var createdOrder = await _orderRepository.GetOrderWithDetailsAsync(order.Id);
                 var orderDto = ConvertToOrderDTO(createdOrder!);
 
-                // Tạo Payment sao cho đúng phương thức
+                // 12. Tạo Payment
                 var payReq = new PaymentCreateRequest
                 {
                     OrderId       = order.Id,
-                    PaymentMethod = request.PaymentMethod,   // enum COD hoặc VNPAY
+                    PaymentMethod = request.PaymentMethod,
                     Description   = $"Thanh toán đơn {order.OrderNumber}"
                 };
 
                 if (request.PaymentMethod == PaymentMethod.COD)
                 {
-                    // COD: map thẳng xuống DB, đánh dấu  (hoặc Unpaid tuỳ nghiệp vụ)
                     var paymentResp = await _paymentService.CreatePaymentAsync(payReq);
 
-                    // Đồng bộ lại Order: coi là đã có tiền, chuyển sang Paid
+                    // Update order status for COD
                     order.PaymentStatus = PaymentStatus.Unpaid;
                     order.Status        = OrderStatus.Pending;
                     await _orderRepository.UpdateAsync(order);
@@ -294,13 +330,12 @@ namespace Services.Implementations
                     return new CreateOrderResult
                     {
                         Order   = orderDto,
-                        Payment = paymentResp,
-                        // RedirectUrl = null
+                        Payment = paymentResp
                     };
                 }
                 else
                 {
-                    // VNPAY: sẽ sinh URL redirect
+                    // VNPAY
                     var vnPayResp = await _paymentService.CreateVnPayPaymentAsync(payReq);
                     if (!vnPayResp.Success)
                         throw new InvalidOperationException(
@@ -319,40 +354,6 @@ namespace Services.Implementations
                 await transaction.RollbackAsync();
                 throw;
             }
-        }
-        private decimal CalculateDiscount(CouponDto coupon, decimal subtotal)
-        {
-            // Validate coupon is active and not expired
-            if (coupon.Status != CouponStatus.Active)
-                return 0;
-
-            if (DateTime.UtcNow < coupon.StartDate || DateTime.UtcNow > coupon.EndDate)
-                return 0;
-
-            // Check minimum order amount
-            if (coupon.MinOrderAmount.HasValue && subtotal < coupon.MinOrderAmount.Value)
-                return 0;
-
-            decimal discountAmount = 0;
-
-            // Calculate discount based on coupon type
-            if (coupon.Type == CouponType.Percentage)
-            {
-                discountAmount = subtotal * (coupon.Value / 100m);
-            }
-            else if (coupon.Type == CouponType.FixedAmount)
-            {
-                discountAmount = coupon.Value;
-            }
-
-            // Apply max discount limit
-            if (coupon.MaxDiscountAmount.HasValue)
-            {
-                discountAmount = Math.Min(discountAmount, coupon.MaxDiscountAmount.Value);
-            }
-
-            // Ensure discount doesn't exceed subtotal
-            return Math.Min(discountAmount, subtotal);
         }
 
         public async Task<OrderDTO?> UpdateOrderAsync(Guid orderId, UpdateOrderRequest request, Guid? updatedBy = null)
