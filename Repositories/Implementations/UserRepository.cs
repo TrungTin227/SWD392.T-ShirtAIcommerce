@@ -18,12 +18,10 @@ namespace Repositories.Implementations
 
         public async Task<PagedList<UserDetailsDTO>> GetUserDetailsAsync(int pageNumber, int pageSize)
         {
-            // Query optimization: Count and retrieve users in a single database round trip
             var query = _context.Users.AsNoTracking();
 
             var totalCount = await query.CountAsync();
 
-            // Prepare efficient query for paged results
             var pagedUsers = await query
                 .OrderByDescending(u => u.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
@@ -37,7 +35,6 @@ namespace Repositories.Implementations
 
             var userIds = pagedUsers.Select(x => x.Id).ToList();
 
-            // Fetch all roles for these users in a single query with projection
             var userRolesDict = await _context.Set<IdentityUserRole<Guid>>()
                 .AsNoTracking()
                 .Where(ur => userIds.Contains(ur.UserId))
@@ -53,14 +50,13 @@ namespace Repositories.Implementations
                     g => g.Select(x => x.RoleName).ToList()
                 );
 
-            // Map to DTOs with optimized lookups
             var userDetailsList = pagedUsers.Select(u => new UserDetailsDTO
             {
                 Id = u.User.Id,
                 FirstName = u.User.FirstName ?? string.Empty,
                 LastName = u.User.LastName ?? string.Empty,
                 Email = u.User.Email ?? string.Empty,
-                Gender = u.User.Gender.ToString(), 
+                Gender = u.User.Gender.ToString(),
                 CreateAt = u.User.CreatedAt,
                 UpdateAt = u.User.UpdatedAt,
                 IsActive = u.User.LockoutEnabled,
@@ -69,7 +65,6 @@ namespace Repositories.Implementations
 
             return new PagedList<UserDetailsDTO>(userDetailsList, totalCount, pageNumber, pageSize);
         }
-
         public async Task<bool> ExistsByEmailAsync(string email)
         {
             if (string.IsNullOrWhiteSpace(email))

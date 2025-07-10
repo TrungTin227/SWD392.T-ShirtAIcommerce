@@ -1,4 +1,5 @@
 ﻿using DTOs.UserDTOs.Request;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 
@@ -29,7 +30,6 @@ namespace WebAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAllUsers([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
         {
-            // Giả sử IUserService có phương thức GetAllUsersAsync hỗ trợ phân trang
             var response = await _userService.GetUsersAsync(pageNumber, pageSize);
             return Ok(response);
         }

@@ -1,4 +1,5 @@
-﻿using DTOs.UserDTOs.Identities;
+﻿using DTOs.Common;
+using DTOs.UserDTOs.Identities;
 using DTOs.UserDTOs.Request;
 using DTOs.UserDTOs.Response;
 using Repositories.Commons;
@@ -28,7 +29,7 @@ namespace Services.Interfaces
         Task<ApiResult<UserResponse>> UnlockUserAsync(Guid id);
         Task<ApiResult<object>> DeleteUsersAsync(List<Guid> ids);
         Task<UserResponse> CreateOrUpdateGoogleUserAsync(GoogleUserInfo info);
-        Task<ApiResult<PagedList<UserDetailsDTO>>> GetUsersAsync(int page, int size);
+        Task<ApiResult<PagedResponse<UserDetailsDTO>>> GetUsersAsync(int page, int size);
 
         // New methods for AuthController
         Task<ApiResult<string>> LogoutAsync(LogoutRequest request);

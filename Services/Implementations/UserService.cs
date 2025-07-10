@@ -1,5 +1,6 @@
 ﻿using Azure;
 using BusinessObjects.Identity;
+using DTOs.Common;
 using DTOs.UserAddressDTOs.Request;
 using DTOs.UserAddressDTOs.Response;
 using DTOs.UserDTOs.Identities;
@@ -593,15 +594,28 @@ namespace Services.Implementations
             return await UserMappings.ToUserResponseAsync(user, _userManager, tokenResult.Data, refresh.Token);
         }
 
-        public async Task<ApiResult<PagedList<UserDetailsDTO>>> GetUsersAsync(int page, int size)
+        public async Task<ApiResult<PagedResponse<UserDetailsDTO>>> GetUsersAsync(int page, int size)
         {
             if (page < 1 || size < 1)
-                return ApiResult<PagedList<UserDetailsDTO>>.Failure("Invalid pagination parameters");
+                return ApiResult<PagedResponse<UserDetailsDTO>>.Failure("Invalid pagination parameters");
 
-            var list = await _userRepository.GetUserDetailsAsync(page, size);
-            return ApiResult<PagedList<UserDetailsDTO>>.Success(list);
+            var pagedList = await _userRepository.GetUserDetailsAsync(page, size);
+
+            var pagedResponse = new PagedResponse<UserDetailsDTO>
+            {
+                Data = pagedList.ToList(),
+                CurrentPage = pagedList.MetaData.CurrentPage,
+                TotalPages = pagedList.MetaData.TotalPages,
+                PageSize = pagedList.MetaData.PageSize,
+                TotalCount = pagedList.MetaData.TotalCount,
+                HasNextPage = pagedList.MetaData.CurrentPage < pagedList.MetaData.TotalPages,
+                HasPreviousPage = pagedList.MetaData.CurrentPage > 1,
+                IsSuccess = true,
+                Message = "Users retrieved successfully"
+            };
+
+            return ApiResult<PagedResponse<UserDetailsDTO>>.Success(pagedResponse);
         }
-
         // ================ THÊM CÁC METHOD MỚI ================
 
         // Logout method
