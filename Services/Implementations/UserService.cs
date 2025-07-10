@@ -287,12 +287,9 @@ namespace Services.Implementations
                 return genericResponse;
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-
-            await _userEmailService.SendPasswordResetEmailAsync(request.Email, encodedToken, _resetPasswordUri);
+            await _userEmailService.SendPasswordResetEmailAsync(request.Email, token, _resetPasswordUri);
             return genericResponse;
         }
-
         public async Task<ApiResult<string>> ResetPasswordAsync(ResetPasswordRequestDTO request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.NewPassword))

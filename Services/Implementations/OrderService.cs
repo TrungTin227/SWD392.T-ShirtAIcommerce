@@ -6,7 +6,6 @@ using DTOs.OrderItem;
 using DTOs.Orders;
 using DTOs.Payments;
 using Microsoft.Extensions.Logging;
-using Repositories.Implementations;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
@@ -21,7 +20,6 @@ namespace Services.Implementations
         private readonly IOrderRepository _orderRepository;
         private readonly IOrderItemRepository _orderItemRepository; 
         private readonly ICartItemRepository _cartItemRepository;
-        private readonly IPaymentRepository _paymentRepository;
         private readonly ICartItemService _cartItemService;
         private readonly IUserAddressService _userAddressService;
         private readonly ICouponService _couponService;
@@ -54,7 +52,6 @@ namespace Services.Implementations
             _orderRepository = repository;
             _orderItemRepository = orderItemRepository;
             _cartItemRepository = cartItemRepository;
-            _paymentRepository = paymentRepository;
             _cartItemService = cartItemService; 
             _userAddressService = userAddressService;
             _couponService = couponService;
@@ -276,7 +273,7 @@ namespace Services.Implementations
                 foreach (var oi in orderItems)
                 {
                     oi.OrderId = order.Id;
-                    await _orderItemRepository.AddAsync(oi);
+                    await _unitOfWork.OrderItemRepository.AddAsync(oi);
                 }
 
                 // 8. Ghi nhận sử dụng coupon SAU KHI order được tạo thành công
@@ -306,7 +303,7 @@ namespace Services.Implementations
                 await transaction.CommitAsync();
 
                 // 11. Lấy lại OrderDTO
-                var createdOrder = await _orderRepository.GetOrderWithDetailsAsync(order.Id);
+                var createdOrder = await _unitOfWork.OrderRepository.GetOrderWithDetailsAsync(order.Id);
                 var orderDto = ConvertToOrderDTO(createdOrder!);
 
                 // 12. Tạo Payment

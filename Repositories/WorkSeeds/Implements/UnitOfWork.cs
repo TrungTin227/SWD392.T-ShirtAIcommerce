@@ -22,6 +22,7 @@ namespace Repositories.WorkSeeds.Implements
         private ICartItemRepository? _cartItemRepository;
         private ICategoryRepository? _categoryRepository;
         private IProductRepository? _productRepository;
+        private IUserCouponRepository? _userCouponRepository;
 
 
         public UnitOfWork(T_ShirtAIcommerceContext context, IRepositoryFactory repositoryFactory)
@@ -56,7 +57,8 @@ namespace Repositories.WorkSeeds.Implements
           _categoryRepository ??= _repositoryFactory.GetCustomRepository<ICategoryRepository>();
         public IProductRepository ProductRepository =>
          _productRepository ??= _repositoryFactory.GetCustomRepository<IProductRepository>();
-
+        public IUserCouponRepository UserCouponRepository => 
+            _userCouponRepository ??= _repositoryFactory.GetCustomRepository<IUserCouponRepository>();
         public bool HasActiveTransaction => _transaction != null;
 
         public async Task<IDbContextTransaction> BeginTransactionAsync(
