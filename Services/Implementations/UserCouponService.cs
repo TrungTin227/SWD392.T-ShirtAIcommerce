@@ -51,20 +51,25 @@ namespace Services.Implementations
                 if (existed != null)
                     return ApiResult<UserCouponDto>.Failure("Bạn đã claim coupon này rồi");
 
-                // 3. Tạo bản ghi claim mới
+                // 3. Tăng lượt sử dụng của coupon
+                var incrementResult = await _couponRepository.IncrementUsageCountAsync(couponId);
+                if (!incrementResult)
+                    return ApiResult<UserCouponDto>.Failure("Không thể claim coupon lúc này");
+
+                // 4. Tạo bản ghi claim mới
                 var now = _currentTime.GetVietnamTime();
                 var userCoupon = new UserCoupon
                 {
                     Id = Guid.NewGuid(),
                     CouponId = couponId,
                     UserId = userId.Value,
-                    UsedCount = 0,
+                    UsedCount = 0, // Vẫn là 0 vì user chưa sử dụng, chỉ mới claim
                     FirstUsedAt = now,
                     LastUsedAt = now
                 };
                 await db.Set<UserCoupon>().AddAsync(userCoupon);
 
-                // 4. Trả về kết quả
+                // 5. Trả về kết quả
                 var coupon = await _couponRepository.GetByIdAsync(couponId);
                 var dto = new UserCouponDto
                 {
@@ -78,6 +83,40 @@ namespace Services.Implementations
                     Status = coupon?.Status
                 };
                 return ApiResult<UserCouponDto>.Success(dto, "Claim thành công");
+            });
+        }
+
+        // Fixed UnclaimAsync method
+        public async Task<ApiResult<bool>> UnclaimAsync(IEnumerable<Guid> userCouponIds)
+        {
+            return await _unitOfWork.ExecuteTransactionAsync(async () =>
+            {
+                try
+                {
+                    var userId = _currentUserService.GetUserId();
+                    if (userId == Guid.Empty) return ApiResult<bool>.Failure("Người dùng không xác thực");
+
+                    var db = _unitOfWork.Context;
+                    var userCoupons = await db.Set<UserCoupon>()
+                        .Where(uc => userCouponIds.Contains(uc.Id) && uc.UserId == userId)
+                        .ToListAsync();
+
+                    if (!userCoupons.Any())
+                        return ApiResult<bool>.Failure("Không tìm thấy coupon nào để hủy");
+
+                    // Giảm lượt sử dụng của từng coupon
+                    foreach (var userCoupon in userCoupons)
+                    {
+                        await _couponRepository.DecrementUsageCountAsync(userCoupon.CouponId);
+                    }
+
+                    db.Set<UserCoupon>().RemoveRange(userCoupons);
+                    return ApiResult<bool>.Success(true, $"Đã hủy {userCoupons.Count} coupon thành công");
+                }
+                catch (Exception ex)
+                {
+                    return ApiResult<bool>.Failure("Lỗi khi hủy claim coupon", ex);
+                }
             });
         }
         public async Task<ApiResult<IEnumerable<UserCouponDto>>> GetClaimedCouponsAsync()
@@ -120,33 +159,6 @@ namespace Services.Implementations
             {
                 return ApiResult<IEnumerable<UserCouponDto>>.Failure("Lỗi khi lấy danh sách coupon đã claim", ex);
             }
-        }
-
-        public async Task<ApiResult<bool>> UnclaimAsync(IEnumerable<Guid> userCouponIds)
-        {
-            return await _unitOfWork.ExecuteTransactionAsync(async () =>
-            {
-                try
-                {
-                    var userId = _currentUserService.GetUserId();
-                    if (userId == Guid.Empty) return ApiResult<bool>.Failure("Người dùng không xác thực");
-
-                    var db = _unitOfWork.Context;
-                    var userCoupons = await db.Set<UserCoupon>()
-                        .Where(uc => userCouponIds.Contains(uc.Id) && uc.UserId == userId)
-                        .ToListAsync();
-
-                    if (!userCoupons.Any())
-                        return ApiResult<bool>.Failure("Không tìm thấy coupon nào để hủy");
-
-                    db.Set<UserCoupon>().RemoveRange(userCoupons);
-                    return ApiResult<bool>.Success(true, $"Đã hủy {userCoupons.Count} coupon thành công");
-                }
-                catch (Exception ex)
-                {
-                    return ApiResult<bool>.Failure("Lỗi khi hủy claim coupon", ex);
-                }
-            });
         }
     }
 }
