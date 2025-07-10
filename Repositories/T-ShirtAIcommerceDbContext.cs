@@ -49,7 +49,7 @@ namespace Repositories
         public DbSet<ShippingMethod> ShippingMethods { get; set; }
         public DbSet<WishlistItem> WishlistItems { get; set; }
         public DbSet<UserAddress> UserAddresses { get; set; }
-
+        public DbSet<ProductImage> ProductImages { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

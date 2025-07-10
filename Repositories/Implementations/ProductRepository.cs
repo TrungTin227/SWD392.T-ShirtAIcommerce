@@ -55,7 +55,9 @@ namespace Repositories.Implementations
 
         public async Task<Product?> GetBySkuAsync(string sku)
         {
-            return await FirstOrDefaultAsync(x => x.Sku == sku && !x.IsDeleted);
+            return await _dbSet
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync(x => x.Sku == sku && !x.IsDeleted);
         }
 
         public async Task<bool> IsSkuExistsAsync(string sku, Guid? excludeId = null)

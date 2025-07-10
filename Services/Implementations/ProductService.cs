@@ -2,7 +2,6 @@
 using DTOs.Common;
 using DTOs.Product;
 using Repositories.Commons;
-using Repositories.Helpers;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
@@ -29,20 +28,26 @@ namespace Services.Implementations
         {
             try
             {
+                // 1. Repo đã include(p => p.Images) rồi
                 var pagedProducts = await _productRepository.GetPagedAsync(filter);
-                var productDtos = pagedProducts.Select(MapToDto).ToList();
 
+                // 2. Ánh xạ, MapToDto sẽ lấy lên List<string> Images
+                var productDtos = pagedProducts
+                    .Select(MapToDto)
+                    .ToList();
+
+                // 3. Tạo response như trước
                 var response = new PagedResponse<ProductDto>
                 {
-                    Data = productDtos,
-                    CurrentPage = pagedProducts.MetaData.CurrentPage,
-                    TotalPages = pagedProducts.MetaData.TotalPages,
-                    PageSize = pagedProducts.MetaData.PageSize,
-                    TotalCount = pagedProducts.MetaData.TotalCount,
-                    HasNextPage = pagedProducts.MetaData.CurrentPage < pagedProducts.MetaData.TotalPages,
+                    Data            = productDtos,
+                    CurrentPage     = pagedProducts.MetaData.CurrentPage,
+                    TotalPages      = pagedProducts.MetaData.TotalPages,
+                    PageSize        = pagedProducts.MetaData.PageSize,
+                    TotalCount      = pagedProducts.MetaData.TotalCount,
+                    HasNextPage     = pagedProducts.MetaData.CurrentPage < pagedProducts.MetaData.TotalPages,
                     HasPreviousPage = pagedProducts.MetaData.CurrentPage > 1,
-                    IsSuccess = true,
-                    Message = "Products retrieved successfully"
+                    IsSuccess       = true,
+                    Message         = "Products retrieved successfully"
                 };
 
                 return ApiResult<PagedResponse<ProductDto>>.Success(response);
@@ -57,7 +62,12 @@ namespace Services.Implementations
         {
             try
             {
-                var product = await _productRepository.GetByIdAsync(id, p => p.Category);
+                // Load cả Category và Images
+                var product = await _productRepository.GetByIdAsync(
+                    id,
+                    p => p.Category,
+                    p => p.Images      // ← include thêm collection Images
+                );
                 if (product == null || product.IsDeleted)
                 {
                     return ApiResult<ProductDto>.Failure("Product not found");
@@ -108,6 +118,19 @@ namespace Services.Implementations
 
                     // Map & create product
                     var product = MapToEntity(dto);
+
+                    // Thêm logic để lưu ProductImages nếu có
+                    if (dto.Images != null && dto.Images.Any())
+                    {
+                        product.Images = dto.Images.Select(imageDto => new ProductImage
+                        {
+                            Id = Guid.NewGuid(),
+                            ProductId = product.Id,
+                            Url = imageDto.Url,
+                            IsPrimary = imageDto.IsPrimary
+                        }).ToList();
+                    }
+
                     var result = await CreateAsync(product);
                     return ApiResult<ProductDto>.Success(MapToDto(result));
                 }
@@ -117,48 +140,78 @@ namespace Services.Implementations
                 }
             });
         }
-
         public async Task<ApiResult<ProductDto>> UpdateAsync(Guid id, UpdateProductDto dto)
         {
             return await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                try
+                // 1. Lấy product kèm collection ProductImages
+                var product = await _productRepository.GetByIdAsync(id, p => p.Images);
+                if (product == null || product.IsDeleted)
+                    return ApiResult<ProductDto>.Failure("Product not found");
+
+                // 2. Validate unique SKU/Slug
+                if (!string.IsNullOrWhiteSpace(dto.Sku) && dto.Sku != product.Sku &&
+                    await _productRepository.IsSkuExistsAsync(dto.Sku, id))
                 {
-                    var product = await _productRepository.GetByIdAsync(id);
-                    if (product == null || product.IsDeleted)
-                        return ApiResult<ProductDto>.Failure("Product not found");
-
-                    // Validate unique constraints
-                    if (!string.IsNullOrWhiteSpace(dto.Sku) && dto.Sku != product.Sku)
-                    {
-                        if (await _productRepository.IsSkuExistsAsync(dto.Sku, id))
-                            return ApiResult<ProductDto>.Failure("SKU already exists");
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(dto.Slug) && dto.Slug != product.Slug)
-                    {
-                        if (await _productRepository.IsSlugExistsAsync(dto.Slug, id))
-                            return ApiResult<ProductDto>.Failure("Slug already exists");
-                    }
-
-                    // Validate business rules
-                    var salePrice = dto.SalePrice ?? product.SalePrice;
-                    var price = dto.Price ?? product.Price;
-                    if (salePrice.HasValue && salePrice >= price)
-                        return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
-
-                    // Update product
-                    UpdateProductFromDto(product, dto);
-                    var result = await UpdateAsync(product);
-                    return ApiResult<ProductDto>.Success(MapToDto(result));
+                    return ApiResult<ProductDto>.Failure("SKU already exists");
                 }
-                catch (Exception ex)
+
+                if (!string.IsNullOrWhiteSpace(dto.Slug) && dto.Slug != product.Slug &&
+                    await _productRepository.IsSlugExistsAsync(dto.Slug, id))
                 {
-                    return ApiResult<ProductDto>.Failure($"Error updating product: {ex.Message}", ex);
+                    return ApiResult<ProductDto>.Failure("Slug already exists");
                 }
+
+                // 3. Validate business rules về giá
+                var newPrice = dto.Price     ?? product.Price;
+                var newSalePrice = dto.SalePrice ?? product.SalePrice;
+                if (newSalePrice.HasValue && newSalePrice >= newPrice)
+                    return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
+
+                // 4. Map các trường cơ bản từ DTO lên entity
+                if (dto.Name            != null) product.Name            = dto.Name;
+                if (dto.Description     != null) product.Description     = dto.Description;
+                if (dto.Price           != null) product.Price           = dto.Price.Value;
+                if (dto.SalePrice       != null) product.SalePrice       = dto.SalePrice;
+                if (dto.Sku             != null) product.Sku             = dto.Sku;
+                if (dto.CategoryId      != null) product.CategoryId      = dto.CategoryId.Value;
+                if (dto.Material        != null) product.Material        = dto.Material.Value;
+                if (dto.Season          != null) product.Season          = dto.Season.Value;
+                if (dto.MetaTitle       != null) product.MetaTitle       = dto.MetaTitle;
+                if (dto.MetaDescription != null) product.MetaDescription = dto.MetaDescription;
+                if (dto.Slug            != null) product.Slug            = dto.Slug;
+                if (dto.Status          != null) product.Status          = dto.Status.Value;
+
+                // 5. Xử lý danh sách ảnh nếu có
+                if (dto.Images != null)
+                {
+                    // 5.1 Xóa toàn bộ ảnh cũ (EF sẽ track và xoá khi SaveChanges)
+                    _unitOfWork.Context.ProductImages.RemoveRange(product.Images);
+
+                    // 5.2 Thêm lại ảnh mới từ DTO
+                    foreach (var imgDto in dto.Images)
+                    {
+                        product.Images.Add(new ProductImage
+                        {
+                            Id        = Guid.NewGuid(),
+                            ProductId = id,
+                            Url       = imgDto.Url,
+                            IsPrimary = imgDto.IsPrimary
+                        });
+                    }
+                }
+
+                // 6. Cập nhật audit fields, nếu bạn có (ví dụ UpdatedAt, UpdatedBy)
+                product.UpdatedAt = _currentTime.GetVietnamTime();
+                product.UpdatedBy = _currentUserService.GetUserId() ?? Guid.Empty;
+
+                // 7. Gọi repository update (nếu base service của bạn đã tự gọi SaveChanges thì bạn không cần SaveChanges ở đây)
+                var updated = await UpdateAsync(product);
+
+                // 8. Trả về kết quả
+                return ApiResult<ProductDto>.Success(MapToDto(updated), "Product updated successfully");
             });
         }
-
         public async Task<ApiResult<BatchOperationResultDTO>> BulkDeleteAsync(BatchIdsRequest request)
         {
             return await _unitOfWork.ExecuteTransactionAsync(async () =>
@@ -344,6 +397,10 @@ namespace Services.Implementations
                 MetaDescription = product.MetaDescription,
                 Slug = product.Slug,
                 Status = product.Status,
+                Images       = product.Images?
+                           .OrderByDescending(i => i.IsPrimary)
+                           .Select(i => i.Url)
+                           .ToList(),
                 CreatedAt = product.CreatedAt,
                 UpdatedAt = product.UpdatedAt,
                 CreatedBy = product.CreatedBy,
@@ -370,45 +427,6 @@ namespace Services.Implementations
                 Slug = dto.Slug,
                 Status = dto.Status
             };
-        }
-
-        private static void UpdateProductFromDto(Product product, UpdateProductDto dto)
-        {
-            if (!string.IsNullOrWhiteSpace(dto.Name))
-                product.Name = dto.Name;
-
-            if (dto.Description != null)
-                product.Description = dto.Description;
-
-            if (dto.Price.HasValue)
-                product.Price = dto.Price.Value;
-
-            if (dto.SalePrice.HasValue)
-                product.SalePrice = dto.SalePrice;
-
-            if (!string.IsNullOrWhiteSpace(dto.Sku))
-                product.Sku = dto.Sku;
-
-            if (dto.CategoryId.HasValue)
-                product.CategoryId = dto.CategoryId;
-
-            if (dto.Material.HasValue)
-                product.Material = dto.Material.Value;
-
-            if (dto.Season.HasValue)
-                product.Season = dto.Season.Value;
-
-            if (!string.IsNullOrWhiteSpace(dto.MetaTitle))
-                product.MetaTitle = dto.MetaTitle;
-
-            if (!string.IsNullOrWhiteSpace(dto.MetaDescription))
-                product.MetaDescription = dto.MetaDescription;
-
-            if (!string.IsNullOrWhiteSpace(dto.Slug))
-                product.Slug = dto.Slug;
-
-            if (dto.Status.HasValue)
-                product.Status = dto.Status.Value;
         }
     }
 }
