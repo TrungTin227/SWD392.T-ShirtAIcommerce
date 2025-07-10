@@ -70,38 +70,21 @@ namespace WebAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest req)
         {
-            var result = await _orderService.CreateOrderAsync(req, _currentUserService.GetUserId());
-
-            // Nếu VNPAY, trả về URL và order data, FE sẽ redirect
-            if (req.PaymentMethod == PaymentMethod.VNPAY)
+            try
             {
-                if (string.IsNullOrEmpty(result.RedirectUrl))
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Không tạo được URL thanh toán VNPAY"
-                    });
-                }
+                var order = (await _orderService
+                    .CreateOrderAsync(req, _currentUserService.GetUserId()))
+                    .Order;
 
-                return Ok(new
-                {
-                    success = true,
-                    order = result.Order,
-                    redirectUrl = result.RedirectUrl
-                });
+                return Ok(new { success = true, order });
             }
-
-            // Với COD (hoặc phương thức khác), trả về Created + dữ liệu đơn
-            return CreatedAtAction(
-                nameof(GetOrder),
-                new { id = result.Order.Id },
-                new
-                {
-                    success = true,
-                    order = result.Order
-                });
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "CreateOrder failed for {@Request}", req);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
         }
+
 
         /// <summary>
         /// Cập nhật trạng thái đơn hàng (Chỉ Admin/Staff)

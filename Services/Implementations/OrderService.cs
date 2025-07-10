@@ -116,8 +116,6 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                _logger.LogInformation("Creating order (PaymentMethod={PaymentMethod}) for request {@Request}",
-                    request.PaymentMethod, request);
 
                 // 1. Xác định user
                 var userId = createdBy ?? _currentUserService.GetUserId();
@@ -305,46 +303,8 @@ namespace Services.Implementations
                 // 11. Lấy lại OrderDTO
                 var createdOrder = await _unitOfWork.OrderRepository.GetOrderWithDetailsAsync(order.Id);
                 var orderDto = ConvertToOrderDTO(createdOrder!);
+                return new CreateOrderResult { Order = orderDto };
 
-                // 12. Tạo Payment
-                var payReq = new PaymentCreateRequest
-                {
-                    OrderId       = order.Id,
-                    PaymentMethod = request.PaymentMethod,
-                    Description   = $"Thanh toán đơn {order.OrderNumber}"
-                };
-
-                if (request.PaymentMethod == PaymentMethod.COD)
-                {
-                    var paymentResp = await _paymentService.CreatePaymentAsync(payReq);
-
-                    // Update order status for COD
-                    order.PaymentStatus = PaymentStatus.Unpaid;
-                    order.Status        = OrderStatus.Pending;
-                    await _orderRepository.UpdateAsync(order);
-                    await _orderRepository.SaveChangesAsync();
-
-                    return new CreateOrderResult
-                    {
-                        Order   = orderDto,
-                        Payment = paymentResp
-                    };
-                }
-                else
-                {
-                    // VNPAY
-                    var vnPayResp = await _paymentService.CreateVnPayPaymentAsync(payReq);
-                    if (!vnPayResp.Success)
-                        throw new InvalidOperationException(
-                            $"Tạo URL VNPAY thất bại: {string.Join(", ", vnPayResp.Errors)}");
-
-                    return new CreateOrderResult
-                    {
-                        Order       = orderDto,
-                        Payment     = vnPayResp.Payment,
-                        RedirectUrl = vnPayResp.PaymentUrl
-                    };
-                }
             }
             catch
             {

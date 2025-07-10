@@ -311,48 +311,43 @@ namespace Services.Implementations
 
         public async Task<ApiResult<bool>> UseCouponAsync(Guid couponId, Guid userId)
         {
-            return await _unitOfWork.ExecuteTransactionAsync(async () =>
+            try
             {
-                try
+                // 1. Tăng global usage count
+                var incremented = await _couponRepository.IncrementUsageCountAsync(couponId);
+                if (!incremented)
+                    return ApiResult<bool>.Failure("Không thể tăng lượt sử dụng coupon.");
+
+                // 2. Cập nhật hoặc tạo mới UserCoupon
+                var uc = await _unitOfWork.Context.Set<UserCoupon>()
+                    .FirstOrDefaultAsync(x => x.CouponId == couponId && x.UserId == userId);
+
+                if (uc == null)
                 {
-                    // Increment global usage count
-                    var incrementResult = await _couponRepository.IncrementUsageCountAsync(couponId);
-                    if (!incrementResult)
-                        return ApiResult<bool>.Failure("Không thể sử dụng coupon");
-
-                    // Update or create user coupon usage
-                    var userCoupon = await _unitOfWork.Context.Set<UserCoupon>()
-                .FirstOrDefaultAsync(uc => uc.CouponId == couponId && uc.UserId == userId);
-
-
-                    if (userCoupon == null)
+                    uc = new UserCoupon
                     {
-                        userCoupon = new UserCoupon
-                        {
-                            Id = Guid.NewGuid(),
-                            CouponId = couponId,
-                            UserId = userId,
-                            UsedCount = 1,
-                            FirstUsedAt = DateTime.UtcNow,
-                            LastUsedAt = DateTime.UtcNow
-                        };
-                        await _unitOfWork.Context.Set<UserCoupon>().AddAsync(userCoupon);
-                    }
-                    else
-                    {
-                        userCoupon.UsedCount++;
-                        userCoupon.LastUsedAt = DateTime.UtcNow;
-                    }
-
-                    return ApiResult<bool>.Success(true, "Sử dụng coupon thành công");
+                        Id          = Guid.NewGuid(),
+                        CouponId    = couponId,
+                        UserId      = userId,
+                        UsedCount   = 1,
+                        FirstUsedAt = DateTime.UtcNow,
+                        LastUsedAt  = DateTime.UtcNow
+                    };
+                    await _unitOfWork.Context.Set<UserCoupon>().AddAsync(uc);
                 }
-                catch (Exception ex)
+                else
                 {
-                    return ApiResult<bool>.Failure("Lỗi khi sử dụng coupon", ex);
+                    uc.UsedCount++;
+                    uc.LastUsedAt = DateTime.UtcNow;
                 }
-            });
+
+                return ApiResult<bool>.Success(true, "Sử dụng coupon thành công");
+            }
+            catch (Exception ex)
+            {
+                return ApiResult<bool>.Failure("Lỗi khi sử dụng coupon", ex);
+            }
         }
-
         // Private validation methods
         private async Task<ApiResult<CouponDto>> ValidateCreateCouponAsync(CreateCouponDto createDto)
         {
