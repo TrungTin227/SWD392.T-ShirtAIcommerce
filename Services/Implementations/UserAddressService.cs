@@ -97,40 +97,50 @@ namespace Services.Implementations
 
         public async Task<ApiResult<bool>> DeleteUserAddressAsync(Guid addressId)
         {
-            var currentUserId = _currentUserService.GetUserId();
-            if (currentUserId == null)
+            var userId = _currentUserService.GetUserId();
+            if (userId == null)
                 return ApiResult<bool>.Failure("User not authenticated");
 
-            return await _unitOfWork.ExecuteTransactionAsync(async () =>
+            // Bắt đầu transaction
+            await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                var address = await _userAddressRepository.FirstOrDefaultAsync(
-                    ua => ua.Id == addressId && ua.UserId == currentUserId.Value);
+                var address = await _userAddressRepository
+                    .FirstOrDefaultAsync(ua => ua.Id == addressId && ua.UserId == userId.Value);
 
                 if (address == null)
                     return ApiResult<bool>.Failure("Address not found");
 
-                var isDefault = address.IsDefault;
+                bool wasDefault = address.IsDefault;
                 await _userAddressRepository.DeleteAsync(addressId);
-                await _unitOfWork.SaveChangesAsync();
 
-                // Nếu xóa địa chỉ default, set địa chỉ khác làm default
-                if (isDefault)
+                if (wasDefault)
                 {
-                    var remainingAddresses = await _userAddressRepository.GetUserAddressesAsync(currentUserId.Value);
-                    var firstAddress = remainingAddresses.FirstOrDefault();
-                    if (firstAddress != null)
+                    var others = await _userAddressRepository
+                        .GetAllAsync(ua => ua.UserId == userId.Value && ua.Id != addressId);
+
+                    if (others.Any())
                     {
-                        await _userAddressRepository.SetDefaultAddressAsync(currentUserId.Value, firstAddress.Id);
-                        await _unitOfWork.SaveChangesAsync();
+                        var newDefault = others.First();
+                        newDefault.IsDefault = true;
+                        await _userAddressRepository.UpdateAsync(newDefault);
                     }
                 }
 
-                _logger.LogInformation("Deleted user address {AddressId} for user {UserId}", addressId, currentUserId.Value);
+                // Chỉ gọi SaveChanges một lần
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
 
+                _logger.LogInformation("Deleted address {AddressId} of user {UserId}", addressId, userId.Value);
                 return ApiResult<bool>.Success(true);
-            });
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                _logger.LogError(ex, "Error deleting address {AddressId}", addressId);
+                return ApiResult<bool>.Failure("Internal server error: " + ex.Message);
+            }
         }
-
         public async Task<ApiResult<IEnumerable<UserAddressResponse>>> GetUserAddressesAsync()
         {
             var currentUserId = _currentUserService.GetUserId();

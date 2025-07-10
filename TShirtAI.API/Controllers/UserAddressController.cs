@@ -61,5 +61,12 @@ namespace WebAPI.Controllers
             var result = await _userAddressService.SetDefaultAddressAsync(addressId);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteUserAddress(Guid id)
+        {
+            var result = await _userAddressService.DeleteUserAddressAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
     }
 }
