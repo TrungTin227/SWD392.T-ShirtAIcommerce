@@ -178,20 +178,27 @@ namespace Services.Implementations
             if (currentUserId == null)
                 return ApiResult<bool>.Failure("User not authenticated");
 
-            return await _unitOfWork.ExecuteTransactionAsync(async () =>
+            try
             {
+                using var transaction = await _unitOfWork.Context.Database.BeginTransactionAsync();
+
                 var success = await _userAddressRepository.SetDefaultAddressAsync(currentUserId.Value, addressId);
                 if (!success)
                     return ApiResult<bool>.Failure("Address not found or doesn't belong to user");
 
                 await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
 
                 _logger.LogInformation("Set default address {AddressId} for user {UserId}", addressId, currentUserId.Value);
 
                 return ApiResult<bool>.Success(true);
-            });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting default address {AddressId} for user {UserId}", addressId, currentUserId.Value);
+                return ApiResult<bool>.Failure("An error occurred while setting default address");
+            }
         }
-
         public async Task<ApiResult<UserAddressResponse>> CreateDefaultAddressForNewUserAsync(Guid userId, CreateUserAddressRequest? request = null)
         {
             return await _unitOfWork.ExecuteTransactionAsync(async () =>

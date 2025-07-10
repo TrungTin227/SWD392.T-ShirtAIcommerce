@@ -47,5 +47,19 @@ namespace WebAPI.Controllers
             var result = await _userAddressService.UpdateUserAddressAsync(id, request);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
+
+        [HttpGet("IsDefault")]
+        public async Task<IActionResult> GetDefaultAddress()
+        {
+            var result = await _userAddressService.GetDefaultAddressAsync();
+            return result.IsSuccess ? Ok(result) : NotFound(result);
+        }
+
+        [HttpPost("SetDefault/{addressId}")]
+        public async Task<IActionResult> SetDefaultAddress(Guid addressId)
+        {
+            var result = await _userAddressService.SetDefaultAddressAsync(addressId);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
     }
 }

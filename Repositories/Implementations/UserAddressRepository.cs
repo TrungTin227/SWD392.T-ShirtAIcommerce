@@ -28,18 +28,27 @@ namespace Repositories.Implementations
 
         public async Task<bool> SetDefaultAddressAsync(Guid userId, Guid addressId)
         {
-            // Bỏ default của tất cả địa chỉ khác
-            await RemoveDefaultAddressesAsync(userId);
+            var addresses = await _dbSet.Where(ua => ua.UserId == userId).ToListAsync();
+            var addressToSetDefault = addresses.FirstOrDefault(ua => ua.Id == addressId);
 
-            // Set địa chỉ mới làm default
-            var address = await _dbSet.FirstOrDefaultAsync(ua => ua.Id == addressId && ua.UserId == userId);
-            if (address == null) return false;
+            if (addressToSetDefault == null)
+                return false;
 
-            address.IsDefault = true;
-            address.UpdatedAt = DateTime.UtcNow;
+            foreach (var addr in addresses)
+            {
+                bool shouldBeDefault = addr.Id == addressId;
+                if (addr.IsDefault != shouldBeDefault)
+                {
+                    addr.IsDefault = shouldBeDefault;
+                    addr.UpdatedAt = DateTime.UtcNow;
+
+                    // Mark entity as modified
+                    _context.Entry(addr).State = EntityState.Modified;
+                }
+            }
+
             return true;
         }
-
         public async Task<bool> RemoveDefaultAddressesAsync(Guid userId)
         {
             var defaultAddresses = await _dbSet
