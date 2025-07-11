@@ -16,20 +16,22 @@ namespace Repositories.Implementations
         public async Task<IReadOnlyList<ProductVariant>> GetVariantsByProductIdAsync(Guid productId)
         {
             return await _dbSet
-                .Where(x => x.ProductId == productId)
+                .Where(x => x.ProductId == productId && !x.IsDeleted)
                 .ToListAsync();
         }
 
         public async Task<PagedList<ProductVariant>> GetPagedVariantsByProductIdAsync(Guid productId, int pageNumber, int pageSize)
         {
-            var query = _dbSet.Where(x => x.ProductId == productId);
+            var query = _dbSet
+                .Where(x => x.ProductId == productId && !x.IsDeleted);
             return await PagedList<ProductVariant>.ToPagedListAsync(query, pageNumber, pageSize);
         }
         public async Task<ProductVariant?> GetByIdWithProductAsync(Guid variantId)
         {
             return await _dbSet
                 .Include(x => x.Product)
-                .FirstOrDefaultAsync(x => x.Id == variantId);
+                .Where(x => x.Id == variantId && !x.IsDeleted && !x.Product.IsDeleted)
+                .FirstOrDefaultAsync();
         }
     }
 }

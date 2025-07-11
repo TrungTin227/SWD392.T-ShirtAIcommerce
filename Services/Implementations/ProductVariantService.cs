@@ -153,8 +153,9 @@ namespace Services.Implementations
         {
             try
             {
-                var entity = await _productVariantRepository.GetByIdAsync(id, x => x.Product);
-                if (entity == null)
+                var entity = await _productVariantRepository.GetByIdAsync(id, x => x.Product // Only include navigation property
+);
+                if (entity == null || entity.IsDeleted)
                 {
                     return ApiResult<ProductVariantDto?>.Failure("Product variant not found");
                 }
