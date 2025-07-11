@@ -60,5 +60,9 @@ namespace Services.Interfaces
         /// Bulk cancel orders
         /// </summary>
         Task<BatchOperationResultDTO> BulkCancelOrdersAsync(List<Guid> orderIds, string reason, Guid? cancelledBy = null);
+
+        Task<BatchOperationResultDTO> BulkMarkOrdersAsShippingAsync(List<Guid> orderIds, Guid staffId);
+        Task<BatchOperationResultDTO> BulkConfirmDeliveredByUserAsync(List<Guid> orderIds, Guid userId);
+        Task<BatchOperationResultDTO> BulkCompleteCODOrdersAsync(List<Guid> orderIds, Guid staffId);
     }
 }

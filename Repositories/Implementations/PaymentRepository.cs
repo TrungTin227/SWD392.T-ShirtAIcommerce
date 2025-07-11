@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Payments;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Payments;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Interfaces;
 
@@ -48,6 +49,23 @@ namespace Repositories.Implementations
         public async Task SaveChangesAsync()
         {
             await _context.SaveChangesAsync();
+        }
+        public async Task<Payment?> GetActiveVnPayPaymentByOrderIdAsync(Guid orderId)
+        {
+            return await _payments
+                .Where(p => p.OrderId == orderId
+                         && p.PaymentMethod == PaymentMethod.VNPAY
+                         && p.Status == PaymentStatus.Processing)
+                .Include(p => p.Order)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<bool> HasActivePaymentForOrderAsync(Guid orderId, PaymentMethod paymentMethod)
+        {
+            return await _payments
+                .AnyAsync(p => p.OrderId == orderId
+                            && p.PaymentMethod == paymentMethod
+                            && (p.Status == PaymentStatus.Processing || p.Status == PaymentStatus.Completed));
         }
     }
 }

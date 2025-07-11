@@ -217,6 +217,52 @@ namespace WebAPI.Controllers
             return Ok(new { Message = "Đơn đã được staff xác nhận (Completed)" });
         }
 
+        [HttpPut("batch/mark-shipping")]
+        [Authorize(Roles = "Staff,Admin")]
+        public async Task<IActionResult> BulkMarkOrdersAsShipping([FromBody] List<Guid> orderIds)
+        {
+            if (orderIds == null || !orderIds.Any())
+                return BadRequest("Danh sách đơn hàng không được để trống");
+
+            var staffId = _currentUserService.GetUserId();
+            if (!staffId.HasValue)
+                return Unauthorized();
+
+            var result = await _orderService.BulkMarkOrdersAsShippingAsync(orderIds, staffId.Value);
+            return Ok(result);
+        }
+
+        [HttpPut("batch/confirm-delivered")]
+        [Authorize(Roles = "User")]
+        public async Task<IActionResult> BulkConfirmDelivered([FromBody] List<Guid> orderIds)
+        {
+            if (orderIds == null || !orderIds.Any())
+                return BadRequest("Danh sách đơn hàng không được để trống");
+
+            var userId = _currentUserService.GetUserId();
+            if (!userId.HasValue)
+                return Unauthorized();
+
+            var result = await _orderService.BulkConfirmDeliveredByUserAsync(orderIds, userId.Value);
+            return Ok(result);
+        }
+
+
+        [HttpPut("batch/complete")]
+        [Authorize(Roles = "Staff,Admin")]
+        public async Task<IActionResult> BulkCompleteCODOrders([FromBody] List<Guid> orderIds)
+        {
+            if (orderIds == null || !orderIds.Any())
+                return BadRequest("Danh sách đơn hàng không được để trống");
+
+            var staffId = _currentUserService.GetUserId();
+            if (!staffId.HasValue)
+                return Unauthorized();
+
+            var result = await _orderService.BulkCompleteCODOrdersAsync(orderIds, staffId.Value);
+            return Ok(result);
+        }
+
         #region Helper Methods
 
         private Guid? GetCurrentUserIdOrUnauthorized()

@@ -159,6 +159,7 @@ namespace Services.Implementations
         }
 
 
+        // Thêm method này vào PaymentService
         public async Task<VnPayCreateResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request)
         {
             // 1) Lấy đơn hàng ngoài transaction
@@ -168,19 +169,50 @@ namespace Services.Implementations
             if (order.PaymentStatus != PaymentStatus.Unpaid)
                 return new VnPayCreateResponse
                 {
-                    Success    = false,
-                    PaymentId  = Guid.Empty,
+                    Success = false,
+                    PaymentId = Guid.Empty,
                     PaymentUrl = string.Empty,
-                    Message    = "Đơn hàng đã được thanh toán hoặc đang xử lý."
+                    Message = "Đơn hàng đã được thanh toán hoặc đang xử lý."
                 };
+
+            // *** THÊM: Kiểm tra đã có payment VNPAY Processing chưa ***
+            var existingPayment = await _paymentRepository.GetActiveVnPayPaymentByOrderIdAsync(request.OrderId);
+            if (existingPayment != null)
+            {
+                // Nếu đã có payment processing, trả về URL cũ hoặc tạo URL mới
+                var vnNow = GetVietnamTime();
+                var createDate = vnNow.ToString("yyyyMMddHHmmss");
+                var vnpAmountXu = Convert.ToInt64(order.TotalAmount * 1m);
+
+                var vnPayReq = new VnPayCreatePaymentRequest
+                {
+                    vnp_TxnRef = existingPayment.TransactionId!,
+                    vnp_OrderInfo = request.Description ?? $"Thanh toán đơn hàng {order.Id}",
+                    vnp_OrderType = "other",
+                    vnp_Amount = vnpAmountXu,
+                    vnp_CreateDate = createDate,
+                    vnp_IpAddr = Utils.GetIpAddress(_httpContextAccessor.HttpContext!)
+                };
+
+                var vnPayResp = await _vnPayService.CreatePaymentUrlAsync(vnPayReq);
+
+                return new VnPayCreateResponse
+                {
+                    Success = vnPayResp.Success,
+                    PaymentId = existingPayment.Id,
+                    PaymentUrl = vnPayResp.PaymentUrl,
+                    Payment = MapToResponse(existingPayment),
+                    Message = "Sử dụng payment đã tồn tại"
+                };
+            }
 
             // 2) Tính toán số tiền, sinh txnRef, Id trước
             var totalAmount = order.TotalAmount;
-            var vnNow = GetVietnamTime();
+            var vnNow2 = GetVietnamTime();
             var paymentId = Guid.NewGuid();
-            var createDate = vnNow.ToString("yyyyMMddHHmmss");
-            var txnRef = $"{createDate}_{paymentId}";
-            var vnpAmountXu = Convert.ToInt64(totalAmount * 1m);
+            var createDate2 = vnNow2.ToString("yyyyMMddHHmmss");
+            var txnRef = $"{createDate2}_{paymentId}";
+            var vnpAmountXu2 = Convert.ToInt64(totalAmount * 1m);
 
             // 3) Chạy trong transaction
             var apiResult = await _unitOfWork.ExecuteTransactionAsync(async () =>
@@ -188,25 +220,25 @@ namespace Services.Implementations
                 // a) Tạo entity Payment, set luôn trạng thái Processing & txnRef
                 var payment = new Payment
                 {
-                    Id            = paymentId,
-                    OrderId       = request.OrderId,
+                    Id = paymentId,
+                    OrderId = request.OrderId,
                     PaymentMethod = PaymentMethod.VNPAY,
-                    Amount        = totalAmount,
-                    Status        = PaymentStatus.Processing,
+                    Amount = totalAmount,
+                    Status = PaymentStatus.Processing,
                     TransactionId = txnRef,
-                    CreatedAt     = vnNow
+                    CreatedAt = vnNow2
                 };
                 await _paymentRepository.AddAsync(payment);
 
                 // b) Build request cho VnPay
                 var vnPayReq = new VnPayCreatePaymentRequest
                 {
-                    vnp_TxnRef    = txnRef,
+                    vnp_TxnRef = txnRef,
                     vnp_OrderInfo = request.Description ?? $"Thanh toán đơn hàng {order.Id}",
                     vnp_OrderType = "other",
-                    vnp_Amount    = vnpAmountXu,
-                    vnp_CreateDate= createDate,
-                    vnp_IpAddr    = Utils.GetIpAddress(_httpContextAccessor.HttpContext!)
+                    vnp_Amount = vnpAmountXu2,
+                    vnp_CreateDate = createDate2,
+                    vnp_IpAddr = Utils.GetIpAddress(_httpContextAccessor.HttpContext!)
                 };
 
                 // c) Gọi service VnPay
@@ -224,18 +256,17 @@ namespace Services.Implementations
                 var dto = MapToResponse(payment);
                 return ApiResult<VnPayCreateResponse>.Success(new VnPayCreateResponse
                 {
-                    Success    = true,
-                    PaymentId  = payment.Id,
+                    Success = true,
+                    PaymentId = payment.Id,
                     PaymentUrl = vnPayResp.PaymentUrl,
-                    Payment    = dto,
-                    Message    = "VnPay payment URL created successfully"
+                    Payment = dto,
+                    Message = "VnPay payment URL created successfully"
                 }, "OK");
             });
 
             // 4) Lấy về data từ ApiResult và trả về
             return apiResult.Data!;
         }
-
         public async Task<VnPayQueryResponse> QueryVnPayPaymentAsync(string txnRef)
         {
             var vnNow = GetVietnamTime();
@@ -276,45 +307,45 @@ namespace Services.Implementations
                 // 3. Xác định trạng thái payment
                 var respCode = request.Query["vnp_ResponseCode"].ToString();
                 var transStatus = request.Query["vnp_TransactionStatus"].ToString();
-                var status = respCode == "00" && transStatus == "00"
+                var status = (respCode == "00" && transStatus == "00")
                              ? PaymentStatus.Completed
                              : PaymentStatus.Failed;
 
-                // 4. Cập nhật bảng Payment
-                await UpdatePaymentStatusAsync(paymentId, status, callback.vnp_TransactionNo);
-
-                // 5. Cập nhật đồng thời sang bảng Order
+                // 4. Lấy Payment & Order liên quan
                 var payment = await _paymentRepository.GetByIdAsync(paymentId);
-                if (payment != null)
-                {
-                    var order = await _orderRepository.GetByIdAsync(payment.OrderId);
-                    if (order != null)
-                    {
-                        if (payment.Status == PaymentStatus.Completed)
-                        {
-                            _logger.LogInformation("Payment {PaymentId} already completed, skipping callback.", paymentId);
-                            return true;
-                        }
-                        // Cập nhật trạng thái thanh toán
-                        order.PaymentStatus = status;
-
-                        // Nếu thanh toán thành công, chuyển Order sang Confirmed
-                        if (status == PaymentStatus.Completed)
-                            order.Status = OrderStatus.Paid;
-                        else
-                            order.Status = OrderStatus.Pending; // hoặc tuỳ logic của bạn
-
-                        await _orderRepository.UpdateAsync(order);
-                        await _orderRepository.SaveChangesAsync();
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Order not found for PaymentId={PaymentId}", paymentId);
-                    }
-                }
-                else
+                if (payment == null)
                 {
                     _logger.LogWarning("Payment record not found: PaymentId={PaymentId}", paymentId);
+                    return false;
+                }
+
+                var order = await _orderRepository.GetByIdAsync(payment.OrderId);
+                if (order == null)
+                {
+                    _logger.LogWarning("Order not found for PaymentId={PaymentId}", paymentId);
+                    return false;
+                }
+
+                // 5. Nếu trạng thái payment chưa phải Completed → cập nhật
+                if (payment.Status != PaymentStatus.Completed)
+                {
+                    payment.Status = status;
+                    payment.TransactionId = callback.vnp_TransactionNo;
+                    await _paymentRepository.UpdateAsync(payment);
+                    await _paymentRepository.SaveChangesAsync();
+                }
+
+                // 6. Cập nhật trạng thái đơn hàng cho đúng
+                if (order.PaymentStatus != status ||
+                    (status == PaymentStatus.Completed && order.Status != OrderStatus.Paid))
+                {
+                    order.PaymentStatus = status;
+                    order.Status = status == PaymentStatus.Completed
+                        ? OrderStatus.Processing
+                        : OrderStatus.Pending; // hoặc Failed, tùy hệ thống
+
+                    await _orderRepository.UpdateAsync(order);
+                    await _orderRepository.SaveChangesAsync();
                 }
 
                 _logger.LogInformation("VNPAY callback handled. PaymentId={PaymentId}, Status={Status}", paymentId, status);

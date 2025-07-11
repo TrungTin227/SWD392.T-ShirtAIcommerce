@@ -1,4 +1,5 @@
-﻿using BusinessObjects.Payments;
+﻿using BusinessObjects.Common;
+using BusinessObjects.Payments;
 
 namespace Repositories.Interfaces
 {
@@ -10,5 +11,7 @@ namespace Repositories.Interfaces
         Task UpdateAsync(Payment payment);
         Task DeleteAsync(Payment payment);
         Task SaveChangesAsync();
+        Task<Payment?> GetActiveVnPayPaymentByOrderIdAsync(Guid orderId);
+        Task<bool> HasActivePaymentForOrderAsync(Guid orderId, PaymentMethod paymentMethod);
     }
 }

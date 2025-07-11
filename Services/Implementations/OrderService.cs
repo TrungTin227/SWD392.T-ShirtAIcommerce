@@ -815,6 +815,217 @@ namespace Services.Implementations
                 throw;
             }
         }
+
+        public async Task<BatchOperationResultDTO> BulkMarkOrdersAsShippingAsync(List<Guid> orderIds, Guid staffId)
+        {
+            var result = new BatchOperationResultDTO
+            {
+                TotalRequested = orderIds.Count,
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
+            };
+
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                foreach (var orderId in orderIds)
+                {
+                    try
+                    {
+                        var order = await _orderRepository.GetByIdAsync(orderId);
+                        if (order == null || order.IsDeleted)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id = orderId.ToString(),
+                                ErrorMessage = "Đơn hàng không tồn tại hoặc đã bị xóa"
+                            });
+                            continue;
+                        }
+
+                        if (order.Status != OrderStatus.Processing && order.Status != OrderStatus.Paid)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id = orderId.ToString(),
+                                ErrorMessage = "Đơn hàng không ở trạng thái hợp lệ để chuyển sang Shipping (chỉ chấp nhận Paid hoặc Processing)"
+                            });
+                            continue;
+                        }
+
+                        var success = await _orderRepository.UpdateOrderStatusAsync(orderId, OrderStatus.Shipping, staffId);
+                        if (success)
+                            result.SuccessIds.Add(orderId.ToString());
+                        else
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Cập nhật trạng thái thất bại" });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi cập nhật Shipping cho đơn hàng {OrderId}", orderId);
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = ex.Message });
+                    }
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi hệ thống khi cập nhật hàng loạt trạng thái Shipping");
+                result.Errors.Add(new BatchOperationErrorDTO
+                {
+                    Id = "Hệ thống",
+                    ErrorMessage = "Lỗi hệ thống: " + ex.Message
+                });
+            }
+
+            result.SuccessCount = result.SuccessIds.Count;
+            result.FailureCount = result.Errors.Count;
+            result.Message = result.IsCompleteSuccess
+                ? $"Thành công: đã cập nhật Shipping cho {result.SuccessCount} đơn hàng."
+                : result.IsCompleteFailure
+                    ? $"Không thể cập nhật bất kỳ đơn hàng nào."
+                    : $"Một phần thành công: {result.SuccessCount} thành công, {result.FailureCount} thất bại.";
+
+            return result;
+        }
+        public async Task<BatchOperationResultDTO> BulkConfirmDeliveredByUserAsync(List<Guid> orderIds, Guid userId)
+        {
+            var result = new BatchOperationResultDTO
+            {
+                TotalRequested = orderIds.Count,
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
+            };
+
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                foreach (var orderId in orderIds)
+                {
+                    try
+                    {
+                        var order = await _orderRepository.GetByIdAsync(orderId);
+                        if (order == null || order.IsDeleted || order.UserId != userId)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Đơn hàng không hợp lệ hoặc không thuộc về người dùng" });
+                            continue;
+                        }
+
+                        if (order.Status != OrderStatus.Shipping)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Chỉ có thể xác nhận đơn đang giao" });
+                            continue;
+                        }
+
+                        var success = await _orderRepository.UpdateOrderStatusAsync(orderId, OrderStatus.Delivered, userId);
+                        if (success)
+                            result.SuccessIds.Add(orderId.ToString());
+                        else
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Không thể cập nhật trạng thái" });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi xác nhận Delivered cho đơn hàng {OrderId}", orderId);
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = ex.Message });
+                    }
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi hệ thống khi xác nhận Delivered hàng loạt");
+                result.Errors.Add(new BatchOperationErrorDTO
+                {
+                    Id = "Hệ thống",
+                    ErrorMessage = "Lỗi hệ thống: " + ex.Message
+                });
+            }
+
+            result.SuccessCount = result.SuccessIds.Count;
+            result.FailureCount = result.Errors.Count;
+            result.Message = result.IsCompleteSuccess
+                ? $"Xác nhận đã nhận thành công cho {result.SuccessCount} đơn hàng."
+                : result.IsCompleteFailure
+                    ? $"Không thể xác nhận bất kỳ đơn hàng nào."
+                    : $"Một phần thành công: {result.SuccessCount} thành công, {result.FailureCount} thất bại.";
+
+            return result;
+        }
+        public async Task<BatchOperationResultDTO> BulkCompleteCODOrdersAsync(List<Guid> orderIds, Guid staffId)
+        {
+            var result = new BatchOperationResultDTO
+            {
+                TotalRequested = orderIds.Count,
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
+            };
+
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                foreach (var orderId in orderIds)
+                {
+                    try
+                    {
+                        var order = await _orderRepository.GetByIdAsync(orderId);
+                        if (order == null || order.IsDeleted)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Đơn hàng không hợp lệ" });
+                            continue;
+                        }
+
+                        if (order.Status != OrderStatus.Delivered)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Đơn hàng chưa được xác nhận đã giao" });
+                            continue;
+                        }
+
+                        var statusUpdated = await _orderRepository.UpdateOrderStatusAsync(orderId, OrderStatus.Completed, staffId);
+                        var paymentUpdated = await _orderRepository.UpdatePaymentStatusAsync(orderId, PaymentStatus.Completed, staffId);
+
+                        if (statusUpdated && paymentUpdated)
+                            result.SuccessIds.Add(orderId.ToString());
+                        else
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Không thể cập nhật trạng thái hoặc thanh toán" });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi hoàn tất đơn COD {OrderId}", orderId);
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = ex.Message });
+                    }
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi hệ thống khi hoàn tất đơn hàng COD hàng loạt");
+                result.Errors.Add(new BatchOperationErrorDTO
+                {
+                    Id = "Hệ thống",
+                    ErrorMessage = "Lỗi hệ thống: " + ex.Message
+                });
+            }
+
+            result.SuccessCount = result.SuccessIds.Count;
+            result.FailureCount = result.Errors.Count;
+            result.Message = result.IsCompleteSuccess
+                ? $"Đã hoàn tất thành công {result.SuccessCount} đơn COD."
+                : result.IsCompleteFailure
+                    ? $"Không thể hoàn tất bất kỳ đơn hàng nào."
+                    : $"Một phần thành công: {result.SuccessCount} thành công, {result.FailureCount} thất bại.";
+
+            return result;
+        }
+
+
         #region Private Helper Methods
 
         private async Task<decimal> CalculateShippingFeeAsync(Guid? shippingMethodId, decimal subtotal)
