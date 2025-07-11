@@ -107,6 +107,7 @@ namespace Repositories.Implementations
                          .Include(o => o.Coupon)
                          .Include(o => o.ShippingMethod)
                          .Include(o => o.OrderItems)
+                            .ThenInclude(oi => oi.ProductVariant)
                          .Include(o => o.Payments);
 
             return await PagedList<Order>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
@@ -115,12 +116,13 @@ namespace Repositories.Implementations
         public async Task<IEnumerable<Order>> GetUserOrdersAsync(Guid userId)
         {
             return await _dbSet
-                .Where(o => o.UserId == userId && !o.IsDeleted)
-                .Include(o => o.OrderItems)
-                .Include(o => o.Payments)
-                .Include(o => o.ShippingMethod)
-                .OrderByDescending(o => o.CreatedAt)
-                .ToListAsync();
+                    .Where(o => o.UserId == userId && !o.IsDeleted)
+                    .Include(o => o.OrderItems)
+                        .ThenInclude(oi => oi.ProductVariant)
+                    .Include(o => o.Payments)
+                    .Include(o => o.ShippingMethod)
+                    .OrderByDescending(o => o.CreatedAt)
+                    .ToListAsync();
         }
 
         public async Task<Order?> GetOrderWithDetailsAsync(Guid orderId)
@@ -142,6 +144,7 @@ namespace Repositories.Implementations
                 .Where(o => o.Status == status && !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }
@@ -152,6 +155,7 @@ namespace Repositories.Implementations
                 .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate && !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }
@@ -250,6 +254,7 @@ namespace Repositories.Implementations
                 .Where(o => o.AssignedStaffId == staffId && !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }
@@ -281,6 +286,7 @@ namespace Repositories.Implementations
             return await _dbSet
                 .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate && !o.IsDeleted)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
                 .ToListAsync();
         }
 
@@ -298,6 +304,7 @@ namespace Repositories.Implementations
                 .Where(o => !o.IsDeleted)
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
                 .OrderByDescending(o => o.CreatedAt)
                 .Take(limit)
                 .ToListAsync();

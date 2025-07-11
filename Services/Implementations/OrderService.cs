@@ -1196,11 +1196,16 @@ namespace Services.Implementations
                 CustomDesignId = orderItem.CustomDesignId,
                 ProductVariantId = orderItem.ProductVariantId,
                 ItemName = orderItem.ItemName,
-                SelectedColor = orderItem.SelectedColor,
-                SelectedSize = orderItem.SelectedSize,
                 Quantity = orderItem.Quantity,
                 UnitPrice = orderItem.UnitPrice,
-                TotalPrice = orderItem.TotalPrice
+                TotalPrice = orderItem.TotalPrice,
+
+                SelectedColor = orderItem.ProductVariant?.Color.ToString(),
+                SelectedSize = orderItem.ProductVariant?.Size.ToString(),
+
+                ProductName = orderItem.Product?.Name,
+                CustomDesignName = orderItem.CustomDesign?.DesignName,
+                VariantName = orderItem.ProductVariant?.VariantSku
             };
         }
 

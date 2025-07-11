@@ -335,8 +335,8 @@ namespace Services.Implementations
         private async Task<IEnumerable<CartItem>> GetCartItems(Guid? userId, string? sessionId)
         {
             return userId.HasValue
-                ? await _cartItemRepository.GetUserCartItemsAsync(userId.Value)
-                : await _cartItemRepository.GetSessionCartItemsAsync(sessionId!);
+                ? await _cartItemRepository.GetUserCartItemsWithDetailsAsync(userId.Value)
+                : await _cartItemRepository.GetSessionCartItemsWithDetailsAsync(sessionId!);
         }
 
         public async Task<List<CartItem>> GetValidatedCartItemsByIds(List<Guid> cartItemIds, Guid? userId, string? sessionId)
