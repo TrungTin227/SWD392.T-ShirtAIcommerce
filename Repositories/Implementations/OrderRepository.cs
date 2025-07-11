@@ -133,6 +133,7 @@ namespace Repositories.Implementations
                 .Include(o => o.Coupon)
                 .Include(o => o.ShippingMethod)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
                 .Include(o => o.Payments)
                 .Include(o => o.Reviews)
                 .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted);
