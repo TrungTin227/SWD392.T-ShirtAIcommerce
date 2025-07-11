@@ -61,6 +61,7 @@ namespace Services.Implementations
                 CartItemMapper.UpdateEntity(existingCartItem, updateDto);
                 var updatedCartItem = await UpdateAsync(existingCartItem);
 
+
                 return ApiResult<CartItemDto>.Success(CartItemMapper.ToDto(updatedCartItem), "Cập nhật giỏ hàng thành công");
             }, "Lỗi khi cập nhật giỏ hàng");
         }
@@ -803,6 +804,7 @@ namespace Services.Implementations
                     return ApiResult<bool>.Failure("Không tìm thấy sản phẩm nào để xóa");
 
                 await DeleteCartItemsByOwnership(cartItemIds, userId, sessionId);
+                await _unitOfWork.SaveChangesAsync();
 
                 return ApiResult<bool>.Success(true, $"Đã xóa {cartItems.Count} sản phẩm khỏi giỏ hàng");
             }, "Lỗi khi xóa sản phẩm hàng loạt khỏi giỏ hàng");
