@@ -233,7 +233,7 @@ namespace WebAPI.Controllers
         }
 
         [HttpPut("batch/confirm-delivered")]
-        [Authorize(Roles = "User")]
+        [Authorize(Roles = "CUSTOMER,Staff,Admin")]
         public async Task<IActionResult> BulkConfirmDelivered([FromBody] List<Guid> orderIds)
         {
             if (orderIds == null || !orderIds.Any())
