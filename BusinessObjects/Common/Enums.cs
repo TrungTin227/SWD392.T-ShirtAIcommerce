@@ -217,7 +217,8 @@ namespace BusinessObjects.Common
         [Description("Hoàn tiền một phần")]
         PartiallyRefunded,
         [Description("Thất bại")]
-        Failed         
+        Failed,
+        Paid
     }
     public enum PaymentMethod
     {

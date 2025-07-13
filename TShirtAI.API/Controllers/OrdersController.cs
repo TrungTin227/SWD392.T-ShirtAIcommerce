@@ -72,11 +72,16 @@ namespace WebAPI.Controllers
         {
             try
             {
-                var order = (await _orderService
-                    .CreateOrderAsync(req, _currentUserService.GetUserId()))
-                    .Order;
+                var result = await _orderService.CreateOrderAsync(req, _currentUserService.GetUserId());
 
-                return Ok(new { success = true, order });
+                return Ok(new
+                {
+                    success = true,
+                    order = result.Order,
+                    payment = result.Payment,
+                    paymentUrl = result.PaymentUrl,    
+                    message = "Đơn hàng đã được tạo thành công"
+                });
             }
             catch (Exception ex)
             {
@@ -109,7 +114,7 @@ namespace WebAPI.Controllers
         /// Hủy đơn hàng (User hoặc Admin/Staff)
         /// </summary>
         [HttpPatch("{id}/cancel")]
-        [ServiceFilter(typeof(ValidateModelAttribute))]
+        //[ServiceFilter(typeof(ValidateModelAttribute))]
         public async Task<ActionResult> CancelOrder(Guid id, [FromBody] CancelOrderRequest request)
         {
             var userId = GetCurrentUserIdOrUnauthorized();
@@ -205,6 +210,23 @@ namespace WebAPI.Controllers
                 return Ok(total);
             }, "Error calculating order total {OrderId}", id);
         }
+
+
+        [HttpPut("batch/process")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<IActionResult> BulkProcessOrders([FromBody] List<Guid> orderIds)
+        {
+            if (orderIds == null || !orderIds.Any())
+                return BadRequest(new { success = false, message = "Danh sách đơn hàng không được để trống." });
+
+            var staffId = _currentUserService.GetUserId();
+            if (!staffId.HasValue)
+                return Unauthorized(new { success = false, message = "Bạn chưa đăng nhập." });
+
+            var result = await _orderService.BulkProcessOrdersAsync(orderIds, staffId.Value);
+            return Ok(result);
+        }
+
 
         [HttpPost("{orderId}/confirm")]
         public async Task<IActionResult> ConfirmOrder(Guid orderId)

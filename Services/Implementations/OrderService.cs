@@ -116,7 +116,6 @@ namespace Services.Implementations
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-
                 // 1. Xác định user
                 var userId = createdBy ?? _currentUserService.GetUserId();
                 if (!userId.HasValue)
@@ -215,27 +214,19 @@ namespace Services.Implementations
 
                 if (request.CouponId.HasValue)
                 {
-                    // Validate coupon trước khi tạo order
                     var couponRes = await _couponService.GetByIdAsync(request.CouponId.Value);
                     if (!couponRes.IsSuccess || couponRes.Data == null)
-                    {
                         throw new ArgumentException("Coupon không tồn tại.");
-                    }
 
                     validatedCoupon = couponRes.Data;
 
-                    // Sử dụng repository để validate coupon với order
                     var isValidCoupon = await _unitOfWork.CouponRepository.ValidateCouponForOrderAsync(
                         request.CouponId.Value,
                         subtotal,
                         userId.Value);
-
                     if (!isValidCoupon)
-                    {
                         throw new ArgumentException("Coupon không hợp lệ hoặc không thể sử dụng cho đơn hàng này.");
-                    }
 
-                    // Tính discount
                     discount = await _unitOfWork.CouponRepository.CalculateDiscountAmountAsync(
                         request.CouponId.Value,
                         subtotal);
@@ -245,7 +236,7 @@ namespace Services.Implementations
                 decimal shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
                 var totalAmount = subtotal + shippingFee - discount;
 
-                // 6. Tạo Order
+                // 6. Tạo Order ban đầu
                 var order = new Order
                 {
                     Id               = Guid.NewGuid(),
@@ -260,8 +251,8 @@ namespace Services.Implementations
                     ShippingFee      = shippingFee,
                     DiscountAmount   = discount,
                     TotalAmount      = totalAmount,
-                    Status           = OrderStatus.Pending,
                     PaymentStatus    = PaymentStatus.Unpaid,
+                    Status           = OrderStatus.Pending,
                     CreatedAt        = _currentTime.GetVietnamTime(),
                     CreatedBy        = userId.Value
                 };
@@ -274,18 +265,17 @@ namespace Services.Implementations
                     await _unitOfWork.OrderItemRepository.AddAsync(oi);
                 }
 
-                // 8. Ghi nhận sử dụng coupon SAU KHI order được tạo thành công
+                // 8. Ghi nhận sử dụng coupon
                 if (request.CouponId.HasValue && validatedCoupon != null)
                 {
                     var useCouponRes = await _couponService.UseCouponAsync(
                         request.CouponId.Value,
                         userId.Value);
-
                     if (!useCouponRes.IsSuccess)
                     {
-                        _logger.LogError("Failed to use coupon {CouponId} for user {UserId}: {Error}",
+                        _logger.LogError(
+                            "Failed to use coupon {CouponId} for user {UserId}: {Error}",
                             request.CouponId.Value, userId.Value, useCouponRes.Message);
-                        // Rollback sẽ tự động xảy ra trong catch block
                         throw new InvalidOperationException($"Không thể sử dụng coupon: {useCouponRes.Message}");
                     }
                 }
@@ -296,15 +286,46 @@ namespace Services.Implementations
                     await _cartItemRepository.DeleteRangeAsync(cartItemIds);
                 }
 
-                // 10. Commit transaction
+                // **10. Lưu Order và OrderItems trước khi tạo payment**
                 await _unitOfWork.SaveChangesAsync();
+
+                // 11. TẠO PAYMENT, lấy URL nếu VNPAY
+                var paymentReq = new PaymentCreateRequest
+                {
+                    OrderId       = order.Id,
+                    PaymentMethod = request.PaymentMethod,
+                    Description   = request.PaymentDescription
+                };
+
+                PaymentResponse payment;
+                string? paymentUrl = null;
+
+                if (request.PaymentMethod == PaymentMethod.VNPAY)
+                {
+                    // Gọi method VNPAY để lấy URL
+                    var vnPayResp = await _paymentService.CreateVnPayPaymentAsync(paymentReq);
+                    payment    = vnPayResp.Payment!;    // vẫn dùng DTO cũ
+                    paymentUrl = vnPayResp.PaymentUrl;  // đây là link để FE redirect
+                }
+                else
+                {
+                    // COD hoặc các phương thức khác
+                    payment = await _paymentService.CreatePaymentAsync(paymentReq);
+                }
+
+                // 12. Commit transaction như cũ
                 await transaction.CommitAsync();
 
-                // 11. Lấy lại OrderDTO
-                var createdOrder = await _unitOfWork.OrderRepository.GetOrderWithDetailsAsync(order.Id);
+                // 13. Trả về kết quả, thêm trường PaymentUrl
+                var createdOrder = await _orderRepository.GetOrderWithDetailsAsync(order.Id);
                 var orderDto = ConvertToOrderDTO(createdOrder!);
-                return new CreateOrderResult { Order = orderDto };
 
+                return new CreateOrderResult
+                {
+                    Order      = orderDto,
+                    Payment    = payment,
+                    PaymentUrl = paymentUrl
+                };
             }
             catch
             {
@@ -956,6 +977,96 @@ namespace Services.Implementations
 
             return result;
         }
+
+        public async Task<BatchOperationResultDTO> BulkProcessOrdersAsync(List<Guid> orderIds, Guid staffId)
+        {
+            var result = new BatchOperationResultDTO
+            {
+                TotalRequested = orderIds.Count,
+                SuccessIds     = new List<string>(),
+                Errors         = new List<BatchOperationErrorDTO>()
+            };
+
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                foreach (var orderId in orderIds)
+                {
+                    try
+                    {
+                        var order = await _orderRepository.GetByIdAsync(orderId);
+                        if (order == null || order.IsDeleted)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id           = orderId.ToString(),
+                                ErrorMessage = "Đơn hàng không tồn tại hoặc đã bị xóa"
+                            });
+                            continue;
+                        }
+
+                        if (order.Status != OrderStatus.Pending)
+                        {
+                            result.Errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id           = orderId.ToString(),
+                                ErrorMessage = "Chỉ đơn ở trạng thái Pending mới được chuyển sang Processing"
+                            });
+                            continue;
+                        }
+
+                        // Cập nhật trạng thái
+                        var success = await _orderRepository.UpdateOrderStatusAsync(
+                            orderId,
+                            OrderStatus.Processing,
+                            staffId
+                        );
+
+                        if (success)
+                            result.SuccessIds.Add(orderId.ToString());
+                        else
+                            result.Errors.Add(new BatchOperationErrorDTO
+                            {
+                                Id           = orderId.ToString(),
+                                ErrorMessage = "Cập nhật trạng thái thất bại"
+                            });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi chuyển Processing cho đơn hàng {OrderId}", orderId);
+                        result.Errors.Add(new BatchOperationErrorDTO
+                        {
+                            Id           = orderId.ToString(),
+                            ErrorMessage = ex.Message
+                        });
+                    }
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi hệ thống khi batch chuyển Processing");
+                result.Errors.Add(new BatchOperationErrorDTO
+                {
+                    Id           = "Hệ thống",
+                    ErrorMessage = "Lỗi hệ thống: " + ex.Message
+                });
+            }
+
+            result.SuccessCount = result.SuccessIds.Count;
+            result.FailureCount = result.Errors.Count;
+            result.Message = result.IsCompleteSuccess
+                ? $"Thành công: đã chuyển Processing cho {result.SuccessCount} đơn hàng."
+                : result.IsCompleteFailure
+                    ? $"Không thể chuyển đơn hàng nào."
+                    : $"Một phần thành công: {result.SuccessCount} thành công, {result.FailureCount} thất bại.";
+
+            return result;
+        }
+
         public async Task<BatchOperationResultDTO> BulkCompleteCODOrdersAsync(List<Guid> orderIds, Guid staffId)
         {
             var result = new BatchOperationResultDTO

@@ -28,6 +28,9 @@ namespace DTOs.Orders
         [MinLength(1, ErrorMessage = "Đơn hàng phải có ít nhất 1 sản phẩm")]
         [ValidOrderItems]
         public List<CreateOrderItemRequest> OrderItems { get; set; } = new();
+        [Required]
+        public PaymentMethod PaymentMethod { get; set; }
+        public string? PaymentDescription { get; set; }
 
         /// <summary>
         /// Rule: 

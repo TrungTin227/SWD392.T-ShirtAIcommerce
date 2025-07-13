@@ -70,10 +70,7 @@ namespace Services.Implementations
                 OrderId        = order.Id,
                 PaymentMethod  = paymentMethod,
                 Amount         = totalAmount,
-                // COD coi như khách đã đồng ý trả, ta mark Completed ngay
-                Status         = paymentMethod == PaymentMethod.COD
-                                 ? PaymentStatus.Completed
-                                 : PaymentStatus.Unpaid,
+                Status         = PaymentStatus.Unpaid,  // Cả VNPAY và COD đều bắt đầu với Unpaid
                 CreatedAt      = GetVietnamTime()
             };
 
@@ -81,19 +78,15 @@ namespace Services.Implementations
             await _paymentRepository.AddAsync(payment);
             await _paymentRepository.SaveChangesAsync();
 
-            // 6. Nếu COD, cập nhật luôn Order
-            if (paymentMethod == PaymentMethod.COD)
-            {
-                order.PaymentStatus = PaymentStatus.Unpaid;  // đã có tiền
-                order.Status        = OrderStatus.Processing;
-                await _orderRepository.UpdateAsync(order);
-                await _orderRepository.SaveChangesAsync();
-            }
+            // 6. Cập nhật Order status cho cả VNPAY và COD
+            order.PaymentStatus = PaymentStatus.Unpaid;  // Cả hai đều Unpaid
+            order.Status = OrderStatus.Pending;          // Cả hai đều Pending
+            await _orderRepository.UpdateAsync(order);
+            await _orderRepository.SaveChangesAsync();
 
             // 7. Trả về DTO
             return MapToResponse(payment);
         }
-
         public async Task<PaymentResponse?> GetPaymentByIdAsync(Guid id)
         {
             var payment = await _paymentRepository.GetByIdAsync(id);
@@ -141,7 +134,7 @@ namespace Services.Implementations
             if (order != null)
             {
                 order.PaymentStatus = status;
-                if (status == PaymentStatus.Completed)
+                if (status == PaymentStatus.Paid)
                     order.Status = OrderStatus.Paid;     // hoặc trạng thái bạn muốn khi thanh toán xong
                 else
                     order.Status = OrderStatus.Pending;       // hoặc tùy logic
@@ -175,7 +168,7 @@ namespace Services.Implementations
                     Message = "Đơn hàng đã được thanh toán hoặc đang xử lý."
                 };
 
-            // *** THÊM: Kiểm tra đã có payment VNPAY Processing chưa ***
+            // *** Kiểm tra đã có payment VNPAY Processing chưa ***
             var existingPayment = await _paymentRepository.GetActiveVnPayPaymentByOrderIdAsync(request.OrderId);
             if (existingPayment != null)
             {
@@ -217,14 +210,14 @@ namespace Services.Implementations
             // 3) Chạy trong transaction
             var apiResult = await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                // a) Tạo entity Payment, set luôn trạng thái Processing & txnRef
+                // a) Tạo entity Payment với trạng thái Unpaid thay vì Paid
                 var payment = new Payment
                 {
                     Id = paymentId,
                     OrderId = request.OrderId,
                     PaymentMethod = PaymentMethod.VNPAY,
                     Amount = totalAmount,
-                    Status = PaymentStatus.Processing,
+                    Status = PaymentStatus.Unpaid,  // Thay đổi từ Paid thành Unpaid
                     TransactionId = txnRef,
                     CreatedAt = vnNow2
                 };
@@ -308,7 +301,7 @@ namespace Services.Implementations
                 var respCode = request.Query["vnp_ResponseCode"].ToString();
                 var transStatus = request.Query["vnp_TransactionStatus"].ToString();
                 var status = (respCode == "00" && transStatus == "00")
-                             ? PaymentStatus.Completed
+                             ? PaymentStatus.Paid
                              : PaymentStatus.Failed;
 
                 // 4. Lấy Payment & Order liên quan
@@ -326,8 +319,8 @@ namespace Services.Implementations
                     return false;
                 }
 
-                // 5. Nếu trạng thái payment chưa phải Completed → cập nhật
-                if (payment.Status != PaymentStatus.Completed)
+                // 5. Cập nhật trạng thái payment
+                if (payment.Status != status)
                 {
                     payment.Status = status;
                     payment.TransactionId = callback.vnp_TransactionNo;
@@ -335,14 +328,18 @@ namespace Services.Implementations
                     await _paymentRepository.SaveChangesAsync();
                 }
 
-                // 6. Cập nhật trạng thái đơn hàng cho đúng
-                if (order.PaymentStatus != status ||
-                    (status == PaymentStatus.Completed && order.Status != OrderStatus.Paid))
+                // 6. Cập nhật trạng thái đơn hàng
+                if (order.PaymentStatus != status)
                 {
                     order.PaymentStatus = status;
-                    order.Status = status == PaymentStatus.Completed
-                        ? OrderStatus.Processing
-                        : OrderStatus.Pending; // hoặc Failed, tùy hệ thống
+
+                    // Chỉ thay đổi OrderStatus khi thanh toán thành công
+                    if (status == PaymentStatus.Paid)
+                    {
+                        order.Status = OrderStatus.Pending; // Vẫn giữ Pending sau khi thanh toán thành công
+                    }
+                    // Nếu thanh toán thất bại, có thể giữ nguyên OrderStatus hoặc đặt thành Failed
+                    // Tùy vào business logic của bạn
 
                     await _orderRepository.UpdateAsync(order);
                     await _orderRepository.SaveChangesAsync();
@@ -357,7 +354,6 @@ namespace Services.Implementations
                 return false;
             }
         }
-
         /// <summary>
         /// Validate VNPAY signature directly from QueryString parameters
         /// </summary>
