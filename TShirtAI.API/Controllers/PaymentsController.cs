@@ -4,6 +4,7 @@ using DTOs.Payments;
 using DTOs.Payments.VnPay;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Services.Implementations;
 using Services.Interfaces;
 
 namespace WebAPI.Controllers
@@ -13,10 +14,13 @@ namespace WebAPI.Controllers
     public class PaymentsController : ControllerBase
     {
         private readonly IPaymentService _paymentService;
+        private readonly IOrderService _orderService;  
 
-        public PaymentsController(IPaymentService paymentService)
+
+        public PaymentsController(IPaymentService paymentService, IOrderService orderService)
         {
             _paymentService = paymentService;
+            _orderService=orderService;
         }
 
         [HttpPost("create")]
@@ -178,6 +182,29 @@ namespace WebAPI.Controllers
                     message = ex.Message
                 });
             }
+        }
+        /// <summary>
+        /// Lấy thông tin đơn hàng liên kết với payment
+        /// </summary>
+        [HttpGet("{paymentId}/order")]
+        public async Task<IActionResult> GetOrderByPaymentId(Guid paymentId)
+        {
+            // 1. Lấy payment
+            var payment = await _paymentService.GetPaymentByIdAsync(paymentId);
+            if (payment == null)
+                return NotFound(new { success = false, message = "Payment không tồn tại" });
+
+            // 2. Lấy order theo payment.OrderId
+            var order = await _orderService.GetOrderByIdAsync(payment.OrderId);
+            if (order == null)
+                return NotFound(new { success = false, message = "Order không tìm thấy" });
+
+            // 3. Trả về
+            return Ok(new
+            {
+                success = true,
+                data = order
+            });
         }
     }
 }
