@@ -192,14 +192,14 @@ namespace BusinessObjects.Common
     }
     public enum OrderStatus
     {
-        Pending,      // 1. Mới tạo, chưa thanh toán
-        Paid,         // 2. Thanh toán thành công (chờ staff xác nhận)
-        Completed,    // 3. Staff đã xác nhận, đơn chính thức hoàn thành
-        Processing,   // 4. Đang xử lý – đóng gói, chuẩn bị giao
-        Shipping,     // 5. Đang vận chuyển
-        Delivered,    // 6. Đã giao thành công
-        Cancelled,    // Đã hủy
-        Returned      // Đã trả/hoàn trả
+        Pending,      // 0. Mới tạo, chưa thanh toán
+        Paid,         // 1. Thanh toán thành công (chờ staff xác nhận)
+        Completed,    // 2. Staff đã xác nhận, đơn chính thức hoàn thành
+        Processing,   // 3. Đang xử lý – đóng gói, chuẩn bị giao
+        Shipping,     // 4. Đang vận chuyển
+        Delivered,    // 5. Đã giao thành công
+        Cancelled,    // 6.Đã hủy
+        Returned      // 7.Đã trả/hoàn trả
     }
 
     public enum PaymentStatus
