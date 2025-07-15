@@ -1,126 +1,86 @@
-using DTOs.Reviews;
+﻿using DTOs.Reviews;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services.Interfaces;
 
-namespace WebAPI.Controllers
+[Route("api/reviews")]
+[ApiController]
+public class ReviewsController : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class ReviewsController : ControllerBase
+    private readonly IReviewService _reviewService;
+    private readonly ICurrentUserService _currentUserService;
+
+    public ReviewsController(IReviewService reviewService, ICurrentUserService currentUserService)
     {
-        private readonly IReviewService _reviewService;
+        _reviewService = reviewService;
+        _currentUserService = currentUserService;
+    }
 
-        public ReviewsController(IReviewService reviewService)
+    /// <summary>
+    /// Lấy danh sách các bài đánh giá (có phân trang và bộ lọc).
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetReviews([FromQuery] ReviewFilterDto filter)
+    {
+        var result = await _reviewService.GetReviewsAsync(filter);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Lấy thông tin thống kê review cho một biến thể sản phẩm.
+    /// </summary>
+    [HttpGet("stats/{productVariantId}")]
+    public async Task<IActionResult> GetReviewStatistics(Guid productVariantId)
+    {
+        var stats = await _reviewService.GetReviewStatsAsync(productVariantId);
+        if (stats == null)
         {
-            _reviewService = reviewService;
+            return NotFound("Không tìm thấy thông tin thống kê cho sản phẩm này.");
+        }
+        return Ok(stats);
+    }
+
+
+    /// <summary>
+    /// Lấy chi tiết một bài đánh giá.
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetReview(Guid id)
+    {
+        var review = await _reviewService.GetReviewByIdAsync(id);
+        if (review == null)
+        {
+            return NotFound();
+        }
+        return Ok(review);
+    }
+
+    /// <summary>
+    /// Tạo một bài đánh giá mới (yêu cầu đăng nhập).
+    /// </summary>
+    [HttpPost]
+    [Authorize] // Chỉ người dùng đã đăng nhập mới được tạo review
+    public async Task<IActionResult> CreateReview([FromBody] CreateReviewDto createDto)
+    {
+        var userId = _currentUserService.GetUserId();
+        if (!userId.HasValue)
+        {
+            return Unauthorized("Không xác định được người dùng.");
         }
 
-        [HttpGet]
-        public async Task<IActionResult> GetReviews([FromQuery] ReviewFilterDto filter)
+        try
         {
-            var result = await _reviewService.GetReviewsAsync(filter);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            var newReview = await _reviewService.CreateReviewAsync(createDto, userId.Value);
+            if (newReview == null)
+            {
+                return BadRequest("Không thể tạo bài đánh giá. Vui lòng thử lại.");
+            }
+            return CreatedAtAction(nameof(GetReview), new { id = newReview.Id }, newReview);
         }
-
-        [HttpGet("{id:guid}")]
-        public async Task<IActionResult> GetReviewById(Guid id)
+        catch (InvalidOperationException ex)
         {
-            var result = await _reviewService.GetByIdAsync(id);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("product/{productId:guid}")]
-        public async Task<IActionResult> GetProductReviews(Guid productId)
-        {
-            var result = await _reviewService.GetProductReviewsAsync(productId);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("product/{productId:guid}/stats")]
-        public async Task<IActionResult> GetProductReviewStats(Guid productId)
-        {
-            var result = await _reviewService.GetProductReviewStatsAsync(productId);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("product/{productId:guid}/summary")]
-        public async Task<IActionResult> GetProductReviewSummary(Guid productId)
-        {
-            var result = await _reviewService.GetProductReviewSummaryAsync(productId);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("user/{userId:guid}")]
-        [Authorize]
-        public async Task<IActionResult> GetUserReviews(Guid userId)
-        {
-            var result = await _reviewService.GetUserReviewsAsync(userId);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("pending")]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<IActionResult> GetPendingReviews()
-        {
-            var result = await _reviewService.GetPendingReviewsAsync();
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost]
-        [Authorize]
-        public async Task<IActionResult> CreateReview([FromBody] CreateReviewDto createDto)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var result = await _reviewService.CreateReviewAsync(createDto);
-            return result.IsSuccess ? CreatedAtAction(nameof(GetReviewById), new { id = result.Data?.Id }, result) : BadRequest(result);
-        }
-
-        [HttpPut("{id:guid}")]
-        [Authorize]
-        public async Task<IActionResult> UpdateReview(Guid id, [FromBody] UpdateReviewDto updateDto)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var result = await _reviewService.UpdateReviewAsync(id, updateDto);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPut("{id:guid}/admin")]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<IActionResult> AdminUpdateReview(Guid id, [FromBody] AdminUpdateReviewDto updateDto)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var result = await _reviewService.AdminUpdateReviewAsync(id, updateDto);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpDelete("{id:guid}")]
-        [Authorize]
-        public async Task<IActionResult> DeleteReview(Guid id)
-        {
-            var result = await _reviewService.DeleteReviewAsync(id);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost("{id:guid}/helpful")]
-        public async Task<IActionResult> MarkReviewHelpful(Guid id, [FromBody] bool isHelpful)
-        {
-            var result = await _reviewService.MarkReviewHelpfulAsync(id, isHelpful);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("can-review/{userId:guid}/{productId:guid}")]
-        [Authorize]
-        public async Task<IActionResult> CanUserReviewProduct(Guid userId, Guid productId)
-        {
-            var result = await _reviewService.CanUserReviewProductAsync(userId, productId);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            // Trả về lỗi nghiệp vụ rõ ràng cho client
+            return BadRequest(new { message = ex.Message });
         }
     }
 }

@@ -1,64 +1,90 @@
 using BusinessObjects.Reviews;
 using DTOs.Reviews;
 using Microsoft.EntityFrameworkCore;
+using Repositories.Helpers;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Implements;
-using BusinessObjects.Common;
 
 namespace Repositories.Implementations
 {
     public class ReviewRepository : GenericRepository<Review, Guid>, IReviewRepository
     {
-        public ReviewRepository(T_ShirtAIcommerceContext context) : base(context)
-        {
-        }
+        public ReviewRepository(T_ShirtAIcommerceContext context) : base(context) { }
 
-        public async Task<IEnumerable<Review>> GetReviewsByProductIdAsync(Guid productId)
+        public async Task<PagedList<Review>> GetReviewsAsync(ReviewFilterDto filter)
         {
-            return await _context.Reviews
-                .Where(r => r.ProductId == productId && r.Status == ReviewStatus.Approved)
-                .Include(r => r.User)
-                .OrderByDescending(r => r.CreatedAt)
-                .ToListAsync();
-        }
+            var query = _dbSet.AsQueryable();
 
-        public async Task<IEnumerable<Review>> GetReviewsByUserIdAsync(Guid userId)
-        {
-            return await _context.Reviews
-                .Where(r => r.UserId == userId)
-                .Include(r => r.Product)
-                .OrderByDescending(r => r.CreatedAt)
-                .ToListAsync();
-        }
-
-        public async Task<Review?> GetReviewByOrderAndProductAsync(Guid orderId, Guid productId)
-        {
-            return await _context.Reviews
-                .FirstOrDefaultAsync(r => r.OrderId == orderId && r.ProductId == productId);
-        }
-
-        public async Task<ReviewStatsDto> GetProductReviewStatsAsync(Guid productId)
-        {
-            var reviews = await _context.Reviews
-                .Where(r => r.ProductId == productId && r.Status == ReviewStatus.Approved)
-                .ToListAsync();
-
-            if (!reviews.Any())
+            if (filter.ProductVariantId.HasValue)
             {
-                return new ReviewStatsDto();
+                query = query.Where(r => r.ProductVariantId == filter.ProductVariantId.Value);
+            }
+            if (filter.UserId.HasValue)
+            {
+                query = query.Where(r => r.UserId == filter.UserId.Value);
+            }
+            if (filter.Rating.HasValue)
+            {
+                query = query.Where(r => r.Rating == filter.Rating.Value);
+            }
+            if (filter.Status.HasValue)
+            {
+                query = query.Where(r => r.Status == filter.Status.Value);
+            }
+
+            // Include related data for DTO mapping
+            query = query
+                .Include(r => r.User)
+                .Include(r => r.ProductVariant)
+                    .ThenInclude(pv => pv.Product);
+
+            // Sorting
+            query = filter.OrderBy?.ToLower() switch
+            {
+                "rating" => filter.OrderByDescending ? query.OrderByDescending(r => r.Rating) : query.OrderBy(r => r.Rating),
+                _ => filter.OrderByDescending ? query.OrderByDescending(r => r.CreatedAt) : query.OrderBy(r => r.CreatedAt),
+            };
+
+            return await PagedList<Review>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
+        }
+
+        public async Task<Review?> GetReviewDetailsAsync(Guid reviewId)
+        {
+            return await _dbSet
+                .Include(r => r.User)
+                .Include(r => r.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .FirstOrDefaultAsync(r => r.Id == reviewId && !r.IsDeleted);
+        }
+
+        public async Task<bool> HasUserReviewedVariantInOrderAsync(Guid userId, Guid productVariantId, Guid orderId)
+        {
+            return await _dbSet.AnyAsync(r => r.UserId == userId
+                                           && r.ProductVariantId == productVariantId
+                                           && r.OrderId == orderId
+                                           && !r.IsDeleted);
+        }
+
+        public async Task<ReviewStatsDto> GetReviewStatsByVariantIdAsync(Guid productVariantId)
+        {
+            var query = _dbSet.Where(r => r.ProductVariantId == productVariantId && r.Status == ReviewStatus.Approved && !r.IsDeleted);
+
+            var totalReviews = await query.CountAsync();
+            if (totalReviews == 0)
+            {
+                return new ReviewStatsDto(); // Return default stats
             }
 
             var stats = new ReviewStatsDto
             {
-                TotalReviews = reviews.Count,
-                AverageRating = reviews.Average(r => r.Rating),
-                VerifiedPurchasesCount = reviews.Count(r => r.IsVerifiedPurchase),
-                RatingDistribution = reviews
+                TotalReviews = totalReviews,
+                AverageRating = await query.AverageAsync(r => r.Rating),
+                RatingDistribution = await query
                     .GroupBy(r => r.Rating)
-                    .ToDictionary(g => g.Key, g => g.Count())
+                    .ToDictionaryAsync(g => g.Key, g => g.Count())
             };
 
-            // Ensure all ratings 1-5 are represented
+            // Ensure all rating levels (1-5) are present in the dictionary
             for (int i = 1; i <= 5; i++)
             {
                 if (!stats.RatingDistribution.ContainsKey(i))
@@ -68,45 +94,6 @@ namespace Repositories.Implementations
             }
 
             return stats;
-        }
-
-        public async Task<IEnumerable<Review>> GetPendingReviewsAsync()
-        {
-            return await _context.Reviews
-                .Where(r => r.Status == ReviewStatus.Pending)
-                .Include(r => r.User)
-                .Include(r => r.Product)
-                .OrderBy(r => r.CreatedAt)
-                .ToListAsync();
-        }
-
-        public async Task<bool> HasUserReviewedProductAsync(Guid userId, Guid productId)
-        {
-            return await _context.Reviews
-                .AnyAsync(r => r.UserId == userId && r.ProductId == productId);
-        }
-
-        public async Task<bool> IsVerifiedPurchaseAsync(Guid userId, Guid productId)
-        {
-            return await _context.OrderItems
-                .Include(oi => oi.Order)
-                .AnyAsync(oi => oi.Order!.UserId == userId && 
-                               oi.ProductId == productId && 
-                               oi.Order.Status == OrderStatus.Delivered);
-        }
-
-        public async Task UpdateHelpfulCountAsync(Guid reviewId, bool isHelpful)
-        {
-            var review = await GetByIdAsync(reviewId);
-            if (review != null)
-            {
-                if (isHelpful)
-                    review.HelpfulCount++;
-                else
-                    review.UnhelpfulCount++;
-
-                await UpdateAsync(review);
-            }
         }
     }
 }

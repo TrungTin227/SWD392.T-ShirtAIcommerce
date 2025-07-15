@@ -1,21 +1,19 @@
-using BusinessObjects.Reviews;
+﻿using BusinessObjects.Reviews;
+using DTOs.Common; 
 
 namespace DTOs.Reviews
 {
-    public class ReviewFilterDto
+    public class ReviewFilterDto : PagedResponse<Review>
     {
-        public Guid? ProductId { get; set; }
+        public Guid? ProductVariantId { get; set; }
         public Guid? UserId { get; set; }
-        public Guid? OrderId { get; set; }
         public int? Rating { get; set; }
         public ReviewStatus? Status { get; set; }
-        public bool? IsVerifiedPurchase { get; set; }
-        public DateTime? FromDate { get; set; }
-        public DateTime? ToDate { get; set; }
-        public string? SearchTerm { get; set; }
-        public int Page { get; set; } = 1;
-        public int PageSize { get; set; } = 10;
+
         public string OrderBy { get; set; } = "CreatedAt";
         public bool OrderByDescending { get; set; } = true;
+        public int PageNumber { get; set; } = 1;
+        public int PageSize { get; set; } = 10;
+
     }
 }

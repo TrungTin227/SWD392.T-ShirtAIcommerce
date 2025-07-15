@@ -1,433 +1,130 @@
+﻿// --- START OF FILE Services/Implementations/ReviewService.cs ---
+using BusinessObjects.Common;
 using BusinessObjects.Reviews;
+using DTOs.Common;
 using DTOs.Reviews;
-using Microsoft.EntityFrameworkCore;
-using Repositories.Commons;
-using Repositories.Helpers;
+using Microsoft.Extensions.Logging;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
-using Services.Commons;
-using Services.Extensions;
 using Services.Interfaces;
-using System.Text.Json;
 
 namespace Services.Implementations
 {
-    public class ReviewService : BaseService<Review, Guid>, IReviewService
+    public class ReviewService : IReviewService
     {
         private readonly IReviewRepository _reviewRepository;
-        private readonly IProductRepository _productRepository;
+        private readonly IOrderRepository _orderRepository; 
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<ReviewService> _logger;
 
-        public ReviewService(
-            IReviewRepository reviewRepository,
-            IProductRepository productRepository,
-            ICurrentUserService currentUserService,
-            IUnitOfWork unitOfWork,
-            ICurrentTime currentTime)
-            : base(reviewRepository, currentUserService, unitOfWork, currentTime)
+        public ReviewService(IReviewRepository reviewRepository, IOrderRepository orderRepository, IUnitOfWork unitOfWork, ILogger<ReviewService> logger)
         {
             _reviewRepository = reviewRepository;
-            _productRepository = productRepository;
+            _orderRepository = orderRepository;
+            _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
-        public async Task<ApiResult<ReviewDto>> GetByIdAsync(Guid id)
+        public async Task<PagedResponse<ReviewDto>> GetReviewsAsync(ReviewFilterDto filter)
+        {
+            var pagedReviews = await _reviewRepository.GetReviewsAsync(filter);
+            var reviewDtos = pagedReviews.Select(MapToDto).ToList();
+
+            var response = new PagedResponse<ReviewDto>
+            {
+                Errors = new List<string>()
+                                             
+            };
+            return response;
+        }
+
+        public async Task<ReviewDto?> GetReviewByIdAsync(Guid reviewId)
+        {
+            var review = await _reviewRepository.GetReviewDetailsAsync(reviewId);
+            return review != null ? MapToDto(review) : null;
+        }
+
+        public async Task<ReviewStatsDto?> GetReviewStatsAsync(Guid productVariantId)
         {
             try
             {
-                var review = await _reviewRepository.GetByIdAsync(id);
-                if (review == null)
-                {
-                    return ApiResult<ReviewDto>.Failure("Review not found");
-                }
-
-                var reviewDto = await MapToReviewDto(review);
-                return ApiResult<ReviewDto>.Success(reviewDto);
+                return await _reviewRepository.GetReviewStatsByVariantIdAsync(productVariantId);
             }
             catch (Exception ex)
             {
-                return ApiResult<ReviewDto>.Failure($"Error retrieving review: {ex.Message}");
+                _logger.LogError(ex, "Error getting review stats for variant {VariantId}", productVariantId);
+                return null;
             }
         }
 
-        public async Task<ApiResult<PagedList<ReviewDto>>> GetReviewsAsync(ReviewFilterDto filter)
+        public async Task<ReviewDto?> CreateReviewAsync(CreateReviewDto createDto, Guid userId)
         {
             try
             {
-                var query = _reviewRepository.GetQueryable()
-                    .Include(r => r.User)
-                    .Include(r => r.Product)
-                    .AsQueryable();
-
-                // Apply filters
-                if (filter.ProductId.HasValue)
-                    query = query.Where(r => r.ProductId == filter.ProductId);
-
-                if (filter.UserId.HasValue)
-                    query = query.Where(r => r.UserId == filter.UserId);
-
-                if (filter.OrderId.HasValue)
-                    query = query.Where(r => r.OrderId == filter.OrderId);
-
-                if (filter.Rating.HasValue)
-                    query = query.Where(r => r.Rating == filter.Rating);
-
-                if (filter.Status.HasValue)
-                    query = query.Where(r => r.Status == filter.Status);
-
-                if (filter.IsVerifiedPurchase.HasValue)
-                    query = query.Where(r => r.IsVerifiedPurchase == filter.IsVerifiedPurchase);
-
-                if (filter.FromDate.HasValue)
-                    query = query.Where(r => r.CreatedAt >= filter.FromDate);
-
-                if (filter.ToDate.HasValue)
-                    query = query.Where(r => r.CreatedAt <= filter.ToDate);
-
-                if (!string.IsNullOrEmpty(filter.SearchTerm))
-                    query = query.Where(r => r.Content.Contains(filter.SearchTerm));
-
-                // Apply ordering
-                query = filter.OrderBy.ToLower() switch
+                // 1. Kiểm tra xem người dùng có thực sự mua sản phẩm này trong đơn hàng đó không
+                var order = await _orderRepository.GetOrderWithDetailsAsync(createDto.OrderId);
+                if (order == null || order.UserId != userId || order.Status != OrderStatus.Completed)
                 {
-                    "rating" => filter.OrderByDescending ? query.OrderByDescending(r => r.Rating) : query.OrderBy(r => r.Rating),
-                    "helpful" => filter.OrderByDescending ? query.OrderByDescending(r => r.HelpfulCount) : query.OrderBy(r => r.HelpfulCount),
-                    _ => filter.OrderByDescending ? query.OrderByDescending(r => r.CreatedAt) : query.OrderBy(r => r.CreatedAt)
-                };
-
-                var totalCount = await query.CountAsync();
-                var items = await query
-                    .Skip((filter.Page - 1) * filter.PageSize)
-                    .Take(filter.PageSize)
-                    .ToListAsync();
-
-                var reviewDtos = new List<ReviewDto>();
-                foreach (var review in items)
-                {
-                    reviewDtos.Add(await MapToReviewDto(review));
+                    throw new InvalidOperationException("Bạn chỉ có thể đánh giá sản phẩm từ đơn hàng đã hoàn thành.");
                 }
 
-                var pagedResult = new PagedList<ReviewDto>(reviewDtos, totalCount, filter.Page, filter.PageSize);
-                return ApiResult<PagedList<ReviewDto>>.Success(pagedResult);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<PagedList<ReviewDto>>.Failure($"Error retrieving reviews: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<List<ReviewDto>>> GetProductReviewsAsync(Guid productId)
-        {
-            try
-            {
-                var reviews = await _reviewRepository.GetReviewsByProductIdAsync(productId);
-                var reviewDtos = new List<ReviewDto>();
-                
-                foreach (var review in reviews)
+                var purchasedItem = order.OrderItems.FirstOrDefault(oi => oi.ProductVariantId == createDto.ProductVariantId);
+                if (purchasedItem == null)
                 {
-                    reviewDtos.Add(await MapToReviewDto(review));
+                    throw new InvalidOperationException("Sản phẩm này không có trong đơn hàng của bạn.");
                 }
 
-                return ApiResult<List<ReviewDto>>.Success(reviewDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<List<ReviewDto>>.Failure($"Error retrieving product reviews: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<List<ReviewDto>>> GetUserReviewsAsync(Guid userId)
-        {
-            try
-            {
-                var reviews = await _reviewRepository.GetReviewsByUserIdAsync(userId);
-                var reviewDtos = new List<ReviewDto>();
-                
-                foreach (var review in reviews)
+                // 2. Kiểm tra xem người dùng đã đánh giá sản phẩm này cho đơn hàng này chưa
+                var hasReviewed = await _reviewRepository.HasUserReviewedVariantInOrderAsync(userId, createDto.ProductVariantId, createDto.OrderId);
+                if (hasReviewed)
                 {
-                    reviewDtos.Add(await MapToReviewDto(review));
+                    throw new InvalidOperationException("Bạn đã đánh giá sản phẩm này rồi.");
                 }
 
-                return ApiResult<List<ReviewDto>>.Success(reviewDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<List<ReviewDto>>.Failure($"Error retrieving user reviews: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<ReviewDto>> CreateReviewAsync(CreateReviewDto createDto)
-        {
-            try
-            {
-                var currentUserId = _currentUserService.GetUserId();
-                if (!currentUserId.HasValue)
-                {
-                    return ApiResult<ReviewDto>.Failure("User not authenticated");
-                }
-
-                // Check if user has already reviewed this product
-                var existingReview = await _reviewRepository.HasUserReviewedProductAsync(currentUserId.Value, createDto.ProductId);
-                if (existingReview)
-                {
-                    return ApiResult<ReviewDto>.Failure("You have already reviewed this product");
-                }
-
-                // Check if product exists
-                var product = await _productRepository.GetByIdAsync(createDto.ProductId);
-                if (product == null)
-                {
-                    return ApiResult<ReviewDto>.Failure("Product not found");
-                }
-
-                // Check if this is a verified purchase
-                var isVerifiedPurchase = await _reviewRepository.IsVerifiedPurchaseAsync(currentUserId.Value, createDto.ProductId);
-
+                // 3. Tạo review mới
                 var review = new Review
                 {
-                    UserId = currentUserId.Value,
-                    ProductId = createDto.ProductId,
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    ProductVariantId = createDto.ProductVariantId,
                     OrderId = createDto.OrderId,
                     Rating = createDto.Rating,
                     Content = createDto.Content,
-                    Images = createDto.Images != null ? JsonSerializer.Serialize(createDto.Images) : null,
-                    IsVerifiedPurchase = isVerifiedPurchase,
-                    Status = ReviewStatus.Pending,
-                    CreatedAt = _currentTime.GetVietnamTime(),
-                    CreatedBy = currentUserId.Value
+                    Status = ReviewStatus.Pending, // Chờ duyệt
+                    IsVerifiedPurchase = true,
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 await _reviewRepository.AddAsync(review);
                 await _unitOfWork.SaveChangesAsync();
 
-                var reviewDto = await MapToReviewDto(review);
-                return ApiResult<ReviewDto>.Success(reviewDto);
+                var newReviewDetails = await _reviewRepository.GetReviewDetailsAsync(review.Id);
+                return MapToDto(newReviewDetails!);
             }
             catch (Exception ex)
             {
-                return ApiResult<ReviewDto>.Failure($"Error creating review: {ex.Message}");
+                _logger.LogError(ex, "Error creating review for user {UserId}", userId);
+                return null;
             }
         }
 
-        public async Task<ApiResult<ReviewDto>> UpdateReviewAsync(Guid id, UpdateReviewDto updateDto)
+        private ReviewDto MapToDto(Review review)
         {
-            try
-            {
-                var currentUserId = _currentUserService.GetUserId();
-                var review = await _reviewRepository.GetByIdAsync(id);
-                
-                if (review == null)
-                {
-                    return ApiResult<ReviewDto>.Failure("Review not found");
-                }
-
-                if (!currentUserId.HasValue || review.UserId != currentUserId.Value)
-                {
-                    return ApiResult<ReviewDto>.Failure("You can only update your own reviews");
-                }
-
-                review.Rating = updateDto.Rating;
-                review.Content = updateDto.Content;
-                review.Images = updateDto.Images != null ? JsonSerializer.Serialize(updateDto.Images) : null;
-                review.UpdatedAt = _currentTime.GetVietnamTime();
-                review.UpdatedBy = currentUserId.Value;
-
-                await _reviewRepository.UpdateAsync(review);
-                await _unitOfWork.SaveChangesAsync();
-
-                var reviewDto = await MapToReviewDto(review);
-                return ApiResult<ReviewDto>.Success(reviewDto);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<ReviewDto>.Failure($"Error updating review: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<ReviewDto>> AdminUpdateReviewAsync(Guid id, AdminUpdateReviewDto updateDto)
-        {
-            try
-            {
-                var currentUserId = _currentUserService.GetUserId();
-                var review = await _reviewRepository.GetByIdAsync(id);
-                
-                if (review == null)
-                {
-                    return ApiResult<ReviewDto>.Failure("Review not found");
-                }
-
-                review.Status = updateDto.Status;
-                review.AdminNotes = updateDto.AdminNotes;
-                review.UpdatedAt = _currentTime.GetVietnamTime();
-                review.UpdatedBy = currentUserId ?? Guid.Empty;
-
-                await _reviewRepository.UpdateAsync(review);
-                await _unitOfWork.SaveChangesAsync();
-
-                var reviewDto = await MapToReviewDto(review);
-                return ApiResult<ReviewDto>.Success(reviewDto);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<ReviewDto>.Failure($"Error updating review: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<bool>> DeleteReviewAsync(Guid id)
-        {
-            try
-            {
-                var currentUserId = _currentUserService.GetUserId();
-                var review = await _reviewRepository.GetByIdAsync(id);
-                
-                if (review == null)
-                {
-                    return ApiResult<bool>.Failure("Review not found");
-                }
-
-                if (!currentUserId.HasValue || review.UserId != currentUserId.Value)
-                {
-                    return ApiResult<bool>.Failure("You can only delete your own reviews");
-                }
-
-                await _reviewRepository.DeleteAsync(review.Id);
-                await _unitOfWork.SaveChangesAsync();
-
-                return ApiResult<bool>.Success(true);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<bool>.Failure($"Error deleting review: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<ReviewStatsDto>> GetProductReviewStatsAsync(Guid productId)
-        {
-            try
-            {
-                var stats = await _reviewRepository.GetProductReviewStatsAsync(productId);
-                return ApiResult<ReviewStatsDto>.Success(stats);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<ReviewStatsDto>.Failure($"Error retrieving review stats: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<ProductReviewSummaryDto>> GetProductReviewSummaryAsync(Guid productId)
-        {
-            try
-            {
-                var product = await _productRepository.GetByIdAsync(productId);
-                if (product == null)
-                {
-                    return ApiResult<ProductReviewSummaryDto>.Failure("Product not found");
-                }
-
-                var stats = await _reviewRepository.GetProductReviewStatsAsync(productId);
-                var recentReviews = await _reviewRepository.GetReviewsByProductIdAsync(productId);
-                
-                var recentReviewDtos = new List<ReviewDto>();
-                foreach (var review in recentReviews.Take(5))
-                {
-                    recentReviewDtos.Add(await MapToReviewDto(review));
-                }
-
-                var summary = new ProductReviewSummaryDto
-                {
-                    ProductId = productId,
-                    ProductName = product.Name,
-                    Stats = stats,
-                    RecentReviews = recentReviewDtos
-                };
-
-                return ApiResult<ProductReviewSummaryDto>.Success(summary);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<ProductReviewSummaryDto>.Failure($"Error retrieving product review summary: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<List<ReviewDto>>> GetPendingReviewsAsync()
-        {
-            try
-            {
-                var reviews = await _reviewRepository.GetPendingReviewsAsync();
-                var reviewDtos = new List<ReviewDto>();
-                
-                foreach (var review in reviews)
-                {
-                    reviewDtos.Add(await MapToReviewDto(review));
-                }
-
-                return ApiResult<List<ReviewDto>>.Success(reviewDtos);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<List<ReviewDto>>.Failure($"Error retrieving pending reviews: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<bool>> MarkReviewHelpfulAsync(Guid reviewId, bool isHelpful)
-        {
-            try
-            {
-                await _reviewRepository.UpdateHelpfulCountAsync(reviewId, isHelpful);
-                await _unitOfWork.SaveChangesAsync();
-                return ApiResult<bool>.Success(true);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<bool>.Failure($"Error marking review helpful: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResult<bool>> CanUserReviewProductAsync(Guid userId, Guid productId)
-        {
-            try
-            {
-                var hasReviewed = await _reviewRepository.HasUserReviewedProductAsync(userId, productId);
-                var canReview = !hasReviewed;
-                return ApiResult<bool>.Success(canReview);
-            }
-            catch (Exception ex)
-            {
-                return ApiResult<bool>.Failure($"Error checking review eligibility: {ex.Message}");
-            }
-        }
-
-        private async Task<ReviewDto> MapToReviewDto(Review review)
-        {
-            List<string>? images = null;
-            if (!string.IsNullOrEmpty(review.Images))
-            {
-                try
-                {
-                    images = JsonSerializer.Deserialize<List<string>>(review.Images);
-                }
-                catch
-                {
-                    // If deserialization fails, leave images as null
-                }
-            }
-
             return new ReviewDto
             {
                 Id = review.Id,
                 UserId = review.UserId,
-                UserName = review.User?.UserName ?? "Unknown User",
-                ProductId = review.ProductId,
-                ProductName = review.Product?.Name,
-                OrderId = review.OrderId,
+                UserName = review.User?.UserName ?? "Anonymous",
+                ProductVariantId = review.ProductVariantId ?? Guid.Empty, // Fix here
+                VariantInfo = $"Màu: {review.ProductVariant?.Color}, Size: {review.ProductVariant?.Size}",
+                ProductId = review.ProductVariant?.ProductId ?? Guid.Empty,
+                ProductName = review.ProductVariant?.Product?.Name ?? "Unknown Product",
+                OrderId = review.OrderId ?? Guid.Empty, // Fix here
                 Rating = review.Rating,
                 Content = review.Content,
-                Images = images,
-                HelpfulCount = review.HelpfulCount,
-                UnhelpfulCount = review.UnhelpfulCount,
+                Images = string.IsNullOrEmpty(review.Images) ? new List<string>() : review.Images.Split(',').ToList(), // Fix here
                 Status = review.Status,
-                AdminNotes = review.AdminNotes,
-                IsVerifiedPurchase = review.IsVerifiedPurchase,
-                CreatedAt = review.CreatedAt,
-                UpdatedAt = review.UpdatedAt
+                CreatedAt = review.CreatedAt
             };
         }
     }

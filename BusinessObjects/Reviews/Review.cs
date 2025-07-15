@@ -59,5 +59,9 @@ namespace BusinessObjects.Reviews
 
         [ForeignKey("OrderId")]
         public virtual Order? Order { get; set; }
+        public Guid? ProductVariantId { get; set; }
+
+        [ForeignKey("ProductVariantId")]
+        public virtual ProductVariant? ProductVariant { get; set; }
     }
 }

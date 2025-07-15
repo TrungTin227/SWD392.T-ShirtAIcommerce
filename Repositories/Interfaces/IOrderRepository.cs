@@ -25,5 +25,22 @@ namespace Repositories.Interfaces
         Task<Dictionary<OrderStatus, int>> GetOrderStatusCountsAsync();
         Task<IEnumerable<Order>> GetRecentOrdersAsync(int limit = 10);
         Task<bool> UpdateTrackingNumberAsync(Guid orderId, string trackingNumber, Guid? updatedBy = null);
+
+
+        /// <summary>
+        /// Tính tổng doanh thu từ các đơn hàng có trạng thái là "Completed".
+        /// </summary>
+        Task<decimal> GetTotalRevenueFromCompletedOrdersAsync();
+
+        /// <summary>
+        /// Đếm số lượng đơn hàng trong một khoảng thời gian.
+        /// </summary>
+        Task<int> GetOrderCountAsync(DateTime fromDate, DateTime toDate);
+
+        /// <summary>
+        /// Lấy số lượng đơn hàng cho mỗi trạng thái thanh toán.
+        /// </summary>
+        Task<Dictionary<PaymentStatus, int>> GetPaymentStatusCountsAsync();
+
     }
 }

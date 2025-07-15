@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Common;
+using DTOs.Analytics;
 using DTOs.Common;
 using DTOs.Orders;
 using System;
@@ -66,6 +67,8 @@ namespace Services.Interfaces
         Task<BatchOperationResultDTO> BulkConfirmDeliveredByUserAsync(List<Guid> orderIds, Guid userId);
         Task<BatchOperationResultDTO> BulkCompleteCODOrdersAsync(List<Guid> orderIds, Guid staffId);
         Task<BatchOperationResultDTO> BulkProcessOrdersAsync(List<Guid> orderIds, Guid staffId);
+        Task<DashboardAnalyticsDto?> GetDashboardAnalyticsAsync();
+
 
     }
 }

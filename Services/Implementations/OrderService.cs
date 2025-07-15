@@ -1,5 +1,6 @@
 ﻿using BusinessObjects.Common;
 using BusinessObjects.Orders;
+using DTOs.Analytics;
 using DTOs.Common;
 using DTOs.Coupons;
 using DTOs.OrderItem;
@@ -1730,5 +1731,57 @@ namespace Services.Implementations
         }
 
         #endregion
+        public async Task<DashboardAnalyticsDto?> GetDashboardAnalyticsAsync()
+        {
+            try
+            {
+                var now = _currentTime.GetVietnamTime();
+                var todayStart = now.Date;
+                var todayEnd = todayStart.AddDays(1).AddTicks(-1);
+
+                var startOfWeek = todayStart.AddDays(-(int)todayStart.DayOfWeek + (int)DayOfWeek.Monday);
+                if (todayStart.DayOfWeek == DayOfWeek.Sunday)
+                {
+                    startOfWeek = startOfWeek.AddDays(-7);
+                }
+
+                var totalRevenueTask = _orderRepository.GetTotalRevenueFromCompletedOrdersAsync();
+                var ordersTodayTask = _orderRepository.GetOrderCountAsync(todayStart, todayEnd);
+                var ordersThisWeekTask = _orderRepository.GetOrderCountAsync(startOfWeek, todayEnd);
+                var paymentCountsTask = _orderRepository.GetPaymentStatusCountsAsync();
+
+                await Task.WhenAll(totalRevenueTask, ordersTodayTask, ordersThisWeekTask, paymentCountsTask);
+
+                var paymentCounts = paymentCountsTask.Result;
+                var paidCount = paymentCounts.GetValueOrDefault(PaymentStatus.Completed, 0);
+                var unpaidCount = paymentCounts.GetValueOrDefault(PaymentStatus.Unpaid, 0);
+                var refundedCount = paymentCounts.GetValueOrDefault(PaymentStatus.Refunded, 0);
+                var totalPaymentOrders = paidCount + unpaidCount  + refundedCount;
+
+                var analyticsDto = new DashboardAnalyticsDto
+                {
+                    TotalRevenue = totalRevenueTask.Result,
+                    OrdersToday = ordersTodayTask.Result,
+                    OrdersThisWeek = ordersThisWeekTask.Result,
+                    PaymentStatusRatio = new PaymentStatusRatioDto
+                    {
+                        PaidCount = paidCount,
+                        UnpaidCount = unpaidCount,
+                        RefundedCount = refundedCount,
+                        TotalCount = totalPaymentOrders,
+                        PaidPercentage = totalPaymentOrders > 0
+                            ? Math.Round((double)paidCount / totalPaymentOrders * 100, 2)
+                            : 0
+                    }
+                };
+
+                return analyticsDto;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy dữ liệu analytics cho dashboard");
+                return null; // Trả về null khi có lỗi, giống với mẫu thiết kế của bạn
+            }
+        }
     }
 }

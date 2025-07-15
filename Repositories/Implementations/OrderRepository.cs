@@ -323,5 +323,28 @@ namespace Repositories.Implementations
 
             return true;
         }
+        public async Task<decimal> GetTotalRevenueFromCompletedOrdersAsync()
+        {
+            // QUAN TRỌNG: Chỉ tính doanh thu từ các đơn hàng có Status = Completed
+            return await _dbSet
+                .Where(o => o.Status == OrderStatus.Completed && !o.IsDeleted)
+                .SumAsync(o => o.TotalAmount);
+        }
+
+        public async Task<int> GetOrderCountAsync(DateTime fromDate, DateTime toDate)
+        {
+            return await _dbSet
+                .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate && !o.IsDeleted)
+                .CountAsync();
+        }
+
+        // Bạn đã có phương thức GetOrderStatusCountsAsync, chúng ta sẽ tạo một phương thức tương tự cho PaymentStatus
+        public async Task<Dictionary<PaymentStatus, int>> GetPaymentStatusCountsAsync()
+        {
+            return await _dbSet
+                .Where(o => !o.IsDeleted)
+                .GroupBy(o => o.PaymentStatus)
+                .ToDictionaryAsync(g => g.Key, g => g.Count());
+        }
     }
 }

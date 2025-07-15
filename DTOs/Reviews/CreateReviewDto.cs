@@ -1,13 +1,14 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace DTOs.Reviews
 {
     public class CreateReviewDto
     {
-        [Required(ErrorMessage = "Product ID is required")]
-        public Guid ProductId { get; set; }
+        [Required(ErrorMessage = "Product Variant ID is required")]
+        public Guid ProductVariantId { get; set; } 
 
-        public Guid? OrderId { get; set; }
+        [Required(ErrorMessage = "Order ID is required to verify purchase")]
+        public Guid OrderId { get; set; }
 
         [Required(ErrorMessage = "Rating is required")]
         [Range(1, 5, ErrorMessage = "Rating must be between 1 and 5")]
