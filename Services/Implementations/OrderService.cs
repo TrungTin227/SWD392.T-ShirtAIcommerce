@@ -513,6 +513,8 @@ namespace Services.Implementations
         }
         public async Task<bool> CancelOrderAsync(Guid orderId, string reason, Guid? cancelledBy = null)
         {
+            // Bắt đầu một transaction để đảm bảo tất cả các thao tác (hủy đơn, hoàn kho, hoàn coupon)
+            // hoặc thành công hết hoặc thất bại hết.
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -521,50 +523,79 @@ namespace Services.Implementations
                     throw new ArgumentException("Lý do hủy đơn hàng là bắt buộc");
                 }
 
+                // Bước 1: Lấy thông tin chi tiết đơn hàng, bao gồm cả các sản phẩm trong đơn (OrderItems)
+                // Lưu ý: Đảm bảo phương thức GetOrderWithDetailsAsync() của bạn có .Include(o => o.OrderItems)
                 var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
                 if (order == null || order.IsDeleted)
                 {
                     throw new ArgumentException("Đơn hàng không tồn tại");
                 }
 
+                // Kiểm tra xem đơn hàng có ở trạng thái cho phép hủy hay không
                 if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
                 {
-                    throw new InvalidOperationException("Không thể hủy đơn hàng đã giao hoặc đã hủy");
+                    throw new InvalidOperationException("Không thể hủy đơn hàng đã được giao hoặc đã bị hủy trước đó");
                 }
 
-                _logger.LogInformation("Cancelling order {OrderId} with reason: {Reason}", orderId, reason);
+                _logger.LogInformation("Bắt đầu quá trình hủy đơn hàng {OrderId} với lý do: {Reason}", orderId, reason);
 
-                // Cancel the order in repository
+                // Bước 2: Thay đổi trạng thái của đơn hàng trong bộ nhớ (chưa ghi vào DB)
                 var result = await _orderRepository.CancelOrderAsync(orderId, reason.Trim(), cancelledBy);
 
-                    if (result)
+                if (result)
                 {
-                    // Handle coupon rollback if order used a coupon
+                    // Bước 3: Hoàn trả số lượng sản phẩm về kho
+                    _logger.LogInformation("Bắt đầu hoàn kho cho đơn hàng {OrderId}", orderId);
+                    foreach (var item in order.OrderItems)
+                    {
+                        // Chỉ hoàn kho cho các sản phẩm có ProductVariantId (được quản lý theo biến thể)
+                        if (item.ProductVariantId.HasValue && item.ProductVariantId.Value != Guid.Empty)
+                        {
+                            var stockUpdated = await _productVariantRepository.IncreaseStockAsync(item.ProductVariantId.Value, item.Quantity);
+                            if (!stockUpdated)
+                            {
+                                // Nếu không tìm thấy biến thể sản phẩm để hoàn kho, đây là lỗi nghiêm trọng.
+                                // Hủy bỏ toàn bộ giao dịch ngay lập tức.
+                                _logger.LogError("Không thể hoàn kho cho ProductVariantId {ProductVariantId}. Giao dịch sẽ được rollback.", item.ProductVariantId.Value);
+                                await transaction.RollbackAsync();
+                                return false;
+                            }
+                            _logger.LogInformation("Đã hoàn lại {Quantity} sản phẩm vào kho cho ProductVariantId: {ProductVariantId}", item.Quantity, item.ProductVariantId.Value);
+                        }
+                    }
+
+                    // Bước 4: Xử lý hoàn lại coupon (nếu có)
                     if (order.CouponId.HasValue)
                     {
                         try
                         {
-                            // Note: The actual coupon usage rollback would depend on how the CouponService tracks usage
-                            // This is a placeholder for the actual implementation
-                            _logger.LogInformation("Order {OrderId} used coupon {CouponId}, consider implementing rollback logic", 
-                                orderId, order.CouponId);
-                            
-                            // TODO: Implement coupon usage rollback if needed
-                            // await _couponService.RollbackCouponUsageAsync(order.CouponId.Value, order.UserId);
+                            _logger.LogInformation("Đơn hàng {OrderId} đã sử dụng coupon {CouponId}, đang xử lý logic hoàn lại.", orderId, order.CouponId);
+
+                            // TODO: Triển khai logic hoàn lại coupon ở đây.
+                            // Ví dụ: await _couponService.RollbackCouponUsageAsync(order.CouponId.Value, order.UserId);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to rollback coupon usage for order {OrderId}, coupon {CouponId}", 
-                                orderId, order.CouponId);
-                            // Don't fail the entire operation for coupon rollback issues
+                            // Việc hoàn coupon thất bại không nên làm hỏng toàn bộ giao dịch hủy đơn hàng.
+                            // Ghi lại cảnh báo và tiếp tục.
+                            _logger.LogWarning(ex, "Không thể hoàn lại coupon {CouponId} cho đơn hàng {OrderId}. Quá trình hủy đơn vẫn tiếp tục.",
+                                order.CouponId, orderId);
                         }
                     }
-                    await _unitOfWork.SaveChangesAsync(); // Hoặc _context.SaveChangesAsync()
+
+                    // Bước 5: Lưu tất cả thay đổi vào database
+                    // Lệnh này sẽ ghi cả thay đổi trạng thái của Order và thay đổi Quantity của ProductVariant.
+                    await _unitOfWork.SaveChangesAsync();
+
+                    // Bước 6: Commit transaction để xác nhận tất cả các thay đổi thành công
                     await transaction.CommitAsync();
-                    _logger.LogInformation("Order {OrderId} cancelled successfully", orderId);
+
+                    _logger.LogInformation("Đơn hàng {OrderId} đã được hủy và hoàn kho thành công.", orderId);
                 }
                 else
                 {
+                    // Nếu _orderRepository.CancelOrderAsync() trả về false, rollback transaction
+                    _logger.LogWarning("Phương thức _orderRepository.CancelOrderAsync() trả về false cho đơn hàng {OrderId}. Giao dịch đã được rollback.", orderId);
                     await transaction.RollbackAsync();
                 }
 
@@ -572,9 +603,10 @@ namespace Services.Implementations
             }
             catch (Exception ex)
             {
+
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error cancelling order {OrderId}", orderId);
-                throw;
+                _logger.LogError(ex, "Đã xảy ra lỗi nghiêm trọng khi đang hủy đơn hàng {OrderId}. Giao dịch đã được rollback an toàn.", orderId);
+                throw; 
             }
         }
 

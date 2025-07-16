@@ -33,5 +33,19 @@ namespace Repositories.Implementations
                 .Where(x => x.Id == variantId && !x.IsDeleted && !x.Product.IsDeleted)
                 .FirstOrDefaultAsync();
         }
+        // Trong file Repositories/Implementations/ProductVariantRepository.cs
+
+        public async Task<bool> IncreaseStockAsync(Guid productVariantId, int quantity)
+        {
+            var variant = await _dbSet.FindAsync(productVariantId);
+            if (variant == null || variant.IsDeleted)
+            {
+                return false; // Biến thể không tồn tại hoặc đã bị xóa mềm
+            }
+
+            variant.Quantity += quantity;
+
+            return true; // Báo hiệu đã cập nhật thành công trong bộ nhớ
+        }
     }
 }
