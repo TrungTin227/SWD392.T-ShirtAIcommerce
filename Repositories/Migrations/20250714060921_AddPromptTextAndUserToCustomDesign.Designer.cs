@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Repositories;
 
@@ -11,9 +12,11 @@ using Repositories;
 namespace Repositories.Migrations
 {
     [DbContext(typeof(T_ShirtAIcommerceContext))]
-    partial class T_ShirtAIcommerceContextModelSnapshot : ModelSnapshot
+    [Migration("20250714060921_AddPromptTextAndUserToCustomDesign")]
+    partial class AddPromptTextAndUserToCustomDesign
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -258,101 +261,90 @@ namespace Repositories.Migrations
                 });
 
             modelBuilder.Entity("BusinessObjects.CustomDesigns.CustomDesign", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("ApplicationUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ApplicationUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("BaseColor")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("BaseColor")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("CreatedBy")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("DeletedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("DeletedBy")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("DeliveredAt")
-                    .HasColumnType("datetime2");
+                    b.Property<string>("DesignImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
-                b.Property<string>("DesignImageUrl")
-                    .HasMaxLength(500)
-                    .HasColumnType("nvarchar(500)");
+                    b.Property<string>("DesignName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
-                b.Property<string>("DesignName")
-                    .IsRequired()
-                    .HasMaxLength(255)
-                    .HasColumnType("nvarchar(255)");
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
 
-                b.Property<DateTime?>("DoneAt")
-                    .HasColumnType("datetime2");
+                    b.Property<string>("PromptText")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
-                b.Property<bool>("IsDeleted")
-                    .HasColumnType("bit");
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
 
-                b.Property<DateTime?>("OrderCreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<string>("ShirtType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("PromptText")
-                    .HasMaxLength(1000)
-                    .HasColumnType("nvarchar(1000)");
+                    b.Property<string>("Size")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int>("Quantity")
-                    .HasColumnType("int");
+                    b.Property<string>("SpecialRequirements")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
-                b.Property<DateTime?>("ShippingStartedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("ShirtType")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<decimal>("TotalPrice")
+                        .HasColumnType("decimal(12,2)");
 
-                b.Property<string>("Size")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("SpecialRequirements")
-                    .HasMaxLength(1000)
-                    .HasColumnType("nvarchar(1000)");
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<decimal>("TotalPrice")
-                    .HasColumnType("decimal(12,2)");
+                    b.HasKey("Id");
 
-                b.Property<DateTime>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.HasIndex("ApplicationUserId");
 
-                b.Property<Guid?>("UpdatedBy")
-                    .HasColumnType("uniqueidentifier");
+                    b.HasIndex("UserId");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.ToTable("CustomDesigns");
+                });
 
-                b.HasKey("Id");
-
-                b.HasIndex("ApplicationUserId");
-
-                b.HasIndex("UserId");
-
-                b.ToTable("CustomDesigns");
-            });
             modelBuilder.Entity("BusinessObjects.Identity.ApplicationRole", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1054,9 +1046,6 @@ namespace Repositories.Migrations
                     b.Property<Guid?>("ProductId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("ProductVariantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("Rating")
                         .HasColumnType("int");
 
@@ -1081,8 +1070,6 @@ namespace Repositories.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("ProductId");
-
-                    b.HasIndex("ProductVariantId");
 
                     b.HasIndex("UserId");
 
@@ -1338,18 +1325,15 @@ namespace Repositories.Migrations
 
             modelBuilder.Entity("BusinessObjects.CustomDesigns.CustomDesign", b =>
                 {
-                    b.HasOne("BusinessObjects.Identity.ApplicationUser", "Staff")
+                    b.HasOne("BusinessObjects.Identity.ApplicationUser", null)
                         .WithMany("StaffDesigns")
-                        .HasForeignKey("StaffId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("ApplicationUserId");
 
                     b.HasOne("BusinessObjects.Identity.ApplicationUser", "User")
                         .WithMany("CustomDesigns")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Staff");
 
                     b.Navigation("User");
                 });
@@ -1476,10 +1460,6 @@ namespace Repositories.Migrations
                         .WithMany("Reviews")
                         .HasForeignKey("ProductId");
 
-                    b.HasOne("BusinessObjects.Products.ProductVariant", "ProductVariant")
-                        .WithMany()
-                        .HasForeignKey("ProductVariantId");
-
                     b.HasOne("BusinessObjects.Identity.ApplicationUser", "User")
                         .WithMany("Reviews")
                         .HasForeignKey("UserId")
@@ -1489,8 +1469,6 @@ namespace Repositories.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Product");
-
-                    b.Navigation("ProductVariant");
 
                     b.Navigation("User");
                 });

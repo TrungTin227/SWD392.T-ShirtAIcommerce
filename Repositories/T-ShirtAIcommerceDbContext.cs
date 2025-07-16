@@ -62,10 +62,7 @@ namespace Repositories
                       .HasForeignKey(cd => cd.UserId)
                       .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasOne(cd => cd.Staff)
-                      .WithMany(u => u.StaffDesigns)
-                      .HasForeignKey(cd => cd.StaffId)
-                      .OnDelete(DeleteBehavior.SetNull);
+
                 entity.Property(cd => cd.Status)
               .HasConversion<string>()
               .HasMaxLength(50);
@@ -74,9 +71,7 @@ namespace Repositories
                       .HasConversion<string>()
                       .HasMaxLength(20);
 
-                entity.Property(cd => cd.LogoPosition)
-                      .HasConversion<string>()
-                      .HasMaxLength(20);
+
 
                 // --- Hai enum mới cần thêm ---
                 entity.Property(cd => cd.ShirtType)
@@ -157,7 +152,7 @@ namespace Repositories
             modelBuilder.Entity<Order>().Property(e => e.PaymentStatus).HasConversion<string>();
             modelBuilder.Entity<CustomDesign>().Property(e => e.Status).HasConversion<string>();
             modelBuilder.Entity<CustomDesign>().Property(e => e.Size).HasConversion<string>();
-            modelBuilder.Entity<CustomDesign>().Property(e => e.LogoPosition).HasConversion<string>();
+            
             modelBuilder.Entity<Review>().Property(e => e.Status).HasConversion<string>();
             modelBuilder.Entity<Coupon>().Property(e => e.Type).HasConversion<string>();
             modelBuilder.Entity<Coupon>().Property(e => e.Status).HasConversion<string>();

@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Identity;
+using Data.Repositories.CustomDesigns;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -119,6 +120,8 @@ namespace WebAPI.Extensions
             
             // === 5. HTTP Clients (Ví dụ VnPay) ===
             services.AddHttpClient<IVnPayService, VnPayService>();
+            //Ai
+            services.AddHttpClient<IAiImageService, AiImageService>();
 
             // === 6. Repositories & Domain Services ===
             services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -135,7 +138,7 @@ namespace WebAPI.Extensions
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IProductRepository, ProductRepository>();
             services.AddScoped<IReviewRepository, ReviewRepository>();
-            services.AddScoped<ICustomDesignRepository, CustomDesignRepository>();
+            services.AddScoped<IAICustomDesignRepository, AiCustomDesignRepository>();
             services.AddScoped<IWishlistRepository, WishlistRepository>();
             services.AddScoped<IProductVariantRepository, ProductVariantRepository>();
             services.AddScoped<IUserCouponRepository, UserCouponRepository>();
@@ -157,7 +160,7 @@ namespace WebAPI.Extensions
             services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<IProductService, ProductService>();
             services.AddScoped<IReviewService, ReviewService>();
-            services.AddScoped<ICustomDesignService, CustomDesignService>();
+            services.AddScoped<ICustomDesignedService, CustomDesignedService>();
             services.AddScoped<IWishlistService, WishlistService>();
             services.AddScoped<IProductVariantService, ProductVariantService>();
             services.AddScoped<IUserCouponService, UserCouponService>();

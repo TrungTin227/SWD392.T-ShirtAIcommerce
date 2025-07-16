@@ -1,9 +1,10 @@
-﻿using System.Net;
-using System.Text;
+﻿using BusinessObjects.Common;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Services.Commons.Gmail.Interfaces;
 using Services.Interfaces.Services.Commons.User;
+using System.Net;
+using System.Text;
 
 namespace Services.Implementations
 {
@@ -139,6 +140,77 @@ namespace Services.Implementations
                 <p style='color:#999;font-size:13px;'>Mã này có hiệu lực trong 5 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>";
             var message = BuildLayout(subject, content);
 
+            await QueueEmailAsync(email, subject, message);
+        }
+
+        //SendCustomDesignStatusEmailAsync
+        public async Task SendCustomDesignStatusEmailAsync(
+     string email,
+     string designName,
+     CustomDesignStatus status,
+     DateTime? orderCreatedAt = null,
+     DateTime? shippingStartAt = null,
+     DateTime? deliveredAt = null,
+     DateTime? doneAt = null)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                throw new ArgumentException("Email không được để trống.", nameof(email));
+
+            string subject;
+            string content;
+
+            switch (status)
+            {
+                case CustomDesignStatus.Accepted:
+                    subject = $"Thiết kế của bạn đã được chấp nhận!";
+                    content = $@"
+                <h2 style='color:#0d6efd;'>Thiết kế được duyệt</h2>
+                <p>Chúc mừng! Mẫu thiết kế <b>{designName}</b> của bạn đã được chấp nhận. Chúng tôi sẽ liên hệ để tiếp tục quy trình đặt hàng.</p>
+                <p>Cảm ơn bạn đã tin tưởng và sử dụng TShirtAI!</p>";
+                    break;
+                case CustomDesignStatus.Order:
+                    var orderTime = orderCreatedAt?.ToString("HH:mm dd/MM/yyyy") ?? DateTime.Now.ToString("HH:mm dd/MM/yyyy");
+                    subject = $"Đơn hàng mới từ thiết kế {designName}";
+                    content = $@"
+                <h2 style='color:#0d6efd;'>Đơn hàng đã được tạo</h2>
+                <p>Mẫu thiết kế <b>{designName}</b> đã chuyển thành đơn hàng lúc <b>{orderTime}</b> và đang được xử lý.</p>
+                <p>Chúng tôi cần khoảng <b>5-7 ngày</b> để hoàn thành sản phẩm cho bạn. Vui lòng chờ thông tin tiếp theo qua email.</p>";
+                    break;
+                case CustomDesignStatus.Shipping:
+                    var shippingTime = shippingStartAt?.ToString("HH:mm dd/MM/yyyy") ?? DateTime.Now.ToString("HH:mm dd/MM/yyyy");
+                    subject = $"Thiết kế {designName} đang được giao";
+                    content = $@"
+                <h2 style='color:#0d6efd;'>Sản phẩm đang trên đường đến bạn</h2>
+                <p>Đơn hàng <b>{designName}</b> đã được xuất kho lúc <b>{shippingTime}</b> và đang được giao đến bạn.</p>
+                <p>Dự kiến sẽ đến nơi trong <b>3-5 ngày</b>. Nếu cần hỗ trợ về đơn hàng, hãy liên hệ ngay với chúng tôi.</p>";
+                    break;
+                case CustomDesignStatus.Delivered:
+                    var deliveredTime = deliveredAt?.ToString("HH:mm dd/MM/yyyy") ?? DateTime.Now.ToString("HH:mm dd/MM/yyyy");
+                    subject = $"Thiết kế {designName} đã giao thành công!";
+                    content = $@"
+                <h2 style='color:#0d6efd;'>Giao hàng thành công</h2>
+                <p>Đơn hàng <b>{designName}</b> đã được giao thành công đến bạn lúc <b>{deliveredTime}</b>.</p>
+                <p>Cảm ơn bạn đã đồng hành cùng TShirtAI. Đừng quên đánh giá trải nghiệm để chúng tôi phục vụ bạn tốt hơn nhé!</p>";
+                    break;
+                case CustomDesignStatus.Done:
+                    var doneTime = doneAt?.ToString("HH:mm dd/MM/yyyy") ?? DateTime.Now.ToString("HH:mm dd/MM/yyyy");
+                    subject = $"Đơn hàng {designName} đã hoàn thành!";
+                    content = $@"
+                <h2 style='color:#0d6efd;'>Hoàn thành đơn hàng</h2>
+                <p>Chúng tôi đã hoàn thành đơn hàng <b>{designName}</b> vào lúc <b>{doneTime}</b>.</p>
+                <p>Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!</p>";
+                    break;
+                case CustomDesignStatus.Rejected:
+                    subject = $"Tiếc quá! Thiết kế {designName} chưa được duyệt";
+                    content = $@"
+                <h2 style='color:#dc3545;'>Thiết kế chưa được chấp nhận</h2>
+                <p>Chúng tôi rất tiếc phải thông báo rằng mẫu thiết kế <b>{designName}</b> của bạn chưa được duyệt. Vui lòng kiểm tra lại các yêu cầu và thử lại nhé.</p>";
+                    break;
+                default:
+                    return;
+            }
+
+            var message = BuildLayout(subject, content);
             await QueueEmailAsync(email, subject, message);
         }
 

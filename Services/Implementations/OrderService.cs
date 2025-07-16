@@ -1,5 +1,6 @@
 ﻿using BusinessObjects.Common;
 using BusinessObjects.Orders;
+using Data.Repositories.CustomDesigns;
 using DTOs.Analytics;
 using DTOs.Common;
 using DTOs.Coupons;
@@ -26,7 +27,7 @@ namespace Services.Implementations
         private readonly ICouponService _couponService;
         private readonly IShippingMethodService _shippingMethodService;
         private readonly IProductVariantRepository _productVariantRepository;
-        private readonly ICustomDesignRepository _customDesignRepository;
+        private readonly IAICustomDesignRepository _customDesignRepository;
         private readonly IPaymentService _paymentService;
         private readonly ILogger<OrderService> _logger;
 
@@ -42,7 +43,7 @@ namespace Services.Implementations
             ICouponService couponService,
             IShippingMethodService shippingMethodService,
             IProductVariantRepository productVariantRepository,
-            ICustomDesignRepository customDesignRepository,
+            IAICustomDesignRepository customDesignedRepository,
             ICartItemRepository cartItemRepository,
             IPaymentService paymentService,
 
@@ -58,7 +59,7 @@ namespace Services.Implementations
             _couponService = couponService;
             _shippingMethodService = shippingMethodService;
             _productVariantRepository = productVariantRepository;
-            _customDesignRepository = customDesignRepository;
+            _customDesignRepository = customDesignedRepository;
             _paymentService = paymentService;
             _logger = logger;
         }
