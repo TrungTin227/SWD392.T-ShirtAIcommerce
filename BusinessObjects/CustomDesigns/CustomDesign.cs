@@ -12,62 +12,49 @@ namespace BusinessObjects.CustomDesigns
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        [Required(ErrorMessage = "ID người dùng là bắt buộc")]
+        [Required]
         public Guid UserId { get; set; }
 
-        [Required(ErrorMessage = "Tên thiết kế là bắt buộc")]
-        [MaxLength(255)]
+        [Required, MaxLength(255)]
         public string DesignName { get; set; } = string.Empty;
+
+        [MaxLength(1000)]
+        public string? PromptText { get; set; }
 
         [Required]
         public GarmentType ShirtType { get; set; }
+
         [Required]
         public ProductColor BaseColor { get; set; }
 
-        [Required(ErrorMessage = "Kích thước là bắt buộc")]
+        [Required]
         public TShirtSize Size { get; set; }
 
-        [Url(ErrorMessage = "URL hình ảnh không hợp lệ")]
         [MaxLength(500)]
         public string? DesignImageUrl { get; set; }
-
-        [MaxLength(255)]
-        public string? LogoText { get; set; }
-
-        public LogoPosition? LogoPosition { get; set; }
 
         [MaxLength(1000)]
         public string? SpecialRequirements { get; set; }
 
-        [Required(ErrorMessage = "Tổng giá là bắt buộc")]
-        [Range(0.01, double.MaxValue, ErrorMessage = "Tổng giá phải lớn hơn 0")]
+        [Required]
         [Column(TypeName = "decimal(12,2)")]
         public decimal TotalPrice { get; set; }
 
-        [Range(1, 100, ErrorMessage = "Số lượng từ 1-100")]
         public int Quantity { get; set; } = 1;
 
-        [Range(1, 30, ErrorMessage = "Thời gian hoàn thành từ 1-30 ngày")]
-        public int EstimatedDays { get; set; } = 7;
-
         [Required]
-        public DesignStatus Status { get; set; } = DesignStatus.Draft;
+        public CustomDesignStatus Status { get; set; } = CustomDesignStatus.Draft;
 
-        public Guid? StaffId { get; set; }
-
-        [MaxLength(1000)]
-        public string? StaffNotes { get; set; }
-
-        public DateTime? ApprovedAt { get; set; }
-        public DateTime? CompletedAt { get; set; }
-
-        // Navigation properties
+        // Liên kết ngược tới user (optional, có thể xóa nếu không dùng)
         [ForeignKey("UserId")]
-        public virtual ApplicationUser User { get; set; } = null!;
+        public virtual ApplicationUser? User { get; set; }
+        //Thờigian tạo và cập nhật
+        public DateTime? OrderCreatedAt { get; set; }
+        public DateTime? ShippingStartedAt { get; set; }
+        public DateTime? DeliveredAt { get; set; }
+        public DateTime? DoneAt { get; set; }
 
-        [ForeignKey("StaffId")]
-        public virtual ApplicationUser? Staff { get; set; }
-
+        // Các navigation tới CartItem, OrderItem (optional, có thể xóa nếu không dùng)
         public virtual ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
     }

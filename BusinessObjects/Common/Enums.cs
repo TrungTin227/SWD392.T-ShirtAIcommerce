@@ -22,8 +22,16 @@ namespace BusinessObjects.Common
     }
     public enum CustomDesignStatus
     {
-        Active = 1,
-        Inactive = 0
+        Draft = 0,
+        Liked = 1,
+        Accepted = 2,
+        Resquest = 3,
+        Order = 4, // gửi mail về
+        Shipping = 5,
+        Delivered = 6, // gửi mail về Customer  
+        Done = 7,
+        Rejected = 8,
+
     }
     // Enum cho ProductSize (đã có sẵn)
     public enum ProductSize
