@@ -536,8 +536,8 @@ namespace Services.Implementations
 
                 // Cancel the order in repository
                 var result = await _orderRepository.CancelOrderAsync(orderId, reason.Trim(), cancelledBy);
-                
-                if (result)
+
+                    if (result)
                 {
                     // Handle coupon rollback if order used a coupon
                     if (order.CouponId.HasValue)
@@ -559,7 +559,7 @@ namespace Services.Implementations
                             // Don't fail the entire operation for coupon rollback issues
                         }
                     }
-
+                    await _unitOfWork.SaveChangesAsync(); // Hoặc _context.SaveChangesAsync()
                     await transaction.CommitAsync();
                     _logger.LogInformation("Order {OrderId} cancelled successfully", orderId);
                 }
