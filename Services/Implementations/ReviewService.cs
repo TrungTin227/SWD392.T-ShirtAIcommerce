@@ -159,6 +159,81 @@ namespace Services.Implementations
             }
         }
 
+        public async Task<ApiResult<ReviewDto>> UpdateReviewAsync(Guid reviewId, UpdateReviewDto updateDto, Guid userId)
+        {
+            try
+            {
+                var review = await _reviewRepository.GetByIdAsync(reviewId);
+
+                // 1. Kiểm tra sự tồn tại của review
+                if (review == null)
+                {
+                    return ApiResult<ReviewDto>.Failure("Không tìm thấy bài đánh giá để cập nhật.");
+                }
+
+                // 2. Kiểm tra quyền sở hữu
+                if (review.UserId != userId)
+                {
+                    return ApiResult<ReviewDto>.Failure("Bạn không có quyền sửa bài đánh giá này.");
+                }
+
+                // 3. Cập nhật các thuộc tính
+                review.Rating = updateDto.Rating;
+                review.Content = updateDto.Content;
+                review.Images = updateDto.Images != null && updateDto.Images.Any()
+                    ? string.Join(",", updateDto.Images)
+                    : null;
+
+                // Logic nghiệp vụ: Khi người dùng sửa, chuyển về trạng thái chờ duyệt lại
+                review.Status = ReviewStatus.Pending;
+                review.UpdatedAt = DateTime.UtcNow;
+
+                await _reviewRepository.UpdateAsync(review);
+                await _unitOfWork.SaveChangesAsync();
+
+                // Lấy lại thông tin chi tiết để trả về
+                var updatedReviewDetails = await _reviewRepository.GetReviewDetailsAsync(review.Id);
+                return ApiResult<ReviewDto>.Success(MapToDto(updatedReviewDetails!), "Cập nhật đánh giá thành công. Đang chờ duyệt lại.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cập nhật đánh giá {ReviewId} bởi người dùng {UserId}", reviewId, userId);
+                return ApiResult<ReviewDto>.Failure("Đã có lỗi hệ thống xảy ra.");
+            }
+        }
+
+        public async Task<ApiResult> DeleteReviewAsync(Guid reviewId, Guid userId)
+        {
+            try
+            {
+                var review = await _reviewRepository.GetByIdAsync(reviewId);
+
+                // 1. Kiểm tra sự tồn tại
+                if (review == null)
+                {
+                    return ApiResult.Failure("Không tìm thấy bài đánh giá để xóa.");
+                }
+
+                // 2. Kiểm tra quyền sở hữu (Hoặc có thể thêm logic cho Admin ở đây)
+                if (review.UserId != userId)
+                {
+                    return ApiResult.Failure("Bạn không có quyền xóa bài đánh giá này.");
+                }
+
+                // 3. Thực hiện xóa mềm
+                // GenericRepository của bạn đã có sẵn SoftDeleteAsync rất tốt!
+                await _reviewRepository.SoftDeleteAsync(reviewId, userId);
+                await _unitOfWork.SaveChangesAsync();
+
+                return ApiResult.Success("Xóa đánh giá thành công.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xóa đánh giá {ReviewId} bởi người dùng {UserId}", reviewId, userId);
+                return ApiResult.Failure("Đã có lỗi hệ thống xảy ra.");
+            }
+        }
+
         private ReviewDto MapToDto(Review review)
         {
             return new ReviewDto
@@ -178,5 +253,6 @@ namespace Services.Implementations
                 CreatedAt = review.CreatedAt
             };
         }
+
     }
 }

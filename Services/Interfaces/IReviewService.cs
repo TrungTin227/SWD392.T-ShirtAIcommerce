@@ -11,6 +11,8 @@ namespace Services.Interfaces
         Task<ReviewStatsDto?> GetReviewStatsAsync(Guid productVariantId);
         Task<ReviewDto?> CreateReviewAsync(CreateReviewDto createDto, Guid userId);
         Task<ApiResult<IEnumerable<ReviewDto>>> GetReviewsForProductAsync(Guid productVariantId);
+        Task<ApiResult<ReviewDto>> UpdateReviewAsync(Guid reviewId, UpdateReviewDto updateDto, Guid userId);
+        Task<ApiResult> DeleteReviewAsync(Guid reviewId, Guid userId);
 
     }
 }

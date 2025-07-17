@@ -94,4 +94,61 @@ public class ReviewsController : ControllerBase
         }
         return Ok(response);
     }
+
+    /// <summary>
+    /// Cập nhật một bài đánh giá (yêu cầu đăng nhập và là chủ sở hữu).
+    /// </summary>
+    /// <param name="id">ID của bài đánh giá.</param>
+    /// <param name="updateDto">Dữ liệu cần cập nhật.</param>
+    [HttpPut("{id}")]
+    [Authorize]
+    public async Task<IActionResult> UpdateReview(Guid id, [FromBody] UpdateReviewDto updateDto)
+    {
+        var userId = _currentUserService.GetUserId();
+        if (!userId.HasValue)
+        {
+            return Unauthorized("Không xác định được người dùng.");
+        }
+
+        var result = await _reviewService.UpdateReviewAsync(id, updateDto, userId.Value);
+
+        // Ensure all branches return IActionResult
+        return result.Match<IActionResult>(
+            onSuccess: data => Ok(data),
+            onFailure: (message, ex) =>
+            {
+                if (message != null && message.Contains("không có quyền")) return Forbid();
+                if (message != null && message.Contains("Không tìm thấy")) return NotFound(new { message });
+                return BadRequest(new { message });
+            }
+        );
+    }
+
+    /// <summary>
+    /// Xóa một bài đánh giá (yêu cầu đăng nhập và là chủ sở hữu).
+    /// </summary>
+    /// <param name="id">ID của bài đánh giá.</param>
+    [HttpDelete("{id}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteReview(Guid id)
+    {
+        var userId = _currentUserService.GetUserId();
+        if (!userId.HasValue)
+        {
+            return Unauthorized("Không xác định được người dùng.");
+        }
+
+        var result = await _reviewService.DeleteReviewAsync(id, userId.Value);
+
+        if (!result.IsSuccess)
+        {
+            if (result.Message.Contains("không có quyền")) return Forbid();
+            if (result.Message.Contains("Không tìm thấy")) return NotFound(new { message = result.Message });
+            return BadRequest(new { message = result.Message });
+        }
+
+        // Trả về 204 No Content là chuẩn RESTful cho việc xóa thành công
+        return NoContent();
+    }
+
 }
