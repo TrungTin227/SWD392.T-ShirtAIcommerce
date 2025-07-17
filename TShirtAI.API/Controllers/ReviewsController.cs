@@ -83,4 +83,15 @@ public class ReviewsController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
+    [HttpGet("product-by-variant/{variantId}")]
+    [AllowAnonymous] // Thường thì ai cũng có thể xem review
+    public async Task<IActionResult> GetProductReviews(Guid variantId)
+    {
+        var response = await _reviewService.GetReviewsForProductAsync(variantId);
+        if (!response.IsSuccess)
+        {
+            return NotFound(response);
+        }
+        return Ok(response);
+    }
 }

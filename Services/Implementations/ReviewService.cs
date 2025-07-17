@@ -3,6 +3,8 @@ using BusinessObjects.Reviews;
 using DTOs.Common;
 using DTOs.Reviews;
 using Microsoft.Extensions.Logging;
+using Repositories.Commons;
+using Repositories.Implementations;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Interfaces;
@@ -13,28 +15,78 @@ namespace Services.Implementations
     {
         private readonly IReviewRepository _reviewRepository;
         private readonly IOrderRepository _orderRepository; 
+        private readonly IProductVariantRepository _productVariantRepository; // Thêm biến thể sản phẩm
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<ReviewService> _logger;
 
-        public ReviewService(IReviewRepository reviewRepository, IOrderRepository orderRepository, IUnitOfWork unitOfWork, ILogger<ReviewService> logger)
+        public ReviewService(IReviewRepository reviewRepository, IOrderRepository orderRepository, IUnitOfWork unitOfWork, ILogger<ReviewService> logger, IProductVariantRepository productVariantRepository)
         {
             _reviewRepository = reviewRepository;
             _orderRepository = orderRepository;
+            _productVariantRepository = productVariantRepository; 
             _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
         public async Task<PagedResponse<ReviewDto>> GetReviewsAsync(ReviewFilterDto filter)
         {
+            // 1. Lấy dữ liệu phân trang từ Repository
+            // `pagedReviews` bây giờ là một đối tượng PagedList<Review> hoàn chỉnh.
             var pagedReviews = await _reviewRepository.GetReviewsAsync(filter);
-            var reviewDtos = pagedReviews.Select(MapToDto).ToList();
 
+            // 2. Map từ danh sách Review sang danh sách ReviewDto
+            // `pagedReviews.Items` chứa danh sách các đánh giá trên trang hiện tại.
+            var reviewDtos = pagedReviews.Items.Select(MapToDto).ToList();
+
+            // 3. TẠO ĐỐI TƯỢNG PagedResponse<ReviewDto> - BÂY GIỜ SẼ KHÔNG CÒN LỖI
             var response = new PagedResponse<ReviewDto>
             {
-                Errors = new List<string>()
-                                             
+                Data = reviewDtos,
+                // Ánh xạ 1-1 vì tên thuộc tính đã khớp nhau
+                CurrentPage = pagedReviews.CurrentPage,
+                PageSize = pagedReviews.PageSize,
+                TotalCount = pagedReviews.TotalCount,
+                TotalPages = pagedReviews.TotalPages,
+                HasNextPage = pagedReviews.HasNextPage,
+                HasPreviousPage = pagedReviews.HasPreviousPage,
+                // Các thuộc tính khác
+                Message = "Lấy danh sách đánh giá thành công.",
+                IsSuccess = true
             };
+
             return response;
+        }
+        public async Task<ApiResult<IEnumerable<ReviewDto>>> GetReviewsForProductAsync(Guid productVariantId)
+        {
+            try
+            {
+                // 1. Tìm biến thể sản phẩm để lấy ProductId
+                var variant = await _productVariantRepository.GetByIdAsync(productVariantId);
+                if (variant == null)
+                {
+                    // Sử dụng phương thức Failure của ApiResult
+                    return ApiResult<IEnumerable<ReviewDto>>.Failure("Không tìm thấy biến thể sản phẩm.");
+                }
+
+                // 2. Lấy tất cả review đã duyệt cho sản phẩm cha
+                var reviews = await _reviewRepository.GetApprovedReviewsByProductIdAsync(variant.ProductId);
+
+                // 3. Map kết quả sang DTO (Giả sử bạn có hàm MapToDto)
+                var reviewDtos = reviews.Select(MapToDto).ToList();
+
+                // Sử dụng phương thức Success của ApiResult
+                return ApiResult<IEnumerable<ReviewDto>>.Success(
+                    reviewDtos,
+                    $"Lấy thành công {reviewDtos.Count} đánh giá cho sản phẩm."
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy đánh giá cho sản phẩm từ variantId {VariantId}", productVariantId);
+
+                // Sử dụng phương thức Failure với thông tin Exception
+                return ApiResult<IEnumerable<ReviewDto>>.Failure("Đã xảy ra lỗi hệ thống. Vui lòng thử lại.", ex);
+            }
         }
 
         public async Task<ReviewDto?> GetReviewByIdAsync(Guid reviewId)

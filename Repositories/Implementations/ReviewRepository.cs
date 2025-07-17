@@ -1,4 +1,4 @@
-using BusinessObjects.Reviews;
+﻿using BusinessObjects.Reviews;
 using DTOs.Reviews;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Helpers;
@@ -13,41 +13,19 @@ namespace Repositories.Implementations
 
         public async Task<PagedList<Review>> GetReviewsAsync(ReviewFilterDto filter)
         {
-            var query = _dbSet.AsQueryable();
+            // Xây dựng câu truy vấn IQueryable của bạn ở đây
+            IQueryable<Review> query = _dbSet.AsQueryable();
 
-            if (filter.ProductVariantId.HasValue)
-            {
-                query = query.Where(r => r.ProductVariantId == filter.ProductVariantId.Value);
-            }
-            if (filter.UserId.HasValue)
-            {
-                query = query.Where(r => r.UserId == filter.UserId.Value);
-            }
-            if (filter.Rating.HasValue)
-            {
-                query = query.Where(r => r.Rating == filter.Rating.Value);
-            }
-            if (filter.Status.HasValue)
-            {
-                query = query.Where(r => r.Status == filter.Status.Value);
-            }
+            // Áp dụng các bộ lọc (filter) nếu có
+            // if (!string.IsNullOrEmpty(filter.SearchTerm)) { ... }
+            // if (filter.Rating.HasValue) { ... }
 
-            // Include related data for DTO mapping
-            query = query
-                .Include(r => r.User)
-                .Include(r => r.ProductVariant)
-                    .ThenInclude(pv => pv.Product);
+            // Sắp xếp
+            query = query.OrderByDescending(r => r.CreatedAt);
 
-            // Sorting
-            query = filter.OrderBy?.ToLower() switch
-            {
-                "rating" => filter.OrderByDescending ? query.OrderByDescending(r => r.Rating) : query.OrderBy(r => r.Rating),
-                _ => filter.OrderByDescending ? query.OrderByDescending(r => r.CreatedAt) : query.OrderBy(r => r.CreatedAt),
-            };
-
+            // Trả về kết quả phân trang bằng phương thức mở rộng
             return await PagedList<Review>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
         }
-
         public async Task<Review?> GetReviewDetailsAsync(Guid reviewId)
         {
             return await _dbSet
@@ -94,6 +72,20 @@ namespace Repositories.Implementations
             }
 
             return stats;
+        }
+        public async Task<IEnumerable<Review>> GetApprovedReviewsByProductIdAsync(Guid productId)
+        {
+            // Chúng ta cần lấy tất cả các review có ProductVariant thuộc về ProductId được cho.
+            // Điều kiện: Review phải ở trạng thái "Approved" và chưa bị xóa mềm.
+            return await _dbSet
+                .Where(r => r.ProductVariant.ProductId == productId &&
+                            r.Status == ReviewStatus.Approved &&
+                            !r.IsDeleted)
+                .Include(r => r.User) // Lấy thông tin người dùng
+                .Include(r => r.ProductVariant) // Lấy thông tin biến thể
+                    .ThenInclude(pv => pv.Product) // Lấy thông tin sản phẩm
+                .OrderByDescending(r => r.CreatedAt) // Sắp xếp mới nhất lên đầu
+                .ToListAsync();
         }
     }
 }
