@@ -108,6 +108,8 @@ namespace Repositories.Implementations
                          .Include(o => o.ShippingMethod)
                          .Include(o => o.OrderItems)
                             .ThenInclude(oi => oi.ProductVariant)
+                                .ThenInclude(pv => pv.Product) 
+
                          .Include(o => o.Payments);
 
             return await PagedList<Order>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
@@ -119,6 +121,7 @@ namespace Repositories.Implementations
                     .Where(o => o.UserId == userId && !o.IsDeleted)
                     .Include(o => o.OrderItems)
                         .ThenInclude(oi => oi.ProductVariant)
+                            .ThenInclude(pv => pv.Product) 
                     .Include(o => o.Payments)
                     .Include(o => o.ShippingMethod)
                     .OrderByDescending(o => o.CreatedAt)

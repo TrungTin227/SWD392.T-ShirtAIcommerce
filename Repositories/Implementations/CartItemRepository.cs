@@ -23,7 +23,7 @@ namespace Repositories.Implementations
             {
         ci => ci.User,
         ci => ci.Product,
-        ci => ci.CustomDesign,
+        //ci => ci.CustomDesign,
         ci => ci.ProductVariant
             };
 
@@ -47,7 +47,7 @@ namespace Repositories.Implementations
                 ci => ci.UserId == userId,
                 q => q.OrderBy(ci => ci.CreatedAt),
                 ci => ci.Product,
-                ci => ci.CustomDesign,
+                //ci => ci.CustomDesign,
                 ci => ci.ProductVariant);
         }
 
@@ -57,17 +57,20 @@ namespace Repositories.Implementations
                 ci => ci.SessionId == sessionId && ci.UserId == null,
                 q => q.OrderBy(ci => ci.CreatedAt),
                 ci => ci.Product,
-                ci => ci.CustomDesign,
+                //ci => ci.CustomDesign,
                 ci => ci.ProductVariant);
         }
 
         public async Task<CartItem?> GetWithDetailsAsync(Guid id)
         {
-            return await GetByIdAsync(id,
-                ci => ci.User,
-                ci => ci.Product,
-                ci => ci.CustomDesign,
-                ci => ci.ProductVariant);
+            // Dùng FirstOrDefaultAsync để có thể dùng ThenInclude
+            return await _dbSet
+                .Where(ci => ci.Id == id)
+                .Include(ci => ci.User)
+                //.Include(ci => ci.CustomDesign) // Bỏ comment nếu bạn cần
+                .Include(ci => ci.ProductVariant)
+                    .ThenInclude(pv => pv.Product) // <-- Dòng quan trọng nhất để lấy được tên Product
+                .FirstOrDefaultAsync();
         }
 
         public async Task<CartItem?> FindExistingCartItemAsync(Guid? userId, string? sessionId, Guid? productVariantId, Guid? customDesignId)
@@ -99,10 +102,10 @@ namespace Repositories.Implementations
                 query = query.Where(ci => ci.ProductVariantId == productVariantId.Value);
             }
 
-            if (customDesignId.HasValue)
-            {
-                query = query.Where(ci => ci.CustomDesignId == customDesignId.Value);
-            }
+            //if (customDesignId.HasValue)
+            //{
+            //    query = query.Where(ci => ci.CustomDesignId == customDesignId.Value);
+            //}
 
             return await query.FirstOrDefaultAsync();
         }
@@ -243,7 +246,6 @@ namespace Repositories.Implementations
                 ci => ci.UserId == userId,
                 q => q.OrderBy(ci => ci.CreatedAt),
                 // Include all navigation properties needed for checkout
-                ci => ci.Product,
                 ci => ci.CustomDesign,
                 ci => ci.ProductVariant,
                 ci => ci.ProductVariant.Product, // Include Product from ProductVariant
@@ -259,8 +261,6 @@ namespace Repositories.Implementations
                 ci => ci.SessionId == sessionId && ci.UserId == null,
                 q => q.OrderBy(ci => ci.CreatedAt),
                 // Include all navigation properties needed for checkout
-                ci => ci.Product,
-                ci => ci.CustomDesign,
                 ci => ci.ProductVariant,
                 ci => ci.ProductVariant.Product, // Include Product from ProductVariant
                 ci => ci.User);

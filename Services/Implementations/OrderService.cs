@@ -1348,7 +1348,7 @@ namespace Services.Implementations
                 SelectedColor = orderItem.ProductVariant?.Color.ToString(),
                 SelectedSize = orderItem.ProductVariant?.Size.ToString(),
 
-                ProductName = orderItem.Product?.Name,
+                ProductName = orderItem.ProductVariant?.Product?.Name ?? "Không có tên",
                 CustomDesignName = orderItem.CustomDesign?.DesignName,
                 VariantName = orderItem.ProductVariant?.VariantSku
             };

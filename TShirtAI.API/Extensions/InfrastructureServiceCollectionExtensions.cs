@@ -35,8 +35,20 @@ namespace WebAPI.Extensions
                 opts.Cookie.Name = ".TShirtAICommerce.Session";
                 opts.IdleTimeout = TimeSpan.FromHours(1);
                 opts.Cookie.HttpOnly = true;
-            });
+                opts.Cookie.IsEssential = true;
 
+                // Cấu hình phù hợp cho development (localhost)
+                if (configuration.GetValue<bool>("IsDevelopment", true))
+                {
+                    opts.Cookie.SameSite = SameSiteMode.Lax;
+                    opts.Cookie.SecurePolicy = CookieSecurePolicy.None; // Không cần HTTPS cho dev
+                }
+                else
+                {
+                    opts.Cookie.SameSite = SameSiteMode.None;
+                    opts.Cookie.SecurePolicy = CookieSecurePolicy.Always; // Cần HTTPS cho production
+                }
+            });
             // === 1. Cấu hình Settings ===
             services.Configure<DTOs.UserDTOs.Identities.JwtSettings>(
                 configuration.GetSection("JwtSettings"));
@@ -53,10 +65,13 @@ namespace WebAPI.Extensions
 
             // === 3. CORS ===
             services.AddCors(opt =>
-                opt.AddPolicy("CorsPolicy", b => b
-                    .WithOrigins("http://localhost:5173")
-                    .AllowAnyMethod()
-                    .AllowAnyHeader()));
+                             opt.AddPolicy("CorsPolicy", b => b
+                                 .WithOrigins("http://localhost:5173")
+                                 .AllowAnyMethod()
+                                 .AllowAnyHeader()
+                                 .AllowCredentials() // QUAN TRỌNG: Cho phép gửi cookies
+                             ));
+
 
             // === 4. Identity & Authentication ===
             services.AddIdentity<ApplicationUser, ApplicationRole>(opts =>
@@ -117,7 +132,7 @@ namespace WebAPI.Extensions
                 googleOptions.ClientId = configuration["Authentication:Google:ClientId"];
                 googleOptions.ClientSecret = configuration["Authentication:Google:ClientSecret"];
             });
-            
+
             // === 5. HTTP Clients (Ví dụ VnPay) ===
             services.AddHttpClient<IVnPayService, VnPayService>();
             //Ai

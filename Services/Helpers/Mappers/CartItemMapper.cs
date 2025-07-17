@@ -22,7 +22,10 @@ namespace Services.Helpers.Mappers
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 UserName = entity.User?.UserName,
-                ProductName = entity.Product?.Name,
+
+                // SỬA Ở ĐÂY: Lấy tên Product thông qua ProductVariant
+                ProductName = entity.ProductVariant?.Product?.Name,
+
                 CustomDesignName = entity.CustomDesign?.DesignName,
                 ProductVariantName = entity.ProductVariant == null
                     ? null
@@ -53,9 +56,9 @@ namespace Services.Helpers.Mappers
             entity.UpdatedAt = DateTime.UtcNow;
         }
 
-        public static IEnumerable<CartItemDto> ToDtoList(IEnumerable<CartItem> entities)
+        public static List<CartItemDto> ToDtoList(IEnumerable<CartItem> entities)
         {
-            return entities.Select(ToDto);
+            return entities.Select(ToDto).ToList();
         }
 
         public static PagedList<CartItemDto> ToPagedDto(PagedList<CartItem> pagedEntities)
@@ -80,7 +83,7 @@ namespace Services.Helpers.Mappers
                 TotalQuantity = items.Sum(ci => ci.Quantity),
                 SubTotal = subtotal,
                 EstimatedTax = estimatedTax,
-                EstimatedTotal = subtotal  + estimatedTax,
+                EstimatedTotal = subtotal + estimatedTax,
                 Items = ToDtoList(items).ToList()
             };
         }

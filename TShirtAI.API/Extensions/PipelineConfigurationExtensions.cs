@@ -45,6 +45,7 @@ namespace WebAPI.Extensions
                 }
             }
 
+            app.UseSession();
             // 2. Common Middleware
             app.UseHttpsRedirection();
             app.UseRouting();

@@ -26,24 +26,29 @@ namespace WebAPI.Controllers
             _logger = logger;
         }
 
-        /// <summary>
-        /// Lấy giỏ hàng của người dùng hiện tại
-        /// </summary>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CartItemDto>>> GetMyCart()
         {
             try
             {
                 var userId = _currentUserService.GetUserId();
-                var sessionId = HttpContext.Session.Id;
 
-                var result = userId.HasValue
-                    ? await _cartItemService.GetUserCartItemsAsync(userId.Value)
-                    : await _cartItemService.GetSessionCartItemsAsync(sessionId);
+                if (userId.HasValue)
+                {
+                    var result = await _cartItemService.GetUserCartItemsAsync(userId.Value);
+                    return result.IsSuccess ? Ok(result.Data) : BadRequest(new ErrorResponse { Message = result.Message });
+                }
+                else
+                {
+                    // Đảm bảo session được khởi tạo
+                    await HttpContext.Session.LoadAsync();
+                    var sessionId = HttpContext.Session.Id;
 
-                return result.IsSuccess
-                    ? Ok(result.Data)
-                    : BadRequest(new ErrorResponse { Message = result.Message });
+                    _logger.LogInformation("Getting cart for session: {SessionId}", sessionId);
+
+                    var result = await _cartItemService.GetSessionCartItemsAsync(sessionId);
+                    return result.IsSuccess ? Ok(result.Data) : BadRequest(new ErrorResponse { Message = result.Message });
+                }
             }
             catch (Exception ex)
             {
@@ -94,11 +99,39 @@ namespace WebAPI.Controllers
             try
             {
                 var userId = _currentUserService.GetUserId();
+
+                // Đảm bảo session được khởi tạo
+                await HttpContext.Session.LoadAsync();
+
+                // Kiểm tra và tạo session data nếu chưa có
+                if (!HttpContext.Session.Keys.Any())
+                {
+                    HttpContext.Session.SetString("_init", DateTime.UtcNow.ToString());
+                    await HttpContext.Session.CommitAsync();
+                }
+
                 var sessionId = HttpContext.Session.Id;
+
+                // Log để debug
+                _logger.LogInformation("AddToCart - UserId: {UserId}, SessionId: {SessionId}, ItemCount: {Count}",
+                    userId, sessionId, items.Count);
+
+                // Kiểm tra session cookie
+                var hasCookie = HttpContext.Request.Cookies.ContainsKey(".TShirtAICommerce.Session");
+                _logger.LogInformation("Session cookie exists: {HasCookie}", hasCookie);
+
+                if (!hasCookie)
+                {
+                    _logger.LogWarning("No session cookie found in request headers");
+                    // Log tất cả cookies để debug
+                    foreach (var cookie in HttpContext.Request.Cookies)
+                    {
+                        _logger.LogInformation("Cookie: {Name} = {Value}", cookie.Key, cookie.Value);
+                    }
+                }
 
                 // Convert to internal DTOs
                 var internalItems = new List<InternalCreateCartItemDto>();
-
                 foreach (var item in items)
                 {
                     decimal unitPrice = 0;
@@ -106,14 +139,10 @@ namespace WebAPI.Controllers
                     {
                         unitPrice = await _cartItemService.GetUnitPriceFromProductVariant(item.ProductVariantId.Value);
                     }
-                    else
-                    {
-                        return BadRequest(new ErrorResponse { Message = "Không xác định được sản phẩm để lấy giá" });
-                    }
 
                     internalItems.Add(new InternalCreateCartItemDto
                     {
-                        CustomDesignId = item.CustomDesignId,
+                        //CustomDesignId = item.CustomDesignId,
                         ProductVariantId = item.ProductVariantId,
                         Quantity = item.Quantity,
                         UnitPrice = unitPrice,
@@ -123,6 +152,10 @@ namespace WebAPI.Controllers
                 }
 
                 var result = await _cartItemService.BulkAddToCartAsync(internalItems, userId, sessionId);
+
+                // Log kết quả
+                _logger.LogInformation("AddToCart result - Success: {Success}, Message: {Message}",
+                    result.IsSuccess, result.Message);
 
                 return result.IsSuccess
                     ? Ok(result.Data)
@@ -138,7 +171,6 @@ namespace WebAPI.Controllers
                 });
             }
         }
-
         /// <summary>
         /// Cập nhật sản phẩm trong giỏ hàng
         /// </summary>
@@ -370,6 +402,22 @@ namespace WebAPI.Controllers
                     Message = "Có lỗi xảy ra khi tính tổng tiền sản phẩm",
                     Details = ex.Message
                 });
+            }
+        }
+        public class SessionHelper
+        {
+            public static async Task<string> GetOrCreateSessionIdAsync(HttpContext httpContext)
+            {
+                // Load session nếu chưa được load
+                await httpContext.Session.LoadAsync();
+
+                // Nếu session chưa có data, set một value để force create session
+                if (string.IsNullOrEmpty(httpContext.Session.GetString("_SessionInit")))
+                {
+                    httpContext.Session.SetString("_SessionInit", DateTime.UtcNow.ToString());
+                }
+
+                return httpContext.Session.Id;
             }
         }
     }

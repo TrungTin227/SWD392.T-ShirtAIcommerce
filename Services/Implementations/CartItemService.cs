@@ -51,18 +51,24 @@ namespace Services.Implementations
         {
             return await ExecuteAsync(async () =>
             {
-                var existingCartItem = await _cartItemRepository.GetByIdAsync(id);
+                // THAY ĐỔI Ở ĐÂY: Dùng GetWithDetailsAsync để tải đầy đủ thông tin
+                var existingCartItem = await _cartItemRepository.GetWithDetailsAsync(id);
+
                 if (existingCartItem == null)
                     return ApiResult<CartItemDto>.Failure("Không tìm thấy sản phẩm trong giỏ hàng");
 
                 var validationResult = ValidateUpdateCartItem(updateDto);
                 if (!validationResult.IsSuccess) return validationResult;
 
+                // Cập nhật các trường cần thiết
                 CartItemMapper.UpdateEntity(existingCartItem, updateDto);
+
+                // Gọi phương thức UpdateAsync chung
                 var updatedCartItem = await UpdateAsync(existingCartItem);
 
-
+                // Bây giờ, updatedCartItem đã có đầy đủ thông tin để mapper hoạt động đúng
                 return ApiResult<CartItemDto>.Success(CartItemMapper.ToDto(updatedCartItem), "Cập nhật giỏ hàng thành công");
+
             }, "Lỗi khi cập nhật giỏ hàng");
         }
 
@@ -612,7 +618,7 @@ namespace Services.Implementations
             if (!CartItemBusinessLogic.IsValidQuantity(updateDto.Quantity))
                 return ApiResult<CartItemDto>.Failure("Số lượng không hợp lệ");
 
-          
+
             return ApiResult<CartItemDto>.Success(null);
         }
 
@@ -743,8 +749,8 @@ namespace Services.Implementations
                         var existingItem = await _cartItemRepository.FindExistingCartItemAsync(
                             createDto.UserId,
                             createDto.SessionId,
-                            createDto.ProductVariantId,  
-                            createDto.CustomDesignId);   
+                            createDto.ProductVariantId,
+                            createDto.CustomDesignId);
 
                         CartItem cartItem;
                         if (existingItem != null)
