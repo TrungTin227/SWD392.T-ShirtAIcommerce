@@ -285,6 +285,44 @@ namespace WebAPI.Controllers
             return Ok(result);
         }
 
+        [HttpDelete("bulk-delete")]
+        public async Task<IActionResult> BulkDeleteOrders([FromBody] List<Guid> orderIds)
+        {
+            if (orderIds == null || !orderIds.Any())
+            {
+                return BadRequest("Danh sách ID đơn hàng không được để trống.");
+            }
+
+            var userId = Guid.Parse(User.FindFirst("uid")!.Value);
+
+            var result = await _orderService.BulkDeleteOrdersAsync(orderIds, userId);
+
+            if (result.FailureCount > 0 && result.SuccessCount == 0)
+            {
+                // Nếu tất cả đều thất bại do validation
+                return BadRequest(result);
+            }
+
+            // Trả về 200 OK với kết quả chi tiết, ngay cả khi có một số thất bại
+            return Ok(result);
+        }
+        [HttpPost("purge-completed")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> PurgeCompletedOrders([FromBody] PurgeOrdersRequest request)
+        {
+
+
+            // Bây giờ bạn có thể sử dụng biến adminId một cách an toàn
+            var result = await _orderService.PurgeCompletedOrdersAsync(request.DaysOld);
+
+            if ((result.IsPartialSuccess || result.IsCompleteFailure) && result.TotalRequested > 0)
+            {
+                return StatusCode(500, result);
+            }
+
+            return Ok(result);
+        }
+
         #region Helper Methods
 
         private Guid? GetCurrentUserIdOrUnauthorized()

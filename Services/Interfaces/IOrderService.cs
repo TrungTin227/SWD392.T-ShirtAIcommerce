@@ -12,7 +12,7 @@ namespace Services.Interfaces
         Task<OrderDTO?> GetOrderByIdAsync(Guid orderId);
         Task<CreateOrderResult> CreateOrderAsync(CreateOrderRequest request, Guid? userId);
         Task<OrderDTO?> UpdateOrderAsync(Guid orderId, UpdateOrderRequest request, Guid? updatedBy = null);
-        Task<bool> DeleteOrderAsync(Guid orderId, Guid? deletedBy = null);
+        Task<BatchOperationResultDTO> BulkDeleteOrdersAsync(List<Guid> orderIds, Guid? deletedBy = null);
         Task<IEnumerable<OrderDTO>> GetUserOrdersAsync(Guid userId);
         Task<bool> IsOrderOwnedByUserAsync(Guid orderId, Guid userId);
         Task<bool> UpdateOrderStatusAsync(Guid orderId, OrderStatus status, Guid? updatedBy = null);
@@ -69,6 +69,7 @@ namespace Services.Interfaces
         Task<BatchOperationResultDTO> BulkProcessOrdersAsync(List<Guid> orderIds, Guid staffId);
         Task<DashboardAnalyticsDto?> GetDashboardAnalyticsAsync();
 
+        Task<BatchOperationResultDTO> PurgeCompletedOrdersAsync(int daysOld);
 
     }
 }

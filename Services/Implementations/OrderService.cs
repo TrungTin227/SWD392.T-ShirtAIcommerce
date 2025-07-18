@@ -7,6 +7,7 @@ using DTOs.Coupons;
 using DTOs.OrderItem;
 using DTOs.Orders;
 using DTOs.Payments;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
@@ -409,34 +410,84 @@ namespace Services.Implementations
                 throw;
             }
         }
-
-        public async Task<bool> DeleteOrderAsync(Guid orderId, Guid? deletedBy = null)
+        public async Task<BatchOperationResultDTO> BulkDeleteOrdersAsync(List<Guid> orderIds, Guid? deletedBy = null)
         {
+            var result = new BatchOperationResultDTO
+            {
+                TotalRequested = orderIds.Count
+            };
+
+            if (!orderIds.Any())
+            {
+                result.Message = "Danh sách ID đơn hàng không được để trống.";
+                return result;
+            }
+
+            // Sử dụng một transaction để đảm bảo tất cả các thao tác xóa thành công hoặc không có gì xảy ra.
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
-                var order = await _orderRepository.GetByIdAsync(orderId);
-                if (order == null || order.IsDeleted)
-                    return false;
+                foreach (var orderId in orderIds)
+                {
+                    var order = await _orderRepository.GetByIdAsync(orderId);
 
-                if (order.Status != OrderStatus.Pending)
-                    throw new InvalidOperationException("Chỉ có thể xóa đơn hàng đang chờ xử lý");
+                    // Kiểm tra các điều kiện xóa
+                    if (order == null || order.IsDeleted)
+                    {
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Đơn hàng không tồn tại hoặc đã bị xóa." });
+                        continue; // Bỏ qua và xử lý ID tiếp theo
+                    }
 
-                var result = await DeleteAsync(orderId);
-                if (result)
+                    if (order.Status != OrderStatus.Pending)
+                    {
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Chỉ có thể xóa đơn hàng đang chờ xử lý." });
+                        continue; // Bỏ qua và xử lý ID tiếp theo
+                    }
+
+                    // Nếu mọi thứ đều ổn, thực hiện xóa
+                    var deleteResult = await _orderRepository.DeleteAsync(orderId); // Giả sử đây là xóa vật lý hoặc soft delete
+                    if (deleteResult)
+                    {
+                        result.SuccessIds.Add(orderId.ToString());
+                    }
+                    else
+                    {
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Xóa đơn hàng thất bại từ repository." });
+                    }
+                }
+
+                result.SuccessCount = result.SuccessIds.Count;
+                result.FailureCount = result.Errors.Count;
+
+                // Chỉ commit transaction nếu có ít nhất một đơn hàng được xóa thành công
+                if (result.SuccessCount > 0)
                 {
                     await _unitOfWork.SaveChangesAsync();
                     await transaction.CommitAsync();
+                    result.Message = $"Thao tác hoàn tất. Đã xóa thành công {result.SuccessCount}/{result.TotalRequested} đơn hàng.";
                 }
-                return result;
+                else
+                {
+                    // Nếu không có gì để xóa hoặc tất cả đều lỗi, hãy rollback để không có thay đổi nào được lưu.
+                    await transaction.RollbackAsync();
+                    result.Message = "Không có đơn hàng nào được xóa do không thỏa mãn điều kiện.";
+                }
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error deleting order {OrderId}", orderId);
-                throw;
+                _logger.LogError(ex, "Lỗi nghiêm trọng xảy ra khi đang xóa hàng loạt đơn hàng. User: {DeletedBy}", deletedBy);
+                // Cập nhật kết quả để phản ánh lỗi
+                result.Message = "Đã có lỗi hệ thống xảy ra. Vui lòng thử lại.";
+                result.Errors.Add(new BatchOperationErrorDTO { Id = "System", ErrorMessage = ex.Message });
+                result.FailureCount = result.TotalRequested;
+                result.SuccessCount = 0;
+                result.SuccessIds.Clear();
             }
+
+            return result;
         }
+
         public async Task<IEnumerable<OrderDTO>> GetUserOrdersAsync(Guid userId)
         {
             try
@@ -1820,6 +1871,84 @@ namespace Services.Implementations
                 _logger.LogError(ex, "Lỗi khi lấy dữ liệu analytics cho dashboard");
                 return null; // Trả về null khi có lỗi, giống với mẫu thiết kế của bạn
             }
+        }
+        public async Task<BatchOperationResultDTO> PurgeCompletedOrdersAsync(int daysOld)
+        {
+            var result = new BatchOperationResultDTO
+            {
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
+            };
+
+            if (daysOld <= 0)
+            {
+                result.Message = "Số ngày phải lớn hơn 0.";
+                return result;
+            }
+
+            var thresholdDate = DateTime.UtcNow.AddDays(-daysOld);
+
+            // Use GetQueryable() to filter orders
+            var ordersToPurge = _orderRepository.GetQueryable()
+                        .Where(o => o.Status == OrderStatus.Completed &&
+                                    o.UpdatedAt < thresholdDate);
+
+            var ordersList = await ordersToPurge.ToListAsync();
+            result.TotalRequested = ordersList.Count;
+
+            if (!ordersList.Any())
+            {
+                result.Message = "Không tìm thấy đơn hàng nào phù hợp để xóa.";
+                return result;
+            }
+
+            _logger.LogInformation("Found {Count} completed orders older than {Date} to purge.", result.TotalRequested, thresholdDate.Date);
+
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                foreach (var order in ordersList)
+                {
+                    var deleteResult = await _orderRepository.DeleteAsync(order.Id);
+                    if (deleteResult)
+                    {
+                        result.SuccessIds.Add(order.Id.ToString());
+                    }
+                    else
+                    {
+                        result.Errors.Add(new BatchOperationErrorDTO
+                        {
+                            Id = order.Id.ToString(),
+                            ErrorMessage = "Xóa đơn hàng thất bại"
+                        });
+                    }
+                }
+
+                result.SuccessCount = result.SuccessIds.Count;
+                result.FailureCount = result.Errors.Count;
+
+                if (result.SuccessCount > 0)
+                {
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    result.Message = $"Đã xóa thành công {result.SuccessCount} đơn hàng.";
+                    _logger.LogInformation(result.Message);
+                }
+                else
+                {
+                    await transaction.RollbackAsync();
+                    result.Message = $"Thao tác bị hủy bỏ. Không xóa được đơn hàng nào.";
+                    _logger.LogWarning(result.Message);
+                }
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi nghiêm trọng xảy ra khi đang xóa hàng loạt các đơn hàng cũ.");
+                result.Message = "Đã có lỗi xảy ra trong quá trình xử lý.";
+            }
+
+            return result;
         }
     }
 }
