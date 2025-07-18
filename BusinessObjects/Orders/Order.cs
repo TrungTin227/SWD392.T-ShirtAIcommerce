@@ -97,5 +97,7 @@ namespace BusinessObjects.Orders
 
         [NotMapped] // Không lưu vào database
         public decimal SubtotalAmount => OrderItems?.Sum(oi => oi.TotalPrice) ?? 0;
+        [NotMapped]
+        public PaymentMethod PaymentMethod { get; set; } 
     }
 }

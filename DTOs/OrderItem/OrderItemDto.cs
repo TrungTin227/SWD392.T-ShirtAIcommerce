@@ -18,6 +18,7 @@
         public string? ProductName { get; set; }
         public string? CustomDesignName { get; set; }
         public string? VariantName { get; set; }
+        public string? ImageUrl { get; set; }
     }
 
     public class CreateOrderItemDto

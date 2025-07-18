@@ -15,6 +15,7 @@ namespace DTOs.Orders
         public decimal RefundAmount { get; set; }
         public OrderStatus Status { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
+        public PaymentMethod PaymentMethod { get; set; }
         public string ShippingAddress { get; set; } = string.Empty;
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;

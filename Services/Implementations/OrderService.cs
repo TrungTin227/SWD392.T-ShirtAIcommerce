@@ -1304,14 +1304,17 @@ namespace Services.Implementations
                 TotalAmount = order.TotalAmount,
                 ShippingFee = order.ShippingFee,
                 DiscountAmount = order.DiscountAmount,
+                RefundAmount = order.RefundAmount,
                 Status = order.Status,
                 PaymentStatus = order.PaymentStatus,
+                PaymentMethod = order.PaymentMethod,
                 ShippingAddress = order.ShippingAddress,
                 ReceiverName = order.ReceiverName,
                 ReceiverPhone = order.ReceiverPhone,
                 CustomerNotes = order.CustomerNotes,
                 EstimatedDeliveryDate = order.EstimatedDeliveryDate,
                 TrackingNumber = order.TrackingNumber,
+                CancellationReason = order.CancellationReason, 
                 AssignedStaffId = order.AssignedStaffId,
                 CouponId = order.CouponId,
                 ShippingMethodId = order.ShippingMethodId,
@@ -1350,7 +1353,9 @@ namespace Services.Implementations
 
                 ProductName = orderItem.ProductVariant?.Product?.Name ?? "Không có tên",
                 CustomDesignName = orderItem.CustomDesign?.DesignName,
+                ImageUrl = orderItem.ProductVariant?.ImageUrl,
                 VariantName = orderItem.ProductVariant?.VariantSku
+
             };
         }
 
