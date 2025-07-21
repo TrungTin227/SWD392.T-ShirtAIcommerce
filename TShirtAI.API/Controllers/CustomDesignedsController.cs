@@ -126,7 +126,13 @@ namespace WebAPI.Controllers
             {
                 try
                 {
-                    aiImageUrl = await _aiImageService.GenerateDesignImageAsync(req.PromptText);
+                    aiImageUrl = await _aiImageService.GenerateDesignImageAsync(
+   (int)req.ShirtType,
+   (int)req.BaseColor,
+   (int)req.Size,
+   req.SpecialRequirements,
+   req.PromptText
+);
                 }
                 catch (Exception ex)
                 {
