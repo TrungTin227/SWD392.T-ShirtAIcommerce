@@ -150,5 +150,31 @@ public class ReviewsController : ControllerBase
         // Trả về 204 No Content là chuẩn RESTful cho việc xóa thành công
         return NoContent();
     }
+    [HttpGet("by-variant/{productVariantId}/my-review")]
+    [Authorize] // Bắt buộc phải đăng nhập để biết "tôi" là ai
+    public async Task<IActionResult> GetMyReviewForVariant(Guid productVariantId)
+    {
+        // Lấy ID của người dùng đang đăng nhập từ service
+        var userId = _currentUserService.GetUserId();
+        if (!userId.HasValue)
+        {
+            // Trường hợp này hiếm khi xảy ra nếu [Authorize] hoạt động đúng,
+            // nhưng vẫn nên kiểm tra để đảm bảo an toàn.
+            return Unauthorized("Không xác thực được người dùng.");
+        }
+
+        // Gọi service để lấy dữ liệu
+        var reviewDto = await _reviewService.GetMyReviewForVariantAsync(productVariantId, userId.Value);
+
+        // Nếu service trả về null, tức là không tìm thấy
+        if (reviewDto == null)
+        {
+            // Trả về 404 Not Found là chuẩn RESTful trong trường hợp này
+            return NotFound(new { message = "Bạn chưa đánh giá sản phẩm này." });
+        }
+
+        // Nếu tìm thấy, trả về dữ liệu với mã 200 OK
+        return Ok(reviewDto);
+    }
 
 }

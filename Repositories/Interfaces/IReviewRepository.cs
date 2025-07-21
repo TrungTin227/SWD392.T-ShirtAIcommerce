@@ -13,6 +13,8 @@ namespace Repositories.Interfaces
         Task<bool> HasUserReviewedVariantInOrderAsync(Guid userId, Guid productVariantId, Guid orderId);
         Task<ReviewStatsDto> GetReviewStatsByVariantIdAsync(Guid productVariantId);
         Task<IEnumerable<Review>> GetApprovedReviewsByProductIdAsync(Guid productId);
-        
+        Task<Review?> GetReviewByVariantAndUserAsync(Guid productVariantId, Guid userId);
+
+
     }
 }

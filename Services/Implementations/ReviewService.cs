@@ -253,6 +253,17 @@ namespace Services.Implementations
                 CreatedAt = review.CreatedAt
             };
         }
+        public async Task<ReviewDto?> GetMyReviewForVariantAsync(Guid productVariantId, Guid userId)
+        {
+            var review = await _reviewRepository.GetReviewByVariantAndUserAsync(productVariantId, userId);
 
+            if (review == null)
+            {
+                return null; // Không tìm thấy đánh giá nào
+            }
+
+            // Nếu tìm thấy, map nó sang DTO và trả về
+            return MapToDto(review);
+        }
     }
 }

@@ -14,5 +14,8 @@ namespace Services.Interfaces
         Task<ApiResult<ReviewDto>> UpdateReviewAsync(Guid reviewId, UpdateReviewDto updateDto, Guid userId);
         Task<ApiResult> DeleteReviewAsync(Guid reviewId, Guid userId);
 
+        Task<ReviewDto?> GetMyReviewForVariantAsync(Guid productVariantId, Guid userId);
+
+
     }
 }

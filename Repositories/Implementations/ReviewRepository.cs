@@ -13,17 +13,66 @@ namespace Repositories.Implementations
 
         public async Task<PagedList<Review>> GetReviewsAsync(ReviewFilterDto filter)
         {
-            // Xây dựng câu truy vấn IQueryable của bạn ở đây
-            IQueryable<Review> query = _dbSet.AsQueryable();
+            // 1. Bắt đầu câu truy vấn và bao gồm các dữ liệu liên quan để tránh lỗi N+1
+            IQueryable<Review> query = _dbSet
+                .Include(r => r.User) // Tải thông tin người dùng
+                .Include(r => r.ProductVariant) // Tải thông tin biến thể
+                    .ThenInclude(pv => pv.Product) // Từ biến thể, tải thông tin sản phẩm
+                .AsQueryable();
 
-            // Áp dụng các bộ lọc (filter) nếu có
-            // if (!string.IsNullOrEmpty(filter.SearchTerm)) { ... }
-            // if (filter.Rating.HasValue) { ... }
+            // 2. Áp dụng các bộ lọc (filter) một cách có điều kiện
+            // Chỉ thêm mệnh đề WHERE nếu giá trị filter được cung cấp
 
-            // Sắp xếp
-            query = query.OrderByDescending(r => r.CreatedAt);
+            // Lọc theo ProductVariantId
+            if (filter.ProductVariantId.HasValue && filter.ProductVariantId.Value != Guid.Empty)
+            {
+                query = query.Where(r => r.ProductVariantId == filter.ProductVariantId.Value);
+            }
 
-            // Trả về kết quả phân trang bằng phương thức mở rộng
+            // Lọc theo UserId
+            if (filter.UserId.HasValue && filter.UserId.Value != Guid.Empty)
+            {
+                query = query.Where(r => r.UserId == filter.UserId.Value);
+            }
+
+            // Lọc theo số sao (Rating)
+            if (filter.Rating.HasValue)
+            {
+                query = query.Where(r => r.Rating == filter.Rating.Value);
+            }
+
+            // Lọc theo trạng thái (Status)
+            if (filter.Status.HasValue)
+            {
+                query = query.Where(r => r.Status == filter.Status.Value);
+            }
+
+            // 3. Áp dụng sắp xếp động
+            // Mặc định sắp xếp theo ngày tạo mới nhất
+            if (!string.IsNullOrWhiteSpace(filter.OrderBy))
+            {
+                switch (filter.OrderBy.ToLowerInvariant())
+                {
+                    case "rating":
+                        query = filter.OrderByDescending
+                            ? query.OrderByDescending(r => r.Rating).ThenByDescending(r => r.CreatedAt)
+                            : query.OrderBy(r => r.Rating).ThenBy(r => r.CreatedAt);
+                        break;
+                    case "createdat":
+                    default:
+                        query = filter.OrderByDescending
+                            ? query.OrderByDescending(r => r.CreatedAt)
+                            : query.OrderBy(r => r.CreatedAt);
+                        break;
+                }
+            }
+            else
+            {
+                // Sắp xếp mặc định nếu OrderBy không được cung cấp
+                query = query.OrderByDescending(r => r.CreatedAt);
+            }
+
+            // 4. Thực thi truy vấn với phân trang
             return await PagedList<Review>.ToPagedListAsync(query, filter.PageNumber, filter.PageSize);
         }
         public async Task<Review?> GetReviewDetailsAsync(Guid reviewId)
@@ -86,6 +135,18 @@ namespace Repositories.Implementations
                     .ThenInclude(pv => pv.Product) // Lấy thông tin sản phẩm
                 .OrderByDescending(r => r.CreatedAt) // Sắp xếp mới nhất lên đầu
                 .ToListAsync();
+        }
+        public async Task<Review?> GetReviewByVariantAndUserAsync(Guid productVariantId, Guid userId)
+        {
+            // Tìm bài đánh giá đầu tiên (và duy nhất) khớp với cả hai điều kiện
+            // và bao gồm các thông tin liên quan để mapping sang DTO
+            return await _dbSet
+                .Include(r => r.User)
+                .Include(r => r.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .FirstOrDefaultAsync(r => r.ProductVariantId == productVariantId &&
+                                            r.UserId == userId &&
+                                            !r.IsDeleted);
         }
     }
 }
