@@ -14,13 +14,16 @@ namespace WebAPI.Controllers
     public class PaymentsController : ControllerBase
     {
         private readonly IPaymentService _paymentService;
-        private readonly IOrderService _orderService;  
+        private readonly IOrderService _orderService;
+        private readonly IConfiguration _configuration;
 
 
-        public PaymentsController(IPaymentService paymentService, IOrderService orderService)
+
+        public PaymentsController(IPaymentService paymentService, IOrderService orderService, IConfiguration configuration)
         {
             _paymentService = paymentService;
-            _orderService=orderService;
+            _orderService = orderService;
+            _configuration = configuration;
         }
 
         [HttpPost("create")]
@@ -46,37 +49,49 @@ namespace WebAPI.Controllers
         }
 
 
+        /// <summary>
+        /// Endpoint để VnPay gọi về sau khi khách hàng hoàn tất thanh toán.
+        /// Endpoint này sẽ xác thực và sau đó chuyển hướng người dùng về Frontend.
+        /// </summary>
         [AllowAnonymous]
         [HttpGet("vnpay/return")]
         public async Task<IActionResult> VnPayReturn([FromQuery] VnPayCallbackRequest callback)
         {
-            try
-            {
-                var isValid = await _paymentService.HandleVnPayCallbackAsync(callback);
-                if (!isValid)
-                    return BadRequest(new { success = false, message = "Invalid signature" });
 
-                var respCode = callback.vnp_ResponseCode;
-                var isSuccess = respCode == "00";
+            // 1. Gọi service để xử lý callback, xác thực chữ ký và cập nhật DB.
+            var isSignatureValid = await _paymentService.HandleVnPayCallbackAsync(callback);
 
-                return Ok(new
-                {
-                    success = isSuccess,
-                    message = isSuccess ? "Payment successful" : "Payment failed",
-                    responseCode = respCode,
-                    data = isSuccess ? new
-                    {
-                        transactionId = callback.vnp_TransactionNo,
-                        amount = callback.vnp_Amount,
-                        orderInfo = callback.vnp_OrderInfo,
-                        payDate = callback.vnp_CreateDate
-                    } : null
-                });
-            }
-            catch (Exception ex)
+            // 2. Lấy URL của Frontend từ file cấu hình.
+            var baseUrl = _configuration["Frontend:BaseUrl"];
+            var successPath = _configuration["Frontend:PaymentSuccessPath"];
+            var failurePath = _configuration["Frontend:PaymentFailurePath"];
+
+            // Kiểm tra để đảm bảo cấu hình tồn tại
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(successPath) || string.IsNullOrEmpty(failurePath))
             {
-                return BadRequest(new { success = false, message = ex.Message });
+                // Trả về lỗi server nếu thiếu cấu hình, vì đây là lỗi phía server
+                return StatusCode(500, "Server configuration error.");
             }
+
+            // 3. Xác định trạng thái thanh toán cuối cùng
+            var isPaymentSuccess = isSignatureValid && callback.vnp_ResponseCode == "00";
+
+            // 4. Xây dựng URL để chuyển hướng về Frontend
+            string redirectUrl;
+            if (isPaymentSuccess)
+            {
+                // Chuyển hướng về trang thành công, đính kèm các thông tin cần thiết
+                // vnp_TxnRef chứa ID của Payment, rất hữu ích cho FE
+                redirectUrl = $"{baseUrl}{successPath}?paymentId={callback.vnp_TxnRef}&status=success&amount={callback.vnp_Amount}";
+            }
+            else
+            {
+                // Chuyển hướng về trang thất bại
+                redirectUrl = $"{baseUrl}{failurePath}?paymentId={callback.vnp_TxnRef}&status=failure&errorCode={callback.vnp_ResponseCode}";
+            }
+
+            // 5. Thực hiện chuyển hướng trình duyệt
+            return Redirect(redirectUrl);
         }
 
 
