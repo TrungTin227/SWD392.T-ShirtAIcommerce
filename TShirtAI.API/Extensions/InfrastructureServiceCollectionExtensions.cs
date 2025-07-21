@@ -35,20 +35,8 @@ namespace WebAPI.Extensions
                 opts.Cookie.Name = ".TShirtAICommerce.Session";
                 opts.IdleTimeout = TimeSpan.FromHours(1);
                 opts.Cookie.HttpOnly = true;
-                opts.Cookie.IsEssential = true;
-
-                // Cấu hình phù hợp cho development (localhost)
-                if (configuration.GetValue<bool>("IsDevelopment", true))
-                {
-                    opts.Cookie.SameSite = SameSiteMode.Lax;
-                    opts.Cookie.SecurePolicy = CookieSecurePolicy.None; // Không cần HTTPS cho dev
-                }
-                else
-                {
-                    opts.Cookie.SameSite = SameSiteMode.None;
-                    opts.Cookie.SecurePolicy = CookieSecurePolicy.Always; // Cần HTTPS cho production
-                }
             });
+
             // === 1. Cấu hình Settings ===
             services.Configure<DTOs.UserDTOs.Identities.JwtSettings>(
                 configuration.GetSection("JwtSettings"));
@@ -65,13 +53,10 @@ namespace WebAPI.Extensions
 
             // === 3. CORS ===
             services.AddCors(opt =>
-                             opt.AddPolicy("CorsPolicy", b => b
-                                 .WithOrigins("http://localhost:5173")
-                                 .AllowAnyMethod()
-                                 .AllowAnyHeader()
-                                 .AllowCredentials() // QUAN TRỌNG: Cho phép gửi cookies
-                             ));
-
+                opt.AddPolicy("CorsPolicy", b => b
+                    .WithOrigins("http://localhost:5173")
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()));
 
             // === 4. Identity & Authentication ===
             services.AddIdentity<ApplicationUser, ApplicationRole>(opts =>
@@ -135,7 +120,6 @@ namespace WebAPI.Extensions
 
             // === 5. HTTP Clients (Ví dụ VnPay) ===
             services.AddHttpClient<IVnPayService, VnPayService>();
-            //Ai
             services.AddHttpClient<IAiImageService, AiImageService>();
 
             // === 6. Repositories & Domain Services ===
@@ -179,6 +163,7 @@ namespace WebAPI.Extensions
             services.AddScoped<IWishlistService, WishlistService>();
             services.AddScoped<IProductVariantService, ProductVariantService>();
             services.AddScoped<IUserCouponService, UserCouponService>();
+            services.AddScoped<ITranslateService, TranslateService>();
             // === 7. Email & Quartz ===
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
 

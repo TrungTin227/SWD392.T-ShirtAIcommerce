@@ -5,16 +5,20 @@ using System.ComponentModel;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
+using Services.Interfaces;
+
 
 public class AiImageService : IAiImageService
 {
     private readonly HttpClient _httpClient;
     private readonly string _openAiApiKey;
+    private readonly ITranslateService _translateService;
 
-    public AiImageService(HttpClient httpClient, IConfiguration config)
+    public AiImageService(HttpClient httpClient, IConfiguration config, ITranslateService translateService)
     {
         _httpClient = httpClient;
         _openAiApiKey = config["OpenAI:ApiKey"];
+        _translateService = translateService;
     }
 
     // Đúng với interface
@@ -22,6 +26,7 @@ public class AiImageService : IAiImageService
     {
         if (string.IsNullOrWhiteSpace(prompt))
             throw new ArgumentException("Prompt is required for AI image generation!");
+
 
         var encodedPrompt = Uri.EscapeDataString(prompt);
         var imageUrl = $"https://image.pollinations.ai/prompt/{encodedPrompt}";
@@ -35,11 +40,18 @@ public class AiImageService : IAiImageService
 
     // Overload mở rộng cho prompt mẫu
     public async Task<string> GenerateDesignImageAsync(
-        int shirtType, int baseColor, int size, string? specialRequirements, string userPrompt)
+    int shirtType, int baseColor, int size, string? specialRequirements, string userPrompt)
     {
-        var prompt = BuildPrompt(shirtType, baseColor, size, specialRequirements, userPrompt);
+        // 1. Dịch chỉ phần user prompt
+        var translatedUserPrompt = await _translateService.TranslateAsync(userPrompt, "en");
+
+        // 2. Build prompt tiếng Anh như cũ, lắp phần đã dịch vào
+        var prompt = BuildPrompt(shirtType, baseColor, size, specialRequirements, translatedUserPrompt);
+
+        // 3. Tạo image như bình thường
         return await GenerateDesignImageAsync(prompt);
     }
+
 
     // Hàm map enum thành chuỗi mô tả tiếng Anh cho AI
     private string GetShirtTypeText(int shirtType)
@@ -91,15 +103,16 @@ public class AiImageService : IAiImageService
     }
 
     // Build prompt chuẩn cho Pollinations AI (có thể sửa template theo ý muốn)
-   private string BuildPrompt(int shirtType, int baseColor, int size, string? specialRequirements, string userPrompt)
-{
-    var shirtTypeText = GetShirtTypeText(shirtType);
-    var baseColorText = GetBaseColorText(baseColor);
-    var sizeText = GetSizeText(size);
-    var special = string.IsNullOrWhiteSpace(specialRequirements) ? "" : $", {specialRequirements.Trim()}";
+    private string BuildPrompt(int shirtType, int baseColor, int size, string? specialRequirements, string userPrompt)
+    {
+        var shirtTypeText = GetShirtTypeText(shirtType);
+        var baseColorText = GetBaseColorText(baseColor);
+        var sizeText = GetSizeText(size);
+        var special = string.IsNullOrWhiteSpace(specialRequirements) ? "" : $", {specialRequirements.Trim()}";
 
-    return $"A centered photorealistic front view mockup of a {baseColorText} {shirtTypeText} inside a 1024x1024px square frame, shirt height about 700px, full shirt visible, no background, the following design printed on the {shirtTypeText}: \"{userPrompt}\". High quality, isolated, plain, professional.";
-}
+        return $"A centered photorealistic front view mockup of a {baseColorText} {shirtTypeText} inside a 1024x1024px square frame, shirt height about 700px, full shirt visible, no background, the following design printed on the {shirtTypeText}: \"{userPrompt}\". High quality, isolated, plain, professional.";
+    }
+
 
 
 }
