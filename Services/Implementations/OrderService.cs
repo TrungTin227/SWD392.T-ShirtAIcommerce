@@ -584,7 +584,7 @@ namespace Services.Implementations
                 }
 
                 // Kiểm tra xem đơn hàng có ở trạng thái cho phép hủy hay không
-                if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
+                if (order.Status == OrderStatus.Cancelled)
                 {
                     throw new InvalidOperationException("Không thể hủy đơn hàng đã được giao hoặc đã bị hủy trước đó");
                 }

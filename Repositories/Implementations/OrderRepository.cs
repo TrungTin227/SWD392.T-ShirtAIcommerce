@@ -269,7 +269,7 @@ namespace Repositories.Implementations
             if (order == null || order.IsDeleted) return false;
 
             // Only allow cancellation for certain statuses
-            if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Cancelled)
+            if (order.Status == OrderStatus.Cancelled)
                 return false;
 
             order.Status = OrderStatus.Cancelled;

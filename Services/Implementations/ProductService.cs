@@ -103,43 +103,47 @@ namespace Services.Implementations
         {
             return await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                try
+                if (!dto.SalePrice.HasValue || dto.SalePrice.Value <= 0)
                 {
-                    // Validate unique constraints
-                    if (!string.IsNullOrWhiteSpace(dto.Sku) && await _productRepository.IsSkuExistsAsync(dto.Sku))
-                        return ApiResult<ProductDto>.Failure("SKU already exists");
+                    dto.SalePrice = null; 
+                }
+                // 1. Validate unique constraints
+                if (!string.IsNullOrWhiteSpace(dto.Sku) && await _productRepository.IsSkuExistsAsync(dto.Sku))
+                    return ApiResult<ProductDto>.Failure("SKU already exists");
 
-                    if (!string.IsNullOrWhiteSpace(dto.Slug) && await _productRepository.IsSlugExistsAsync(dto.Slug))
-                        return ApiResult<ProductDto>.Failure("Slug already exists");
+                if (!string.IsNullOrWhiteSpace(dto.Slug) && await _productRepository.IsSlugExistsAsync(dto.Slug))
+                    return ApiResult<ProductDto>.Failure("Slug already exists");
 
-                    // Validate business rules
-                    if (dto.SalePrice.HasValue && dto.SalePrice >= dto.Price)
-                        return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
+                // 2. Validate business rules
+                if (dto.SalePrice.HasValue && dto.SalePrice >= dto.Price)
+                    return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
 
-                    // Map & create product
-                    var product = MapToEntity(dto);
+                // 3. Map từ DTO sang Entity
+                var product = MapToEntity(dto);
 
-                    // Thêm logic để lưu ProductImages nếu có
-                    if (dto.Images != null && dto.Images.Any())
+                // 4. Map collection Images
+                if (dto.Images != null && dto.Images.Any())
+                {
+                    product.Images = dto.Images.Select(imageDto => new ProductImage
                     {
-                        product.Images = dto.Images.Select(imageDto => new ProductImage
-                        {
-                            Id = Guid.NewGuid(),
-                            ProductId = product.Id,
-                            Url = imageDto.Url,
-                            IsPrimary = imageDto.IsPrimary
-                        }).ToList();
-                    }
+                        Id = Guid.NewGuid(),
+                        ProductId = product.Id,
+                        Url = imageDto.Url,
+                        IsPrimary = imageDto.IsPrimary
+                    }).ToList();
+                }
 
-                    var result = await CreateAsync(product);
-                    return ApiResult<ProductDto>.Success(MapToDto(result));
-                }
-                catch (Exception ex)
-                {
-                    return ApiResult<ProductDto>.Failure($"Error creating product: {ex.Message}", ex);
-                }
+                // 5. Thêm entity vào DbContext để theo dõi
+                await CreateAsync(product); // Gọi hàm base, chỉ add vào context, không save
+
+                // 6. LƯU TẤT CẢ THAY ĐỔI XUỐNG DATABASE
+                await _unitOfWork.SaveChangesAsync();
+
+                // 7. Trả về DTO đã được tạo thành công
+                return ApiResult<ProductDto>.Success(MapToDto(product), "Product created successfully");
             });
         }
+
         public async Task<ApiResult<ProductDto>> UpdateAsync(Guid id, UpdateProductDto dto)
         {
             return await _unitOfWork.ExecuteTransactionAsync(async () =>
@@ -149,67 +153,74 @@ namespace Services.Implementations
                 if (product == null || product.IsDeleted)
                     return ApiResult<ProductDto>.Failure("Product not found");
 
-                // 2. Validate unique SKU/Slug
+                // 2. Validate (giữ nguyên logic)
                 if (!string.IsNullOrWhiteSpace(dto.Sku) && dto.Sku != product.Sku &&
                     await _productRepository.IsSkuExistsAsync(dto.Sku, id))
-                {
                     return ApiResult<ProductDto>.Failure("SKU already exists");
+                if (dto.SalePrice.HasValue && dto.SalePrice.Value <= 0)
+                {
+                    dto.SalePrice = null; 
                 }
-
                 if (!string.IsNullOrWhiteSpace(dto.Slug) && dto.Slug != product.Slug &&
                     await _productRepository.IsSlugExistsAsync(dto.Slug, id))
-                {
                     return ApiResult<ProductDto>.Failure("Slug already exists");
-                }
 
-                // 3. Validate business rules về giá
-                var newPrice = dto.Price     ?? product.Price;
-                var newSalePrice = dto.SalePrice ?? product.SalePrice;
-                if (newSalePrice.HasValue && newSalePrice >= newPrice)
+                var newPrice = dto.Price ?? product.Price;
+                var newSalePrice = dto.SalePrice;
+                if (newSalePrice.HasValue && newSalePrice.Value >= newPrice)
                     return ApiResult<ProductDto>.Failure("Sale price must be less than regular price");
 
-                // 4. Map các trường cơ bản từ DTO lên entity
-                if (dto.Name            != null) product.Name            = dto.Name;
-                if (dto.Description     != null) product.Description     = dto.Description;
-                if (dto.Price           != null) product.Price           = dto.Price.Value;
-                if (dto.SalePrice       != null) product.SalePrice       = dto.SalePrice;
-                if (dto.Sku             != null) product.Sku             = dto.Sku;
-                if (dto.CategoryId      != null) product.CategoryId      = dto.CategoryId.Value;
-                if (dto.Material        != null) product.Material        = dto.Material.Value;
-                if (dto.Season          != null) product.Season          = dto.Season.Value;
-                if (dto.MetaTitle       != null) product.MetaTitle       = dto.MetaTitle;
-                if (dto.MetaDescription != null) product.MetaDescription = dto.MetaDescription;
-                if (dto.Slug            != null) product.Slug            = dto.Slug;
-                if (dto.Status          != null) product.Status          = dto.Status.Value;
+                // 3. Map các trường cơ bản từ DTO lên entity (EF Core sẽ tự động track những thay đổi này)
+                product.Name = dto.Name ?? product.Name;
+                product.Description = dto.Description ?? product.Description;
+                product.Price = dto.Price ?? product.Price;
+                product.SalePrice = dto.SalePrice; // Cho phép set null
+                product.Sku = dto.Sku ?? product.Sku;
+                product.CategoryId = dto.CategoryId ?? product.CategoryId;
+                product.Material = dto.Material ?? product.Material;
+                product.Season = dto.Season ?? product.Season;
+                product.MetaTitle = dto.MetaTitle ?? product.MetaTitle;
+                product.MetaDescription = dto.MetaDescription ?? product.MetaDescription;
+                product.Slug = dto.Slug ?? product.Slug;
+                product.Status = dto.Status ?? product.Status;
 
-                // 5. Xử lý danh sách ảnh nếu có
+
+                // 4. Xử lý danh sách ảnh nếu có (cập nhật thay vì xóa hết tạo lại)
                 if (dto.Images != null)
                 {
-                    // 5.1 Xóa toàn bộ ảnh cũ (EF sẽ track và xoá khi SaveChanges)
+                    // Xóa ảnh cũ
                     _unitOfWork.Context.ProductImages.RemoveRange(product.Images);
+                    product.Images.Clear();
 
-                    // 5.2 Thêm lại ảnh mới từ DTO
+                    // Thêm ảnh mới
                     foreach (var imgDto in dto.Images)
                     {
                         product.Images.Add(new ProductImage
                         {
-                            Id        = Guid.NewGuid(),
+                            Id = Guid.NewGuid(),
                             ProductId = id,
-                            Url       = imgDto.Url,
+                            Url = imgDto.Url,
                             IsPrimary = imgDto.IsPrimary
                         });
                     }
                 }
 
-                // 6. Cập nhật audit fields, nếu bạn có (ví dụ UpdatedAt, UpdatedBy)
+                // 5. Cập nhật audit fields
                 product.UpdatedAt = _currentTime.GetVietnamTime();
                 product.UpdatedBy = _currentUserService.GetUserId() ?? Guid.Empty;
 
-                // 7. Gọi repository update (nếu base service của bạn đã tự gọi SaveChanges thì bạn không cần SaveChanges ở đây)
-                var updated = await UpdateAsync(product);
+                // Không cần gọi base.UpdateAsync(product) vì EF Core đã track entity `product`
+                // và biết nó đã bị thay đổi (Modified)
 
-                // 8. Trả về kết quả
-                return ApiResult<ProductDto>.Success(MapToDto(updated), "Product updated successfully");
+                // 6. LƯU TẤT CẢ THAY ĐỔI XUỐNG DATABASE
+                await _unitOfWork.SaveChangesAsync();
+
+                // 7. Load lại dữ liệu liên quan (nếu cần) và trả về kết quả mới nhất
+                // (Trong trường hợp này, product đã được cập nhật, ta có thể map lại trực tiếp)
+                // Nếu muốn chắc chắn 100% dữ liệu là mới nhất từ DB (bao gồm cả trigger), có thể get lại
+                var updatedProduct = await _productRepository.GetByIdAsync(id, p => p.Category, p => p.Images, p => p.Variants);
+
+                return ApiResult<ProductDto>.Success(MapToDto(updatedProduct), "Product updated successfully");
             });
         }
         public async Task<ApiResult<BatchOperationResultDTO>> BulkDeleteAsync(BatchIdsRequest request)
@@ -380,6 +391,7 @@ namespace Services.Implementations
 
         private static ProductDto MapToDto(Product product)
         {
+
             return new ProductDto
             {
                 Id = product.Id,
@@ -388,8 +400,10 @@ namespace Services.Implementations
                 Price = product.Price,
                 SalePrice = product.SalePrice,
                 Sku = product.Sku,
-                Quantity = product.Variants.Sum(v => v.Quantity),
+                // Tính toán Quantity an toàn
+                Quantity = product.Variants?.Sum(v => v.Quantity) ?? 0,
                 CategoryId = product.CategoryId,
+                // Lấy CategoryName an toàn
                 CategoryName = product.Category?.Name,
                 Material = product.Material,
                 Season = product.Season,
@@ -397,15 +411,15 @@ namespace Services.Implementations
                 MetaDescription = product.MetaDescription,
                 Slug = product.Slug,
                 Status = product.Status,
-                Images       = product.Images?
+                // Lấy Images an toàn
+                Images = product.Images?
                            .OrderByDescending(i => i.IsPrimary)
                            .Select(i => i.Url)
-                           .ToList(),
+                           .ToList() ?? new List<string>(),
                 CreatedAt = product.CreatedAt,
                 UpdatedAt = product.UpdatedAt,
                 CreatedBy = product.CreatedBy,
                 UpdatedBy = product.UpdatedBy
-                // You can add Images and Variants mapping if your DTO supports it
             };
         }
 
