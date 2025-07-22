@@ -71,5 +71,15 @@ namespace Services.Interfaces
 
         Task<BatchOperationResultDTO> PurgeCompletedOrdersAsync(int daysOld);
 
+        Task<bool> RequestOrderCancellationAsync(Guid orderId, RequestCancellationRequest request, Guid? userId);
+
+        /// <summary>
+        /// Xử lý yêu cầu hủy đơn hàng (Admin/Staff). Duyệt hoặc từ chối yêu cầu.
+        /// </summary>
+        /// <param name="orderId">ID đơn hàng.</param>
+        /// <param name="request">Trạng thái xử lý (Duyệt/Từ chối) và ghi chú của Admin.</param>
+        /// <param name="staffId">ID của Admin/Staff thực hiện xử lý.</param>
+        /// <returns>True nếu yêu cầu được xử lý thành công, ngược lại là False.</returns>
+        Task<bool> ProcessCancellationRequestAsync(Guid orderId, ProcessCancellationRequest request, Guid staffId);
     }
 }

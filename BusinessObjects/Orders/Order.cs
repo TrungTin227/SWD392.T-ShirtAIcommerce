@@ -9,6 +9,8 @@ using BusinessObjects.Common;
 
 namespace BusinessObjects.Orders
 {
+
+
     public class Order : BaseEntity
     {
         [Key]
@@ -69,14 +71,24 @@ namespace BusinessObjects.Orders
         [MaxLength(100)]
         public string? TrackingNumber { get; set; }
 
-        [MaxLength(500)]
-        public string? CancellationReason { get; set; }
-
         public Guid? AssignedStaffId { get; set; }
-
         public Guid? CouponId { get; set; }
-
         public Guid? ShippingMethodId { get; set; }
+
+        // ===== THÔNG TIN YÊU CẦU HỦY ĐƠN =====
+
+        public CancellationRequestStatus CancellationStatus { get; set; } = CancellationRequestStatus.None;
+
+        [MaxLength(500)]
+        public string? CancellationReason { get; set; } // Lý do hủy từ khách hàng
+
+        public DateTime? CancellationRequestedAt { get; set; } // Thời điểm gửi yêu cầu hủy
+
+        public string? CancellationImageUrls { get; set; } // URL hình ảnh minh chứng (cách nhau bằng ;)
+
+
+        [MaxLength(1000)]
+        public string? ReviewNotes { get; set; } // Ghi chú của admin khi duyệt
 
         // Navigation properties
         [ForeignKey("UserId")]
@@ -95,9 +107,10 @@ namespace BusinessObjects.Orders
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
         public virtual ICollection<Review> Reviews { get; set; } = new List<Review>();
 
-        [NotMapped] // Không lưu vào database
-        public decimal SubtotalAmount => OrderItems?.Sum(oi => oi.TotalPrice) ?? 0;
         [NotMapped]
-        public PaymentMethod PaymentMethod { get; set; } 
+        public decimal SubtotalAmount => OrderItems?.Sum(oi => oi.TotalPrice) ?? 0;
+
+        [NotMapped]
+        public PaymentMethod PaymentMethod { get; set; }
     }
 }

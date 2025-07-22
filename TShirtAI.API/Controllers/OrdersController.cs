@@ -559,5 +559,50 @@ namespace WebAPI.Controllers
         #endregion
 
         #endregion
+        /// <summary>
+        /// Yêu cầu hủy đơn hàng (User hoặc Admin/Staff).
+        /// Đơn ở trạng thái 'Pending' hoặc 'Processing' sẽ được hủy trực tiếp.
+        /// Đơn ở trạng thái 'Delivered' hoặc 'Completed' sẽ chuyển sang trạng thái 'CancellationRequested'
+        /// và cần Admin/Staff duyệt.
+        /// </summary>
+        [HttpPatch("{id}/request-cancellation")]
+        [ServiceFilter(typeof(ValidateModelAttribute))] // Đảm bảo DTO RequestCancellationRequest được validate
+        public async Task<ActionResult> RequestCancellation(Guid id, [FromBody] RequestCancellationRequest request)
+        {
+            var userId = GetCurrentUserIdOrUnauthorized();
+            if (userId == null) return Unauthorized(ErrorResponse("Người dùng chưa đăng nhập."));
+
+            return await ExecuteAsync(async () =>
+            {
+                // Logic kiểm tra quyền truy cập của người dùng được xử lý trong OrderService.RequestOrderCancellationAsync
+                // thông qua _currentUserService.IsAdmin() || _currentUserService.IsStaff()
+                var result = await _orderService.RequestOrderCancellationAsync(id, request, userId);
+                return result
+                    ? Ok(new { Message = "Yêu cầu hủy đơn hàng đã được gửi thành công. Đơn hàng sẽ được hủy trực tiếp (nếu đủ điều kiện) hoặc đang chờ duyệt." })
+                    : BadRequest(ErrorResponse("Không thể gửi yêu cầu hủy đơn hàng."));
+            }, "Lỗi khi gửi yêu cầu hủy đơn hàng {OrderId}", id);
+        }
+
+        /// <summary>
+        /// Xử lý yêu cầu hủy đơn hàng (Duyệt/Từ chối) - Chỉ Admin/Staff.
+        /// Áp dụng cho các đơn hàng có trạng thái 'CancellationRequested'.
+        /// </summary>
+        [HttpPatch("{id}/process-cancellation-request")]
+        [Authorize(Roles = "Admin,Staff")]
+        [ServiceFilter(typeof(ValidateModelAttribute))] // Đảm bảo DTO ProcessCancellationRequest được validate
+        public async Task<ActionResult> ProcessCancellationRequest(Guid id, [FromBody] ProcessCancellationRequest request)
+        {
+            var staffId = _currentUserService.GetUserId();
+            if (!staffId.HasValue) return Unauthorized(ErrorResponse("Bạn chưa đăng nhập hoặc không có quyền."));
+
+            return await ExecuteAsync(async () =>
+            {
+                var result = await _orderService.ProcessCancellationRequestAsync(id, request, staffId.Value);
+                return result
+                    ? Ok(new { Message = "Yêu cầu hủy đơn hàng đã được xử lý thành công." })
+                    : BadRequest(ErrorResponse("Không thể xử lý yêu cầu hủy đơn hàng."));
+            }, "Lỗi khi xử lý yêu cầu hủy đơn hàng {OrderId}", id);
+        }
+
     }
 }

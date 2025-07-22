@@ -152,7 +152,9 @@ namespace Repositories
             modelBuilder.Entity<Order>().Property(e => e.PaymentStatus).HasConversion<string>();
             modelBuilder.Entity<CustomDesign>().Property(e => e.Status).HasConversion<string>();
             modelBuilder.Entity<CustomDesign>().Property(e => e.Size).HasConversion<string>();
-            
+
+            modelBuilder.Entity<Order>().Property(e => e.CancellationStatus).HasConversion<string>();
+
             modelBuilder.Entity<Review>().Property(e => e.Status).HasConversion<string>();
             modelBuilder.Entity<Coupon>().Property(e => e.Type).HasConversion<string>();
             modelBuilder.Entity<Coupon>().Property(e => e.Status).HasConversion<string>();

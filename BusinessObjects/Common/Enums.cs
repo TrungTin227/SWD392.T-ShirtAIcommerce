@@ -206,8 +206,9 @@ namespace BusinessObjects.Common
         Processing,   // 3. Đang xử lý – đóng gói, chuẩn bị giao
         Shipping,     // 4. Đang vận chuyển
         Delivered,    // 5. Đã giao thành công
-        Cancelled,    // 6.Đã hủy
-        Returned      // 7.Đã trả/hoàn trả
+        Cancelled,    // 6.Đã hủy (trước khi giao)
+        Returned,      // 7.Đã trả/hoàn trả
+        CancellationRequested,  //Đã yêu cầu hủy/trả hàng, chờ duyệt
     }
 
     public enum PaymentStatus
@@ -232,5 +233,13 @@ namespace BusinessObjects.Common
     {
         VNPAY,
         COD
+    }
+    // Enum cho trạng thái yêu cầu hủy đơn
+    public enum CancellationRequestStatus
+    {
+        None,           //0 Không có yêu cầu hủy
+        Pending,        //1 Đang chờ duyệt
+        Approved,       //2 Đã duyệt (cho phép hủy)
+        Rejected        //3 Từ chối hủy
     }
 }

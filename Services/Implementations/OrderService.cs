@@ -1950,5 +1950,237 @@ namespace Services.Implementations
 
             return result;
         }
+
+
+
+        // Refactor logic hủy đơn hàng thực sự (hoàn kho, coupon) vào một phương thức private
+        private async Task<bool> _executeOrderCancellationLogic(Order order, string reason, Guid? processedBy)
+        {
+            // Transaction đã được xử lý ở tầng gọi (RequestOrderCancellationAsync hoặc ProcessCancellationRequestAsync)
+            // Vì vậy không cần transaction ở đây nữa nếu nó được gọi trong một transaction lớn hơn.
+            // Tuy nhiên, nếu bạn muốn mỗi hành động nhỏ có transaction riêng, bạn có thể để lại.
+            // Để đơn giản và tránh nested transaction, chúng ta sẽ giả định transaction bên ngoài đủ.
+
+            _logger.LogInformation("Thực thi logic hủy đơn hàng {OrderId} bởi {ProcessedBy}", order.Id, processedBy);
+
+            // Cập nhật trạng thái đơn hàng và các trường liên quan đến hủy
+            // Lưu ý: Các trường này đã được set bởi phương thức gọi (RequestOrderCancellationAsync hoặc ProcessCancellationRequestAsync)
+            // nhưng cần đảm bảo trạng thái cuối cùng là Cancelled.
+            order.Status = OrderStatus.Cancelled;
+            order.CancellationReason = reason;
+            order.CancellationStatus = CancellationRequestStatus.Approved; // Đơn đã thực sự bị hủy
+
+            order.UpdatedAt = DateTime.UtcNow;
+            if (processedBy.HasValue)
+                order.UpdatedBy = processedBy.Value;
+
+            if (order.PaymentStatus == PaymentStatus.Completed)
+                order.PaymentStatus = PaymentStatus.Refunded; // Có thể cần logic hoàn tiền thực tế ở đây
+
+            // Lưu ý: _orderRepository.Update(order) có thể không cần thiết nếu order được truy vấn trong cùng context
+            // và đã được EF theo dõi thay đổi. SaveChangesAsync sẽ phát hiện.
+            // Tuy nhiên, để rõ ràng, có thể thêm:
+            // _orderRepository.Update(order); 
+
+
+            _logger.LogInformation("Bắt đầu hoàn kho cho đơn hàng {OrderId}", order.Id);
+            foreach (var item in order.OrderItems)
+            {
+                // Chỉ hoàn kho cho các sản phẩm có ProductVariantId (được quản lý theo biến thể)
+                if (item.ProductVariantId.HasValue && item.ProductVariantId.Value != Guid.Empty)
+                {
+                    var stockUpdated = await _productVariantRepository.IncreaseStockAsync(item.ProductVariantId.Value, item.Quantity);
+                    if (!stockUpdated)
+                    {
+                        _logger.LogError("Không thể hoàn kho cho ProductVariantId {ProductVariantId}. Giao dịch sẽ được rollback.", item.ProductVariantId.Value);
+                        // Ném exception để transaction cha bắt và rollback
+                        throw new InvalidOperationException($"Không thể hoàn kho cho sản phẩm biến thể ID: {item.ProductVariantId.Value}");
+                    }
+                    _logger.LogInformation("Đã hoàn lại {Quantity} sản phẩm vào kho cho ProductVariantId: {ProductVariantId}", item.Quantity, item.ProductVariantId.Value);
+                }
+            }
+
+            // Xử lý hoàn lại coupon (nếu có)
+            if (order.CouponId.HasValue)
+            {
+                try
+                {
+                    _logger.LogInformation("Đơn hàng {OrderId} đã sử dụng coupon {CouponId}, đang xử lý logic hoàn lại.", order.Id, order.CouponId);
+                    // TODO: Triển khai logic hoàn lại coupon ở đây.
+                    // Ví dụ: await _couponService.RollbackCouponUsageAsync(order.CouponId.Value, order.UserId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Không thể hoàn lại coupon {CouponId} cho đơn hàng {OrderId}. Quá trình hủy đơn vẫn tiếp tục.",
+                        order.CouponId, order.Id);
+                }
+            }
+
+            return true; // Logic đã được thực thi
+        }
+
+
+        /// <inheritdoc />
+        public async Task<bool> RequestOrderCancellationAsync(Guid orderId, RequestCancellationRequest request, Guid? userId)
+        {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.Reason))
+                {
+                    throw new ArgumentException("Lý do hủy đơn hàng là bắt buộc.");
+                }
+
+                // Lấy thông tin chi tiết đơn hàng (cần OrderItems để hoàn kho)
+                var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại.");
+                }
+
+                // Kiểm tra quyền truy cập: Người dùng phải là chủ đơn hàng HOẶC Admin/Staff
+                if (userId.HasValue && order.UserId != userId.Value && !(_currentUserService.IsAdmin() || _currentUserService.IsStaff()))
+                {
+                    throw new UnauthorizedAccessException("Bạn không có quyền yêu cầu hủy đơn hàng này.");
+                }
+
+                // Không cho phép yêu cầu hủy nếu đã ở trạng thái hủy cuối cùng hoặc đã có yêu cầu xử lý
+                if (order.Status == OrderStatus.Cancelled || order.CancellationStatus == CancellationRequestStatus.Approved || order.CancellationStatus == CancellationRequestStatus.Rejected)
+                {
+                    throw new InvalidOperationException("Đơn hàng đã bị hủy hoặc yêu cầu hủy đã được xử lý trước đó.");
+                }
+
+                if (order.Status == OrderStatus.Pending || order.Status == OrderStatus.Processing)
+                {
+                    // Hủy trực tiếp đối với đơn hàng Pending hoặc Processing
+                    _logger.LogInformation("Đơn hàng {OrderId} ở trạng thái Pending/Processing. Tiến hành hủy trực tiếp.", orderId);
+
+                    // Thực thi logic hủy (hoàn kho, coupon)
+                    var success = await _executeOrderCancellationLogic(order, request.Reason, userId);
+
+                    if (success)
+                    {
+                        await _unitOfWork.SaveChangesAsync(); // Lưu các thay đổi từ _executeOrderCancellationLogic
+                        await transaction.CommitAsync();
+                        _logger.LogInformation("Đơn hàng {OrderId} đã được hủy trực tiếp thành công.", orderId);
+                        return true;
+                    }
+                    else
+                    {
+                        await transaction.RollbackAsync(); // Nếu _executeOrderCancellationLogic thất bại (ví dụ: không hoàn kho được)
+                        return false;
+                    }
+                }
+                else if (order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Completed)
+                {
+                    // Tạo yêu cầu hủy, cần Admin/Staff duyệt
+                    if (order.CancellationStatus == CancellationRequestStatus.Pending)
+                    {
+                        throw new InvalidOperationException("Đơn hàng đã có yêu cầu hủy đang chờ duyệt.");
+                    }
+
+                    _logger.LogInformation("Đơn hàng {OrderId} ở trạng thái Delivered/Completed. Ghi nhận yêu cầu hủy và chờ duyệt.", orderId);
+                    order.CancellationStatus = CancellationRequestStatus.Pending; // Đặt trạng thái yêu cầu là chờ duyệt
+                    order.CancellationReason = request.Reason.Trim();
+                    order.CancellationRequestedAt = DateTime.UtcNow;
+                    order.CancellationImageUrls = request.ImageUrls != null && request.ImageUrls.Any() ? string.Join(";", request.ImageUrls) : null;
+                    order.UpdatedAt = DateTime.UtcNow;
+                    order.UpdatedBy = userId; // Người dùng/admin đã gửi yêu cầu
+
+                    // Chuyển trạng thái đơn hàng sang "CancellationRequested"
+                    order.Status = OrderStatus.CancellationRequested;
+
+                    _orderRepository.UpdateAsync(order); // Mark as modified
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    _logger.LogInformation("Yêu cầu hủy đơn hàng {OrderId} đã được ghi nhận và chờ duyệt.", orderId);
+                    return true;
+                }
+                else
+                {
+                    // Các trạng thái khác không cho phép hủy qua luồng này
+                    throw new InvalidOperationException($"Không thể yêu cầu hủy đơn hàng ở trạng thái '{order.Status}'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi khi xử lý yêu cầu hủy đơn hàng {OrderId}.", orderId);
+                throw; // Ném lại để controller xử lý ngoại lệ
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<bool> ProcessCancellationRequestAsync(Guid orderId, ProcessCancellationRequest request, Guid staffId)
+        {
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                var order = await _orderRepository.GetOrderWithDetailsAsync(orderId);
+                if (order == null || order.IsDeleted)
+                {
+                    throw new ArgumentException("Đơn hàng không tồn tại.");
+                }
+
+                // Chỉ xử lý các yêu cầu đang chờ duyệt và đơn hàng phải ở trạng thái "CancellationRequested"
+                if (order.CancellationStatus != CancellationRequestStatus.Pending || order.Status != OrderStatus.CancellationRequested)
+                {
+                    throw new InvalidOperationException("Yêu cầu hủy đơn hàng không ở trạng thái chờ duyệt hoặc đơn hàng không ở trạng thái yêu cầu hủy.");
+                }
+
+                order.ReviewNotes = request.AdminNotes?.Trim(); // Ghi chú của Admin/Staff
+                order.UpdatedAt = DateTime.UtcNow;
+                order.UpdatedBy = staffId; // Admin/Staff xử lý
+
+                if (request.Status == CancellationRequestStatus.Approved)
+                {
+                    _logger.LogInformation("Đơn hàng {OrderId} được Admin/Staff {StaffId} duyệt hủy.", orderId, staffId);
+
+                    // Thực thi logic hủy thực sự (hoàn kho, coupon)
+                    var success = await _executeOrderCancellationLogic(order, order.CancellationReason ?? "Admin/Staff Approved", staffId);
+
+                    if (success)
+                    {
+                        await _unitOfWork.SaveChangesAsync(); // Lưu các thay đổi từ _executeOrderCancellationLogic
+                        await transaction.CommitAsync();
+                        _logger.LogInformation("Đơn hàng {OrderId} đã được duyệt và hủy thành công.", orderId);
+                        return true;
+                    }
+                    else
+                    {
+                        await transaction.RollbackAsync(); // Nếu _executeOrderCancellationLogic thất bại
+                        return false;
+                    }
+                }
+                else if (request.Status == CancellationRequestStatus.Rejected)
+                {
+                    _logger.LogInformation("Đơn hàng {OrderId} được Admin/Staff {StaffId} từ chối hủy.", orderId, staffId);
+                    order.CancellationStatus = CancellationRequestStatus.Rejected; // Đặt trạng thái yêu cầu là từ chối
+
+                    // Chuyển trạng thái đơn hàng về trạng thái trước đó (ví dụ: Completed hoặc Delivered)
+                    // Đây là một điểm quyết định nghiệp vụ. Nếu bạn không lưu trạng thái trước đó,
+                    // bạn cần chọn một trạng thái hợp lý. "Completed" là một lựa chọn phổ biến.
+                    order.Status = OrderStatus.Completed; // Hoặc OrderStatus.Delivered tùy thuộc vào logic nghiệp vụ của bạn.
+                                                          // Hoặc nếu bạn có một trường PreviousStatus trong Order model, hãy dùng nó.
+
+                    _orderRepository.UpdateAsync(order); // Mark as modified
+                    await _unitOfWork.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    _logger.LogInformation("Yêu cầu hủy đơn hàng {OrderId} đã bị từ chối.", orderId);
+                    return true;
+                }
+                else
+                {
+                    throw new ArgumentException("Trạng thái xử lý yêu cầu hủy không hợp lệ.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Lỗi khi xử lý yêu cầu hủy đơn hàng {OrderId}.", orderId);
+                throw; // Ném lại để controller xử lý ngoại lệ
+            }
+        }
     }
+
 }
