@@ -176,5 +176,20 @@ public class ReviewsController : ControllerBase
         // Nếu tìm thấy, trả về dữ liệu với mã 200 OK
         return Ok(reviewDto);
     }
+    [HttpGet("product/{productId}")]
+    [AllowAnonymous] // Ai cũng có thể xem review
+    public async Task<IActionResult> GetReviewsByProductId(Guid productId)
+    {
+        var response = await _reviewService.GetReviewsByProductIdAsync(productId);
+
+        if (!response.IsSuccess)
+        {
+            // Có thể trả về NotFound nếu không có review nào, hoặc BadRequest tùy vào logic bạn muốn
+            // Ở đây, chúng ta trả về lỗi chung từ service
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
 
 }

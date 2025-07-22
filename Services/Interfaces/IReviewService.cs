@@ -16,6 +16,7 @@ namespace Services.Interfaces
 
         Task<ReviewDto?> GetMyReviewForVariantAsync(Guid productVariantId, Guid userId);
 
+        Task<ApiResult<IEnumerable<ReviewDto>>> GetReviewsByProductIdAsync(Guid productId);
 
     }
 }

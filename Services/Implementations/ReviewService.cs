@@ -124,6 +124,12 @@ namespace Services.Implementations
                 {
                     throw new InvalidOperationException("Sản phẩm này không có trong đơn hàng của bạn.");
                 }
+                var variant = await _productVariantRepository.GetByIdAsync(createDto.ProductVariantId);
+                if (variant == null)
+                {
+                    // Dù purchasedItem đã có nhưng vẫn nên kiểm tra để đảm bảo
+                    throw new InvalidOperationException("Không tìm thấy thông tin biến thể sản phẩm.");
+                }
 
                 // 2. Kiểm tra xem người dùng đã đánh giá sản phẩm này cho đơn hàng này chưa
                 var hasReviewed = await _reviewRepository.HasUserReviewedVariantInOrderAsync(userId, createDto.ProductVariantId, createDto.OrderId);
@@ -138,6 +144,7 @@ namespace Services.Implementations
                     Id = Guid.NewGuid(),
                     UserId = userId,
                     ProductVariantId = createDto.ProductVariantId,
+                    ProductId = variant.ProductId,
                     OrderId = createDto.OrderId,
                     Rating = createDto.Rating,
                     Content = createDto.Content,
@@ -264,6 +271,29 @@ namespace Services.Implementations
 
             // Nếu tìm thấy, map nó sang DTO và trả về
             return MapToDto(review);
+        }
+        public async Task<ApiResult<IEnumerable<ReviewDto>>> GetReviewsByProductIdAsync(Guid productId)
+        {
+            try
+            {
+                // 1. Gọi repository để lấy tất cả các review đã duyệt của sản phẩm
+                var reviews = await _reviewRepository.GetApprovedReviewsByProductIdAsync(productId);
+
+                // 2. Map kết quả sang DTO
+                var reviewDtos = reviews.Select(MapToDto).ToList();
+
+                // 3. Trả về kết quả thành công
+                return ApiResult<IEnumerable<ReviewDto>>.Success(
+                    reviewDtos,
+                    $"Lấy thành công {reviewDtos.Count} đánh giá cho sản phẩm."
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy đánh giá cho sản phẩm {ProductId}", productId);
+                // Trả về kết quả thất bại nếu có lỗi xảy ra
+                return ApiResult<IEnumerable<ReviewDto>>.Failure("Đã xảy ra lỗi hệ thống khi lấy đánh giá cho sản phẩm.", ex);
+            }
         }
     }
 }

@@ -127,8 +127,7 @@ namespace Repositories.Implementations
             // Chúng ta cần lấy tất cả các review có ProductVariant thuộc về ProductId được cho.
             // Điều kiện: Review phải ở trạng thái "Approved" và chưa bị xóa mềm.
             return await _dbSet
-                .Where(r => r.ProductVariant.ProductId == productId &&
-                            r.Status == ReviewStatus.Approved &&
+                .Where(r => r.ProductVariant.ProductId == productId &&                         
                             !r.IsDeleted)
                 .Include(r => r.User) // Lấy thông tin người dùng
                 .Include(r => r.ProductVariant) // Lấy thông tin biến thể
@@ -148,5 +147,6 @@ namespace Repositories.Implementations
                                             r.UserId == userId &&
                                             !r.IsDeleted);
         }
+
     }
 }
