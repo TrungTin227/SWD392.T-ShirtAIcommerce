@@ -1369,6 +1369,7 @@ namespace Services.Implementations
         {
             if (order == null) return null;
             string? orderImage = order.OrderItems?.FirstOrDefault()?.ProductVariant?.ImageUrl;
+            var mainPayment = order.Payments?.FirstOrDefault();
 
             return new OrderDTO
             {
@@ -1383,7 +1384,7 @@ namespace Services.Implementations
                 Status = order.Status,
                 Image = orderImage,
                 PaymentStatus = order.PaymentStatus,
-                PaymentMethod = order.PaymentMethod,
+                PaymentMethod = mainPayment?.PaymentMethod ?? default(PaymentMethod),
                 ShippingAddress = order.ShippingAddress,
                 ReceiverName = order.ReceiverName,
                 ReceiverPhone = order.ReceiverPhone,
