@@ -2242,6 +2242,7 @@ namespace Services.Implementations
         OrderNumber = order.OrderNumber,
         ReceiverName = order.ReceiverName,
         ReceiverPhone = order.ReceiverPhone,
+        Email = order.User.Email,
         ShippingAddress = order.ShippingAddress,
         SubtotalAmount = order.SubtotalAmount,
         ShippingFee = order.ShippingFee,
@@ -2250,8 +2251,11 @@ namespace Services.Implementations
         CancellationReason = order.CancellationReason,
         DateCancelled = order.UpdatedAt,
         AdminReviewNotes = order.ReviewNotes,
+        CancellationRequestStatus = order.CancellationStatus,
         PaymentStatus = order.PaymentStatus,
-        ImageUrls = order.CancellationImageUrls?.Split(';').ToList() ?? new List<string>(),
+        ImageUrls = string.IsNullOrEmpty(order.CancellationImageUrls)
+            ? new List<string>()
+            : order.CancellationImageUrls.Split(';').ToList(),
         Items = order.OrderItems.Select(oi => new CancelledOrderItemDto
         {
             // Sử dụng toán tử ?. để tránh lỗi nếu ProductVariant hoặc Product bị null

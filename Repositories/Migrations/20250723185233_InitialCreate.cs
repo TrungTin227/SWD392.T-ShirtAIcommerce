@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Repositories.Migrations
 {
     /// <inheritdoc />
-    public partial class T_ShirtAIcommerceInitial : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -145,7 +145,7 @@ namespace Repositories.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    Name = table.Column<string>(type: "varchar(50)", unicode: false, maxLength: 50, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     Fee = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
                     FreeShippingThreshold = table.Column<decimal>(type: "decimal(12,2)", nullable: true),
@@ -280,21 +280,20 @@ namespace Repositories.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     DesignName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
-                    ShirtType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    PromptText = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    ShirtType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     BaseColor = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    Size = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Size = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     DesignImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    LogoText = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
-                    LogoPosition = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     SpecialRequirements = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     TotalPrice = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
                     Quantity = table.Column<int>(type: "int", nullable: false),
-                    EstimatedDays = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    StaffId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    StaffNotes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    ApprovedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    OrderCreatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    ShippingStartedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeliveredAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DoneAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    ApplicationUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -307,11 +306,10 @@ namespace Repositories.Migrations
                 {
                     table.PrimaryKey("PK_CustomDesigns", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_CustomDesigns_AspNetUsers_StaffId",
-                        column: x => x.StaffId,
+                        name: "FK_CustomDesigns_AspNetUsers_ApplicationUserId",
+                        column: x => x.ApplicationUserId,
                         principalTable: "AspNetUsers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_CustomDesigns_AspNetUsers_UserId",
                         column: x => x.UserId,
@@ -354,30 +352,18 @@ namespace Repositories.Migrations
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Material = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    Season = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     Price = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
                     SalePrice = table.Column<decimal>(type: "decimal(12,2)", nullable: true),
                     Sku = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    Quantity = table.Column<int>(type: "int", nullable: false),
-                    CategoryId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    Material = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    Season = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    Weight = table.Column<decimal>(type: "decimal(6,2)", nullable: false),
-                    Dimensions = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    Slug = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
                     MetaTitle = table.Column<string>(type: "nvarchar(160)", maxLength: 160, nullable: true),
                     MetaDescription = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: true),
-                    Slug = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
-                    ViewCount = table.Column<int>(type: "int", nullable: false),
-                    SoldCount = table.Column<int>(type: "int", nullable: false),
-                    MinOrderQuantity = table.Column<int>(type: "int", nullable: false),
-                    MaxOrderQuantity = table.Column<int>(type: "int", nullable: false),
-                    IsFeatured = table.Column<bool>(type: "bit", nullable: false),
-                    IsBestseller = table.Column<bool>(type: "bit", nullable: false),
-                    DiscountPercentage = table.Column<decimal>(type: "decimal(5,2)", nullable: false),
-                    AvailableColors = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    AvailableSizes = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Images = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    CategoryId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    ApplicationUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -390,8 +376,8 @@ namespace Repositories.Migrations
                 {
                     table.PrimaryKey("PK_Products", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Products_AspNetUsers_CreatedBy",
-                        column: x => x.CreatedBy,
+                        name: "FK_Products_AspNetUsers_ApplicationUserId",
+                        column: x => x.ApplicationUserId,
                         principalTable: "AspNetUsers",
                         principalColumn: "Id");
                     table.ForeignKey(
@@ -426,7 +412,7 @@ namespace Repositories.Migrations
                         column: x => x.CouponId,
                         principalTable: "Coupons",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -448,11 +434,16 @@ namespace Repositories.Migrations
                     ReceiverPhone = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     CustomerNotes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     EstimatedDeliveryDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeliveredAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     TrackingNumber = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    CancellationReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     AssignedStaffId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CouponId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     ShippingMethodId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    CancellationStatus = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CancellationReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    CancellationRequestedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CancellationImageUrls = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ReviewNotes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -489,6 +480,31 @@ namespace Repositories.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "CustomDesignPayments",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    CustomDesignId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    PaymentMethod = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false),
+                    Amount = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
+                    TransactionId = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Status = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    PaidAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CustomDesignPayments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CustomDesignPayments_CustomDesigns_CustomDesignId",
+                        column: x => x.CustomDesignId,
+                        principalTable: "CustomDesigns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "AiRecommendations",
                 columns: table => new
                 {
@@ -515,6 +531,33 @@ namespace Repositories.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ProductImages",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProductId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Url = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    IsPrimary = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    DeletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeletedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProductImages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProductImages_Products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "Products",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "ProductVariants",
                 columns: table => new
                 {
@@ -522,13 +565,18 @@ namespace Repositories.Migrations
                     ProductId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Color = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Size = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    VariantSku = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    VariantSku = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     PriceAdjustment = table.Column<decimal>(type: "decimal(12,2)", nullable: true),
                     ImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    DeletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeletedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -538,7 +586,7 @@ namespace Repositories.Migrations
                         column: x => x.ProductId,
                         principalTable: "Products",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -564,7 +612,7 @@ namespace Repositories.Migrations
                         column: x => x.ProductId,
                         principalTable: "Products",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -573,10 +621,10 @@ namespace Repositories.Migrations
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     OrderId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    PaymentMethod = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    PaymentMethod = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false),
                     Amount = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
                     TransactionId = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
-                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Status = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
@@ -587,52 +635,7 @@ namespace Repositories.Migrations
                         column: x => x.OrderId,
                         principalTable: "Orders",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Reviews",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ProductId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    OrderId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    Rating = table.Column<int>(type: "int", nullable: false),
-                    Content = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
-                    Images = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    HelpfulCount = table.Column<int>(type: "int", nullable: false),
-                    UnhelpfulCount = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    AdminNotes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    IsVerifiedPurchase = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
-                    DeletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    DeletedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Reviews", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Reviews_AspNetUsers_UserId",
-                        column: x => x.UserId,
-                        principalTable: "AspNetUsers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_Reviews_Orders_OrderId",
-                        column: x => x.OrderId,
-                        principalTable: "Orders",
-                        principalColumn: "Id");
-                    table.ForeignKey(
-                        name: "FK_Reviews_Products_ProductId",
-                        column: x => x.ProductId,
-                        principalTable: "Products",
-                        principalColumn: "Id");
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -645,8 +648,6 @@ namespace Repositories.Migrations
                     ProductId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CustomDesignId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     ProductVariantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    SelectedColor = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    SelectedSize = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     UnitPrice = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -686,12 +687,19 @@ namespace Repositories.Migrations
                     ProductId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CustomDesignId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     ProductVariantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    ItemName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    ItemName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
                     SelectedColor = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     SelectedSize = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     UnitPrice = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
-                    TotalPrice = table.Column<decimal>(type: "decimal(12,2)", nullable: false)
+                    TotalPrice = table.Column<decimal>(type: "decimal(12,2)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    DeletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeletedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -706,7 +714,7 @@ namespace Repositories.Migrations
                         column: x => x.OrderId,
                         principalTable: "Orders",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_OrderItems_ProductVariants_ProductVariantId",
                         column: x => x.ProductVariantId,
@@ -714,6 +722,57 @@ namespace Repositories.Migrations
                         principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_OrderItems_Products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "Products",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Reviews",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProductId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    OrderId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    Rating = table.Column<int>(type: "int", nullable: false),
+                    Content = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
+                    Images = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    HelpfulCount = table.Column<int>(type: "int", nullable: false),
+                    UnhelpfulCount = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AdminNotes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    IsVerifiedPurchase = table.Column<bool>(type: "bit", nullable: false),
+                    ProductVariantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    DeletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeletedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Reviews", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Reviews_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Reviews_Orders_OrderId",
+                        column: x => x.OrderId,
+                        principalTable: "Orders",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Reviews_ProductVariants_ProductVariantId",
+                        column: x => x.ProductVariantId,
+                        principalTable: "ProductVariants",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Reviews_Products_ProductId",
                         column: x => x.ProductId,
                         principalTable: "Products",
                         principalColumn: "Id");
@@ -795,9 +854,14 @@ namespace Repositories.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_CustomDesigns_StaffId",
+                name: "IX_CustomDesignPayments_CustomDesignId",
+                table: "CustomDesignPayments",
+                column: "CustomDesignId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CustomDesigns_ApplicationUserId",
                 table: "CustomDesigns",
-                column: "StaffId");
+                column: "ApplicationUserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomDesigns_UserId",
@@ -856,14 +920,19 @@ namespace Repositories.Migrations
                 column: "OrderId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ProductImages_ProductId",
+                table: "ProductImages",
+                column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Products_ApplicationUserId",
+                table: "Products",
+                column: "ApplicationUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Products_CategoryId",
                 table: "Products",
                 column: "CategoryId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Products_CreatedBy",
-                table: "Products",
-                column: "CreatedBy");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Products_Sku",
@@ -888,7 +957,8 @@ namespace Repositories.Migrations
                 name: "IX_ProductVariants_VariantSku",
                 table: "ProductVariants",
                 column: "VariantSku",
-                unique: true);
+                unique: true,
+                filter: "[VariantSku] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reviews_OrderId",
@@ -899,6 +969,11 @@ namespace Repositories.Migrations
                 name: "IX_Reviews_ProductId",
                 table: "Reviews",
                 column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reviews_ProductVariantId",
+                table: "Reviews",
+                column: "ProductVariantId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reviews_UserId",
@@ -946,6 +1021,9 @@ namespace Repositories.Migrations
                 name: "CartItems");
 
             migrationBuilder.DropTable(
+                name: "CustomDesignPayments");
+
+            migrationBuilder.DropTable(
                 name: "DailyStats");
 
             migrationBuilder.DropTable(
@@ -956,6 +1034,9 @@ namespace Repositories.Migrations
 
             migrationBuilder.DropTable(
                 name: "ProductComparisons");
+
+            migrationBuilder.DropTable(
+                name: "ProductImages");
 
             migrationBuilder.DropTable(
                 name: "Reviews");
@@ -976,19 +1057,19 @@ namespace Repositories.Migrations
                 name: "CustomDesigns");
 
             migrationBuilder.DropTable(
-                name: "ProductVariants");
-
-            migrationBuilder.DropTable(
                 name: "Orders");
 
             migrationBuilder.DropTable(
-                name: "Products");
+                name: "ProductVariants");
 
             migrationBuilder.DropTable(
                 name: "Coupons");
 
             migrationBuilder.DropTable(
                 name: "ShippingMethods");
+
+            migrationBuilder.DropTable(
+                name: "Products");
 
             migrationBuilder.DropTable(
                 name: "AspNetUsers");

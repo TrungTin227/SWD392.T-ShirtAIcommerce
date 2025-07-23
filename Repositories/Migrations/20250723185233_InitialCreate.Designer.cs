@@ -12,8 +12,8 @@ using Repositories;
 namespace Repositories.Migrations
 {
     [DbContext(typeof(T_ShirtAIcommerceContext))]
-    [Migration("20250722162501_AddCancellationFieldsAndReviewUpdates")]
-    partial class AddCancellationFieldsAndReviewUpdates
+    [Migration("20250723185233_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -258,6 +258,49 @@ namespace Repositories.Migrations
                     b.HasIndex("CouponId");
 
                     b.ToTable("UserCoupons");
+                });
+
+            modelBuilder.Entity("BusinessObjects.CustomDesignPayments.CustomDesignPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CustomDesignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("TransactionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomDesignId");
+
+                    b.ToTable("CustomDesignPayments");
                 });
 
             modelBuilder.Entity("BusinessObjects.CustomDesigns.CustomDesign", b =>
@@ -579,6 +622,9 @@ namespace Repositories.Migrations
 
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<decimal>("DiscountAmount")
                         .HasColumnType("decimal(12,2)");
@@ -1352,6 +1398,17 @@ namespace Repositories.Migrations
                     b.Navigation("Coupon");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("BusinessObjects.CustomDesignPayments.CustomDesignPayment", b =>
+                {
+                    b.HasOne("BusinessObjects.CustomDesigns.CustomDesign", "CustomDesign")
+                        .WithMany()
+                        .HasForeignKey("CustomDesignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CustomDesign");
                 });
 
             modelBuilder.Entity("BusinessObjects.CustomDesigns.CustomDesign", b =>

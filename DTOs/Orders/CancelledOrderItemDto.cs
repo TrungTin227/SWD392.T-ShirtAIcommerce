@@ -27,7 +27,8 @@ namespace DTOs.Orders
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
         public string ShippingAddress { get; set; } = string.Empty;
-
+        public string? Email { get; set; }
+        public string RefundAmount => TotalAmount.ToString("0.##");
         public decimal SubtotalAmount { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal DiscountAmount { get; set; }
@@ -35,6 +36,7 @@ namespace DTOs.Orders
 
         // --- Trạng thái ---
         public string Status { get; set; } = "Cancelled";
+        public CancellationRequestStatus CancellationRequestStatus { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
 
         // --- Thông tin về việc hủy đơn ---
