@@ -164,6 +164,7 @@ namespace WebAPI.Extensions
             services.AddScoped<IProductVariantService, ProductVariantService>();
             services.AddScoped<IUserCouponService, UserCouponService>();
             services.AddScoped<ITranslateService, TranslateService>();
+            services.AddScoped<ICustomDesignPaymentService, CustomDesignPaymentService>();
             // === 7. Email & Quartz ===
             services.AddEmailServices(configuration.GetSection("EmailSettings"));
 

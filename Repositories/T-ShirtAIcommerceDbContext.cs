@@ -1,20 +1,21 @@
-﻿using BusinessObjects.Analytics;
+﻿using BusinessObjects.AI;
+using BusinessObjects.Analytics;
 using BusinessObjects.Cart;
+using BusinessObjects.Comparisons;
+using BusinessObjects.Coupons;
+using BusinessObjects.CustomDesignPayments;
 using BusinessObjects.CustomDesigns;
 using BusinessObjects.Identity;
 using BusinessObjects.Orders;
+using BusinessObjects.Payments;
 using BusinessObjects.Products;
 using BusinessObjects.Reviews;
-using BusinessObjects.Coupons;
 using BusinessObjects.Shipping;
 using BusinessObjects.Wishlists;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using BusinessObjects.Comparisons;
-using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
-using BusinessObjects.AI;
-using BusinessObjects.Payments;
 
 namespace Repositories
 {
@@ -41,6 +42,8 @@ namespace Repositories
         public DbSet<ProductComparison> ProductComparisons { get; set; }
         public DbSet<AiRecommendation> AiRecommendations { get; set; }
         public DbSet<DailyStat> DailyStats { get; set; }
+        //CustomDesignPayments
+        public DbSet<CustomDesignPayment> CustomDesignPayments { get; set; }
 
         // New DbSets
         public DbSet<ProductVariant> ProductVariants { get; set; }
@@ -53,6 +56,18 @@ namespace Repositories
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            //CustomDesignPayments relationships
+            modelBuilder.Entity<CustomDesignPayment>()
+                .Property(p => p.PaymentMethod)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("varchar(50)");
+
+            modelBuilder.Entity<CustomDesignPayment>()
+                .Property(p => p.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .HasColumnType("varchar(20)");
 
             // CustomDesign relationships 
             modelBuilder.Entity<CustomDesign>(entity =>

@@ -1,10 +1,12 @@
 ﻿using BusinessObjects.Common;
 using BusinessObjects.CustomDesigns;
 using DTOs.CustomDesigns;
+using DTOs.CustomOrder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Repositories.Helpers;
 using Repositories.Interfaces;
+using Services.Implementations;
 using Services.Interfaces;
 
 namespace WebAPI.Controllers
@@ -18,17 +20,23 @@ namespace WebAPI.Controllers
         private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<CustomDesignController> _logger;
         private readonly IAiImageService _aiImageService;
+        private readonly ICustomDesignPaymentService _paymentService;
 
         public CustomDesignController(
             ICustomDesignedService service,
             ICurrentUserService currentUserService,
             ILogger<CustomDesignController> logger,
-            IAiImageService aiImageService)
+            IAiImageService aiImageService,
+
+            ICustomDesignPaymentService paymentService)
         {
+
             _service = service;
             _currentUserService = currentUserService;
             _logger = logger;
             _aiImageService = aiImageService;
+
+            _paymentService = paymentService; ;
         }
 
         // Helper: convert entity to response DTO
@@ -250,5 +258,31 @@ namespace WebAPI.Controllers
             await _service.DeleteAsync(id);
             return NoContent();
         }
+
+
+        // POST: api/CustomDesign/{id}/payment
+        [HttpPost("{id}/payment")]
+        public async Task<IActionResult> CreateCustomDesignPayment(Guid id, [FromBody] CustomDesignPaymentCreateRequest req)
+        {
+            var userId = _currentUserService.GetUserId();
+            if (!userId.HasValue)
+                return Unauthorized("Bạn cần đăng nhập!");
+
+            // Validate user sở hữu custom design
+            var customDesign = await _service.GetByIdAsync(id);
+            if (customDesign == null)
+                return NotFound();
+            if (customDesign.UserId != userId.Value && !User.IsInRole("Admin"))
+                return Forbid();
+
+            // Ép cứng CustomDesignId trong request (tránh client gửi sai)
+            req.CustomDesignId = id;
+
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            var result = await _paymentService.CreateCustomDesignPaymentAsync(req, ipAddress);
+            return Ok(result);
+        }
+
+
     }
 }
