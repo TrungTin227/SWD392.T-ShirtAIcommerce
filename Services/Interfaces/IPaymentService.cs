@@ -12,6 +12,6 @@ namespace Services.Interfaces
         Task<PaymentResponse> UpdatePaymentStatusAsync(Guid id, PaymentStatus status, string? transactionId = null);
         Task<VnPayCreateResponse> CreateVnPayPaymentAsync(PaymentCreateRequest request);
         Task<VnPayQueryResponse> QueryVnPayPaymentAsync(string txnRef);
-        Task<bool> HandleVnPayCallbackAsync(VnPayCallbackRequest callback);
+        Task<PaymentCallbackResult> HandleVnPayCallbackAsync(VnPayCallbackRequest callback);
     }
 }

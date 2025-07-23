@@ -16,14 +16,17 @@ namespace WebAPI.Controllers
         private readonly IPaymentService _paymentService;
         private readonly IOrderService _orderService;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<PaymentsController> _logger;
 
 
 
-        public PaymentsController(IPaymentService paymentService, IOrderService orderService, IConfiguration configuration)
+        public PaymentsController(IPaymentService paymentService, IOrderService orderService, IConfiguration configuration
+            , ILogger<PaymentsController> logger)
         {
             _paymentService = paymentService;
             _orderService = orderService;
             _configuration = configuration;
+            _logger = logger;
         }
 
         [HttpPost("create")]
@@ -57,11 +60,7 @@ namespace WebAPI.Controllers
         [HttpGet("vnpay/return")]
         public async Task<IActionResult> VnPayReturn([FromQuery] VnPayCallbackRequest callback)
         {
-
-            // 1. Gọi service để xử lý callback, xác thực chữ ký và cập nhật DB.
-            var isSignatureValid = await _paymentService.HandleVnPayCallbackAsync(callback);
-
-            // 2. Lấy URL của Frontend từ file cấu hình.
+            // 1. Lấy URL của Frontend từ file cấu hình.
             var baseUrl = _configuration["Frontend:BaseUrl"];
             var successPath = _configuration["Frontend:PaymentSuccessPath"];
             var failurePath = _configuration["Frontend:PaymentFailurePath"];
@@ -69,25 +68,47 @@ namespace WebAPI.Controllers
             // Kiểm tra để đảm bảo cấu hình tồn tại
             if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(successPath) || string.IsNullOrEmpty(failurePath))
             {
-                // Trả về lỗi server nếu thiếu cấu hình, vì đây là lỗi phía server
                 return StatusCode(500, "Server configuration error.");
             }
 
-            // 3. Xác định trạng thái thanh toán cuối cùng
-            var isPaymentSuccess = isSignatureValid && callback.vnp_ResponseCode == "00";
-
-            // 4. Xây dựng URL để chuyển hướng về Frontend
             string redirectUrl;
-            if (isPaymentSuccess)
+            Guid orderIdForFrontend = Guid.Empty; // Mặc định là Guid.Empty
+            Guid paymentIdForFrontend = Guid.Empty;
+            decimal amountForFrontend = 0;
+            string statusForFrontend = "failure";
+
+            try
             {
-                // Chuyển hướng về trang thành công, đính kèm các thông tin cần thiết
-                // vnp_TxnRef chứa ID của Payment, rất hữu ích cho FE
-                redirectUrl = $"{baseUrl}{successPath}?paymentId={callback.vnp_TxnRef}&status=success&amount={callback.vnp_Amount}";
+                // 2. Gọi service để xử lý callback và nhận về kết quả chi tiết
+                var callbackResult = await _paymentService.HandleVnPayCallbackAsync(callback);
+
+                // Lấy thông tin từ callbackResult
+                orderIdForFrontend = callbackResult.OrderId ?? Guid.Empty;
+                paymentIdForFrontend = callbackResult.PaymentId ?? Guid.Empty;
+                amountForFrontend = callbackResult.Amount;
+
+                // 3. Xác định trạng thái thanh toán cuối cùng để chuyển hướng
+                // Sử dụng callbackResult.Success để biết backend đã xử lý và VNPAY báo thành công hay không
+                if (callbackResult.Success)
+                {
+                    statusForFrontend = "success";
+                    // Chuyển hướng về trang thành công, truyền OrderId
+                    redirectUrl = $"{baseUrl}{successPath}?orderId={orderIdForFrontend}&paymentId={paymentIdForFrontend}&status={statusForFrontend}&amount={amountForFrontend}";
+                }
+                else
+                {
+                    statusForFrontend = "failure";
+                    // Chuyển hướng về trang thất bại, truyền OrderId (nếu có) và mã lỗi chi tiết
+                    redirectUrl = $"{baseUrl}{failurePath}?orderId={orderIdForFrontend}&paymentId={paymentIdForFrontend}&status={statusForFrontend}&vnpResponseCode={callbackResult.VnPayResponseCode}&vnpTransactionStatus={callbackResult.VnPayTransactionStatus}&message={Uri.EscapeDataString(callbackResult.Message ?? "Payment failed or unknown error.")}";
+                    _logger.LogWarning("VNPAY callback failed or was not fully handled. Redirecting to: {RedirectUrl}. ResponseCode: {RespCode}, TransactionStatus: {TransStatus}",
+                        redirectUrl, callbackResult.VnPayResponseCode, callbackResult.VnPayTransactionStatus);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                // Chuyển hướng về trang thất bại
-                redirectUrl = $"{baseUrl}{failurePath}?paymentId={callback.vnp_TxnRef}&status=failure&errorCode={callback.vnp_ResponseCode}";
+                _logger.LogError(ex, "Error during VNPAY callback processing in controller. Redirecting to failure path. OrderId: {OrderId}", orderIdForFrontend);
+                statusForFrontend = "error"; // Lỗi xảy ra ở backend
+                redirectUrl = $"{baseUrl}{failurePath}?orderId={orderIdForFrontend}&status={statusForFrontend}&message={Uri.EscapeDataString("Internal server error during payment processing.")}";
             }
 
             // 5. Thực hiện chuyển hướng trình duyệt
