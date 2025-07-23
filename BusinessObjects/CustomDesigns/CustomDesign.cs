@@ -1,5 +1,6 @@
 ﻿using BusinessObjects.Cart;
 using BusinessObjects.Common;
+using BusinessObjects.CustomDesignPayments;
 using BusinessObjects.Identity;
 using BusinessObjects.Orders;
 using System.ComponentModel.DataAnnotations;
@@ -57,5 +58,8 @@ namespace BusinessObjects.CustomDesigns
         // Các navigation tới CartItem, OrderItem (optional, có thể xóa nếu không dùng)
         public virtual ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+        public virtual ICollection<CustomDesignPayment> CustomDesignPayments { get; set; } = new List<CustomDesignPayment>();   // hoặc new HashSet<CustomDesignPayment>()
+
+
     }
 }

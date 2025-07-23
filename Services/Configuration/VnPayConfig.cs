@@ -1,4 +1,6 @@
-﻿namespace Services.Configuration
+﻿using static System.Net.WebRequestMethods;
+
+namespace Services.Configuration
 {
     public class VnPayConfig
     {
@@ -12,5 +14,7 @@
         public string CurrCode { get; set; } = "VND";
         public string Locale { get; set; } = "vn";
         public string TimeZoneId { get; set; } = "SE Asia Standard Time";
+
+        public string? ReturnUrlCustomDesign { get; set; } = "https://localhost:7266/api/custom-design-payments/vnpay/return";
     }
 }

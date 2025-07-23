@@ -14,13 +14,16 @@ namespace Services.Interfaces
             Task Send2FACodeAsync(string email, string code);
             //DesignCustoms
             Task SendCustomDesignStatusEmailAsync(
-     string email,
-     string designName,
-     CustomDesignStatus status,
-     DateTime? orderCreatedAt = null,
-     DateTime? shippingStartAt = null,
-     DateTime? deliveredAt = null,
-     DateTime? doneAt = null);
+       string email,
+       string designName,
+       CustomDesignStatus status,
+       DateTime? orderCreatedAt = null,
+       DateTime? shippingStartAt = null,
+       DateTime? deliveredAt = null,
+       DateTime? doneAt = null,
+       string? customerName = null,
+       string? customerPhone = null,
+       string? customerAddress = null);
         }
     }
 }

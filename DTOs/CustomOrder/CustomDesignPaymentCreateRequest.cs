@@ -15,5 +15,9 @@ namespace DTOs.CustomOrder
         [Required]
         public PaymentMethod PaymentMethod { get; set; } // Enum: VNPAY, COD, etc.
         public string? Description { get; set; }
+
+        public string? PayerName { get; set; }
+        public string? PayerPhone { get; set; }
+        public string? PayerAddress { get; set; }
     }
 }

@@ -279,6 +279,18 @@ namespace Repositories.Migrations
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("PayerAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PayerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("PayerPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1400,7 +1412,7 @@ namespace Repositories.Migrations
             modelBuilder.Entity("BusinessObjects.CustomDesignPayments.CustomDesignPayment", b =>
                 {
                     b.HasOne("BusinessObjects.CustomDesigns.CustomDesign", "CustomDesign")
-                        .WithMany()
+                        .WithMany("CustomDesignPayments")
                         .HasForeignKey("CustomDesignId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1643,6 +1655,8 @@ namespace Repositories.Migrations
             modelBuilder.Entity("BusinessObjects.CustomDesigns.CustomDesign", b =>
                 {
                     b.Navigation("CartItems");
+
+                    b.Navigation("CustomDesignPayments");
 
                     b.Navigation("OrderItems");
                 });
