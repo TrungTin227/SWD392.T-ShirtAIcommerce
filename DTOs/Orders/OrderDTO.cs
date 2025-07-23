@@ -18,7 +18,9 @@ namespace DTOs.Orders
         public OrderStatus Status { get; set; }
         public PaymentStatus PaymentStatus { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
+        public CancellationRequestStatus CancellationRequestStatus { get; set; }
         public string ShippingAddress { get; set; } = string.Empty;
+        public string? Email { get; set; }
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
         public string? CustomerNotes { get; set; }
@@ -40,6 +42,8 @@ namespace DTOs.Orders
         public string? ShippingMethodName { get; set; }
         public List<OrderItemDto> OrderItems { get; set; } = new();
         public decimal FinalTotal => TotalAmount ;
-        public DateTime? DeliveredAt { get; set; } 
+        public DateTime? DeliveredAt { get; set; }
+        public List<string> ImageUrls { get; set; } = new List<string>();
+
     }
 }

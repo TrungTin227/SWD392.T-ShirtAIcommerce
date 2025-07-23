@@ -1380,11 +1380,15 @@ namespace Services.Implementations
                 TotalAmount = order.TotalAmount,
                 ShippingFee = order.ShippingFee,
                 DiscountAmount = order.DiscountAmount,
-                RefundAmount = order.RefundAmount,
+                // THAY ĐỔI TẠI ĐÂY
+                RefundAmount = (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Returned)
+                   ? order.TotalAmount
+                   : 0,
                 Status = order.Status,
                 Image = orderImage,
                 PaymentStatus = order.PaymentStatus,
                 PaymentMethod = mainPayment?.PaymentMethod ?? default(PaymentMethod),
+                CancellationRequestStatus = order.CancellationStatus,
                 ShippingAddress = order.ShippingAddress,
                 ReceiverName = order.ReceiverName,
                 ReceiverPhone = order.ReceiverPhone,
@@ -1403,9 +1407,12 @@ namespace Services.Implementations
                 AssignedStaffName = order.AssignedStaff?.UserName ?? "",
                 CouponCode = order.Coupon?.Code ?? "",
                 ShippingMethodName = order.ShippingMethod != null
-                    ? order.ShippingMethod.Name.ToString()
-                    : string.Empty,
+        ? order.ShippingMethod.Name.ToString()
+        : string.Empty,
                 DeliveredAt = order.DeliveredAt ?? DateTime.MinValue,
+                ImageUrls = string.IsNullOrEmpty(order.CancellationImageUrls)
+? new List<string>()
+: order.CancellationImageUrls.Split(';').ToList(),
                 OrderItems = order.OrderItems?.Select(ConvertToOrderItemDto).ToList() ?? new List<OrderItemDto>()
             };
         }
