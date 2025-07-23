@@ -2,6 +2,7 @@
 using DTOs.Analytics;
 using DTOs.Common;
 using DTOs.Orders;
+using Repositories.Helpers;
 using System;
 
 namespace Services.Interfaces
@@ -81,5 +82,11 @@ namespace Services.Interfaces
         /// <param name="staffId">ID của Admin/Staff thực hiện xử lý.</param>
         /// <returns>True nếu yêu cầu được xử lý thành công, ngược lại là False.</returns>
         Task<bool> ProcessCancellationRequestAsync(Guid orderId, ProcessCancellationRequest request, Guid staffId);
+        /// <summary>
+        /// Lấy danh sách các đơn hàng đã hủy có phân trang.
+        /// </summary>
+        /// <param name="paginationParams">Thông số phân trang.</param>
+        /// <returns>Một đối tượng PagedList chứa các Order DTOs.</returns>
+        Task<PagedList<CancelledOrderDto>> GetCancelledOrdersAsync(PaginationParams paginationParams);
     }
 }

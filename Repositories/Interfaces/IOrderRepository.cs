@@ -42,5 +42,13 @@ namespace Repositories.Interfaces
         /// </summary>
         Task<Dictionary<PaymentStatus, int>> GetPaymentStatusCountsAsync();
 
+        /// <summary>
+        /// Lấy danh sách các đơn hàng đã bị hủy có phân trang.
+        /// </summary>
+        /// <param name="paginationParams">Thông số phân trang.</param>
+        /// <param name="userId">ID của người dùng (nếu có) để lọc theo người dùng.</param>
+        /// <returns>Danh sách các đơn hàng đã hủy được phân trang.</returns>
+        Task<PagedList<Order>> GetCancelledOrdersAsync(PaginationParams paginationParams, Guid? userId = null);
+
     }
 }

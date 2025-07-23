@@ -3,6 +3,7 @@ using DTOs.Common;
 using DTOs.Orders;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Repositories.Helpers;
 using Services.Interfaces;
 using WebAPI.Middlewares;
 
@@ -603,6 +604,14 @@ namespace WebAPI.Controllers
                     : BadRequest(ErrorResponse("Không thể xử lý yêu cầu hủy đơn hàng."));
             }, "Lỗi khi xử lý yêu cầu hủy đơn hàng {OrderId}", id);
         }
-
+        [HttpGet("cancelled")]
+        [Authorize] // Yêu cầu người dùng phải đăng nhập
+        public async Task<ActionResult<PagedList<CancelledOrderDto>>> GetCancelledOrders([FromQuery] PaginationParams paginationParams)
+        {
+            return await ExecuteAsync(
+                () => _orderService.GetCancelledOrdersAsync(paginationParams),
+                "Lỗi khi lấy danh sách đơn hàng đã hủy."
+            );
+        }
     }
 }

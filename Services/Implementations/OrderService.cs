@@ -9,6 +9,7 @@ using DTOs.Orders;
 using DTOs.Payments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Repositories.Helpers;
 using Repositories.Interfaces;
 using Repositories.WorkSeeds.Interfaces;
 using Services.Commons;
@@ -2180,6 +2181,59 @@ namespace Services.Implementations
                 _logger.LogError(ex, "Lỗi khi xử lý yêu cầu hủy đơn hàng {OrderId}.", orderId);
                 throw; // Ném lại để controller xử lý ngoại lệ
             }
+        }
+        public async Task<PagedList<CancelledOrderDto>> GetCancelledOrdersAsync(PaginationParams paginationParams)
+        {
+            Guid? userId = null;
+
+            // Logic nghiệp vụ: Nếu người dùng không phải Admin/Staff, họ chỉ có thể xem đơn hàng của mình.
+            if (!_currentUserService.IsAdmin() && !_currentUserService.IsStaff())
+            {
+                userId = _currentUserService.GetUserId();
+                if (!userId.HasValue)
+                {
+                    throw new UnauthorizedAccessException("Người dùng chưa đăng nhập.");
+                }
+            }
+
+            _logger.LogInformation("Bắt đầu lấy danh sách đơn hàng đã hủy. UserID: {UserId}", userId ?? Guid.Empty);
+
+            // 1. Gọi phương thức Repository để lấy PagedList<Order>
+            var cancelledOrders = await _unitOfWork.OrderRepository.GetCancelledOrdersAsync(paginationParams, userId);
+
+            // 2. Chuyển đổi (Map) thủ công từ List<Order> sang List<CancelledOrderDto>
+            // Đây là phần thay thế cho AutoMapper
+            var cancelledOrdersDtoList = cancelledOrders
+                .Select(order => new CancelledOrderDto
+                {
+                    OrderId = order.Id,
+                    OrderNumber = order.OrderNumber,
+                    TotalAmount = order.TotalAmount,
+                    CancellationReason = order.CancellationReason,
+                    DateCancelled = order.UpdatedAt, // Lấy ngày cập nhật cuối cùng làm ngày hủy
+                    AdminReviewNotes = order.ReviewNotes,
+                    Items = order.OrderItems.Select(oi => new CancelledOrderItemDto
+                    {
+                        // Sử dụng toán tử ?. để tránh lỗi nếu ProductVariant hoặc Product bị null
+                        ProductName = oi.ProductVariant?.Product?.Name ?? "Sản phẩm không xác định",
+                        Quantity = oi.Quantity,
+                        UnitPrice = oi.UnitPrice,
+                        ImageUrl = oi.ProductVariant?.ImageUrl
+                    }).ToList()
+                }).ToList();
+
+            // 3. Tạo một PagedList<CancelledOrderDto> mới
+            // Truyền vào danh sách DTO đã map và các thông tin phân trang từ danh sách gốc.
+            var pagedResult = new PagedList<CancelledOrderDto>(
+                cancelledOrdersDtoList,
+                cancelledOrders.TotalCount,
+                cancelledOrders.CurrentPage,
+                cancelledOrders.PageSize
+            );
+
+            _logger.LogInformation("Đã lấy thành công {Count} đơn hàng đã hủy.", pagedResult.Count);
+
+            return pagedResult;
         }
     }
 

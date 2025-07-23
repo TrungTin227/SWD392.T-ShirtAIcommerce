@@ -102,4 +102,25 @@ namespace Repositories.Helpers
         public int PageSize { get; set; }
         public int TotalCount { get; set; }
     }
+    /// <summary>
+    /// Lớp chứa các tham số cho việc phân trang.
+    /// Được sử dụng để nhận thông tin từ query string của API request.
+    /// </summary>
+    public class PaginationParams
+    {
+        // Hằng số xác định kích thước trang tối đa để tránh request quá lớn làm ảnh hưởng hệ thống.
+        private const int MaxPageSize = 50;
+
+        // Số trang hiện tại, mặc định là trang 1.
+        public int PageNumber { get; set; } = 1;
+
+        // Kích thước trang (số lượng mục trên một trang).
+        private int _pageSize = 10; // Giá trị mặc định là 10.
+
+        public int PageSize
+        {
+            get => _pageSize;
+            set => _pageSize = (value > MaxPageSize) ? MaxPageSize : value;
+        }
+    }
 }

@@ -349,5 +349,32 @@ namespace Repositories.Implementations
                 .GroupBy(o => o.PaymentStatus)
                 .ToDictionaryAsync(g => g.Key, g => g.Count());
         }
+        public async Task<PagedList<Order>> GetCancelledOrdersAsync(PaginationParams paginationParams, Guid? userId = null)
+        {
+            // Bắt đầu với một IQueryable cơ bản từ DbSet Orders
+            var query = _dbSet.AsQueryable();
+
+            // 1. Lọc các đơn hàng có trạng thái là "Cancelled" và chưa bị xóa mềm
+            query = query.Where(o => o.Status == OrderStatus.Cancelled && !o.IsDeleted);
+
+            // 2. Nếu có userId, lọc các đơn hàng của người dùng đó
+            if (userId.HasValue)
+            {
+                query = query.Where(o => o.UserId == userId.Value);
+            }
+
+            // 3. Sắp xếp kết quả
+            query = query.OrderByDescending(o => o.UpdatedAt);
+
+            // 4. Bao gồm các thông tin liên quan
+            // Phương thức này của bạn cần ThenInclude, điều này quan trọng cho lựa chọn giải pháp
+            query = query.Include(o => o.OrderItems)
+                         .ThenInclude(oi => oi.ProductVariant)
+                             .ThenInclude(pv => pv.Product)
+                         .Include(o => o.User);
+
+            // 5. SỬA LỖI TẠI ĐÂY: Đổi "CreateAsync" thành "ToPagedListAsync"
+            return await PagedList<Order>.ToPagedListAsync(query, paginationParams.PageNumber, paginationParams.PageSize);
+        }
     }
 }
