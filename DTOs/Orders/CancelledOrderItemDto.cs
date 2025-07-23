@@ -1,4 +1,6 @@
-﻿namespace DTOs.Orders
+﻿using BusinessObjects.Common;
+
+namespace DTOs.Orders
 {
     /// <summary>
     /// Đại diện cho thông tin tóm tắt của một sản phẩm trong đơn hàng đã hủy.
@@ -19,10 +21,22 @@
     {
         public Guid OrderId { get; set; }
         public string OrderNumber { get; set; } = string.Empty;
-        public decimal TotalAmount { get; set; }
-        public string Status { get; set; } = "Cancelled";
 
-        // Thông tin quan trọng về việc hủy đơn
+        // --- Thông tin người nhận (Thêm mới) ---
+        public string ReceiverName { get; set; } = string.Empty;
+        public string ReceiverPhone { get; set; } = string.Empty;
+        public string ShippingAddress { get; set; } = string.Empty;
+
+        public decimal SubtotalAmount { get; set; } 
+        public decimal ShippingFee { get; set; }    
+        public decimal DiscountAmount { get; set; } 
+        public decimal TotalAmount { get; set; }    
+
+        // --- Trạng thái ---
+        public string Status { get; set; } = "Cancelled";
+        public PaymentStatus PaymentStatus { get; set; }
+
+        // --- Thông tin về việc hủy đơn ---
         public string? CancellationReason { get; set; }
         public DateTime? DateCancelled { get; set; } // Dùng UpdatedAt làm ngày hủy
         public string? AdminReviewNotes { get; set; }

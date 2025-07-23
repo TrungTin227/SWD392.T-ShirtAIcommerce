@@ -269,7 +269,7 @@ namespace Repositories.Implementations
             if (order == null || order.IsDeleted) return false;
 
             // Only allow cancellation for certain statuses
-            if (order.Status == OrderStatus.Cancelled)
+            if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Completed)
                 return false;
 
             order.Status = OrderStatus.Cancelled;
@@ -279,7 +279,7 @@ namespace Repositories.Implementations
             if (cancelledBy.HasValue)
                 order.UpdatedBy = cancelledBy.Value;
 
-            if (order.PaymentStatus == PaymentStatus.Completed)
+            if (order.PaymentStatus == PaymentStatus.Paid || order.PaymentStatus == PaymentStatus.Completed)
                 order.PaymentStatus = PaymentStatus.Refunded;
 
             return true;

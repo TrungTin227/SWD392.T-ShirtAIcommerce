@@ -585,7 +585,7 @@ namespace Services.Implementations
                 }
 
                 // Kiểm tra xem đơn hàng có ở trạng thái cho phép hủy hay không
-                if (order.Status == OrderStatus.Cancelled)
+                if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Completed)
                 {
                     throw new InvalidOperationException("Không thể hủy đơn hàng đã được giao hoặc đã bị hủy trước đó");
                 }
@@ -673,9 +673,9 @@ namespace Services.Implementations
                     throw new ArgumentException("Đơn hàng không tồn tại");
                 }
 
-                if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered)
+                if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered || order.Status == OrderStatus.Completed)
                 {
-                    throw new InvalidOperationException("Không thể phân công đơn hàng đã hủy hoặc đã giao");
+                    throw new InvalidOperationException("Không thể phân công đơn hàng đã hủy hoặc đã giao, hoặc đã hoàn thành");
                 }
 
                 var result = await _orderRepository.AssignOrderToStaffAsync(orderId, staffId, updatedBy);
@@ -2142,6 +2142,11 @@ namespace Services.Implementations
 
                     if (success)
                     {
+                        if (order.PaymentStatus == PaymentStatus.Paid)
+                        {
+                            order.PaymentStatus = PaymentStatus.Refunded;
+                            _logger.LogInformation("Trạng thái thanh toán của đơn hàng {OrderId} đã được cập nhật thành 'Refunded'.", orderId);
+                        }
                         await _unitOfWork.SaveChangesAsync(); // Lưu các thay đổi từ _executeOrderCancellationLogic
                         await transaction.CommitAsync();
                         _logger.LogInformation("Đơn hàng {OrderId} đã được duyệt và hủy thành công.", orderId);
@@ -2152,6 +2157,7 @@ namespace Services.Implementations
                         await transaction.RollbackAsync(); // Nếu _executeOrderCancellationLogic thất bại
                         return false;
                     }
+
                 }
                 else if (request.Status == CancellationRequestStatus.Rejected)
                 {
@@ -2208,10 +2214,18 @@ namespace Services.Implementations
                 {
                     OrderId = order.Id,
                     OrderNumber = order.OrderNumber,
+
+                    ReceiverName = order.ReceiverName,
+                    ReceiverPhone = order.ReceiverPhone,
+                    ShippingAddress = order.ShippingAddress,
+                    SubtotalAmount = order.SubtotalAmount, 
+                    ShippingFee = order.ShippingFee,
+                    DiscountAmount = order.DiscountAmount,
                     TotalAmount = order.TotalAmount,
                     CancellationReason = order.CancellationReason,
-                    DateCancelled = order.UpdatedAt, // Lấy ngày cập nhật cuối cùng làm ngày hủy
+                    DateCancelled = order.UpdatedAt, 
                     AdminReviewNotes = order.ReviewNotes,
+                    PaymentStatus = order.PaymentStatus,
                     Items = order.OrderItems.Select(oi => new CancelledOrderItemDto
                     {
                         // Sử dụng toán tử ?. để tránh lỗi nếu ProductVariant hoặc Product bị null
