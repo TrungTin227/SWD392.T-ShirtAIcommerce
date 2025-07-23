@@ -10,7 +10,7 @@ namespace DTOs.Orders
         public string? ProductName { get; set; }
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
-        public string? VariantName { get; set; } 
+        public string? VariantName { get; set; }
         public string? VariantImageUrl { get; set; }
     }
 
@@ -28,10 +28,10 @@ namespace DTOs.Orders
         public string ReceiverPhone { get; set; } = string.Empty;
         public string ShippingAddress { get; set; } = string.Empty;
 
-        public decimal SubtotalAmount { get; set; } 
-        public decimal ShippingFee { get; set; }    
-        public decimal DiscountAmount { get; set; } 
-        public decimal TotalAmount { get; set; }    
+        public decimal SubtotalAmount { get; set; }
+        public decimal ShippingFee { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public decimal TotalAmount { get; set; }
 
         // --- Trạng thái ---
         public string Status { get; set; } = "Cancelled";
@@ -41,7 +41,7 @@ namespace DTOs.Orders
         public string? CancellationReason { get; set; }
         public DateTime? DateCancelled { get; set; } // Dùng UpdatedAt làm ngày hủy
         public string? AdminReviewNotes { get; set; }
-
+        public List<string> ImageUrls { get; set; } = new List<string>();
         public List<CancelledOrderItemDto> Items { get; set; } = new List<CancelledOrderItemDto>();
     }
 }

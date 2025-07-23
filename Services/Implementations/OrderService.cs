@@ -22,7 +22,7 @@ namespace Services.Implementations
     public class OrderService : BaseService<Order, Guid>, IOrderService
     {
         private readonly IOrderRepository _orderRepository;
-        private readonly IOrderItemRepository _orderItemRepository; 
+        private readonly IOrderItemRepository _orderItemRepository;
         private readonly ICartItemRepository _cartItemRepository;
         private readonly ICartItemService _cartItemService;
         private readonly IUserAddressService _userAddressService;
@@ -35,9 +35,9 @@ namespace Services.Implementations
 
         public OrderService(
             IOrderRepository repository,
-            IOrderItemRepository orderItemRepository, 
+            IOrderItemRepository orderItemRepository,
             IPaymentRepository paymentRepository,
-            ICartItemService cartItemService, 
+            ICartItemService cartItemService,
             ICurrentUserService currentUserService,
             IUnitOfWork unitOfWork,
             ICurrentTime currentTime,
@@ -56,7 +56,7 @@ namespace Services.Implementations
             _orderRepository = repository;
             _orderItemRepository = orderItemRepository;
             _cartItemRepository = cartItemRepository;
-            _cartItemService = cartItemService; 
+            _cartItemService = cartItemService;
             _userAddressService = userAddressService;
             _couponService = couponService;
             _shippingMethodService = shippingMethodService;
@@ -167,14 +167,14 @@ namespace Services.Implementations
 
                         orderItems.Add(new OrderItem
                         {
-                            Id               = Guid.NewGuid(),
-                            ProductId        = ci.ProductId,
+                            Id = Guid.NewGuid(),
+                            ProductId = ci.ProductId,
                             ProductVariantId = ci.ProductVariantId,
-                            CustomDesignId   = ci.CustomDesignId,
-                            Quantity         = ci.Quantity,
-                            UnitPrice        = ci.UnitPrice,
-                            TotalPrice       = ci.TotalPrice,
-                            ItemName         = ci.Product?.Name ?? string.Empty
+                            CustomDesignId = ci.CustomDesignId,
+                            Quantity = ci.Quantity,
+                            UnitPrice = ci.UnitPrice,
+                            TotalPrice = ci.TotalPrice,
+                            ItemName = ci.Product?.Name ?? string.Empty
                         });
                     }
                 }
@@ -200,12 +200,12 @@ namespace Services.Implementations
                     var unitPrice = (variant.Product?.Price ?? 0m) + (variant.PriceAdjustment ?? 0m);
                     orderItems.Add(new OrderItem
                     {
-                        Id               = Guid.NewGuid(),
+                        Id = Guid.NewGuid(),
                         ProductVariantId = di.ProductVariantId,
-                        Quantity         = di.Quantity.Value,
-                        UnitPrice        = unitPrice,
-                        TotalPrice       = unitPrice * di.Quantity.Value,
-                        ItemName         = variant.Product?.Name ?? string.Empty
+                        Quantity = di.Quantity.Value,
+                        UnitPrice = unitPrice,
+                        TotalPrice = unitPrice * di.Quantity.Value,
+                        ItemName = variant.Product?.Name ?? string.Empty
                     });
                 }
 
@@ -243,22 +243,22 @@ namespace Services.Implementations
                 // 6. Tạo Order ban đầu
                 var order = new Order
                 {
-                    Id               = Guid.NewGuid(),
-                    OrderNumber      = await _orderRepository.GenerateOrderNumberAsync(),
-                    UserId           = userId.Value,
-                    ShippingAddress  = shippingAddress,
-                    ReceiverName     = receiverName,
-                    ReceiverPhone    = receiverPhone,
-                    CustomerNotes    = request.CustomerNotes,
-                    CouponId         = request.CouponId,
+                    Id = Guid.NewGuid(),
+                    OrderNumber = await _orderRepository.GenerateOrderNumberAsync(),
+                    UserId = userId.Value,
+                    ShippingAddress = shippingAddress,
+                    ReceiverName = receiverName,
+                    ReceiverPhone = receiverPhone,
+                    CustomerNotes = request.CustomerNotes,
+                    CouponId = request.CouponId,
                     ShippingMethodId = request.ShippingMethodId,
-                    ShippingFee      = shippingFee,
-                    DiscountAmount   = discount,
-                    TotalAmount      = totalAmount,
-                    PaymentStatus    = PaymentStatus.Unpaid,
-                    Status           = OrderStatus.Pending,
-                    CreatedAt        = _currentTime.GetVietnamTime(),
-                    CreatedBy        = userId.Value
+                    ShippingFee = shippingFee,
+                    DiscountAmount = discount,
+                    TotalAmount = totalAmount,
+                    PaymentStatus = PaymentStatus.Unpaid,
+                    Status = OrderStatus.Pending,
+                    CreatedAt = _currentTime.GetVietnamTime(),
+                    CreatedBy = userId.Value
                 };
                 order.PaymentMethod = request.PaymentMethod;
                 await _orderRepository.AddAsync(order);
@@ -297,8 +297,8 @@ namespace Services.Implementations
                 // 11. TẠO PAYMENT, lấy URL nếu VNPAY
                 var paymentReq = new PaymentCreateRequest
                 {
-                    OrderId       = order.Id,
-                    PaymentMethod = request.PaymentMethod, 
+                    OrderId = order.Id,
+                    PaymentMethod = request.PaymentMethod,
                     Description = request.PaymentDescription
                 };
 
@@ -309,7 +309,7 @@ namespace Services.Implementations
                 {
                     // Gọi method VNPAY để lấy URL
                     var vnPayResp = await _paymentService.CreateVnPayPaymentAsync(paymentReq);
-                    payment    = vnPayResp.Payment!;    // vẫn dùng DTO cũ
+                    payment = vnPayResp.Payment!;    // vẫn dùng DTO cũ
                     paymentUrl = vnPayResp.PaymentUrl;  // đây là link để FE redirect
                 }
                 else
@@ -327,8 +327,8 @@ namespace Services.Implementations
 
                 return new CreateOrderResult
                 {
-                    Order      = orderDto,
-                    Payment    = payment,
+                    Order = orderDto,
+                    Payment = payment,
                     PaymentUrl = paymentUrl
                 };
             }
@@ -660,7 +660,7 @@ namespace Services.Implementations
 
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Đã xảy ra lỗi nghiêm trọng khi đang hủy đơn hàng {OrderId}. Giao dịch đã được rollback an toàn.", orderId);
-                throw; 
+                throw;
             }
         }
 
@@ -1091,8 +1091,8 @@ namespace Services.Implementations
             var result = new BatchOperationResultDTO
             {
                 TotalRequested = orderIds.Count,
-                SuccessIds     = new List<string>(),
-                Errors         = new List<BatchOperationErrorDTO>()
+                SuccessIds = new List<string>(),
+                Errors = new List<BatchOperationErrorDTO>()
             };
 
             using var transaction = await _unitOfWork.BeginTransactionAsync();
@@ -1107,7 +1107,7 @@ namespace Services.Implementations
                         {
                             result.Errors.Add(new BatchOperationErrorDTO
                             {
-                                Id           = orderId.ToString(),
+                                Id = orderId.ToString(),
                                 ErrorMessage = "Đơn hàng không tồn tại hoặc đã bị xóa"
                             });
                             continue;
@@ -1117,7 +1117,7 @@ namespace Services.Implementations
                         {
                             result.Errors.Add(new BatchOperationErrorDTO
                             {
-                                Id           = orderId.ToString(),
+                                Id = orderId.ToString(),
                                 ErrorMessage = "Chỉ đơn ở trạng thái Pending mới được chuyển sang Processing"
                             });
                             continue;
@@ -1135,7 +1135,7 @@ namespace Services.Implementations
                         else
                             result.Errors.Add(new BatchOperationErrorDTO
                             {
-                                Id           = orderId.ToString(),
+                                Id = orderId.ToString(),
                                 ErrorMessage = "Cập nhật trạng thái thất bại"
                             });
                     }
@@ -1144,7 +1144,7 @@ namespace Services.Implementations
                         _logger.LogError(ex, "Lỗi khi chuyển Processing cho đơn hàng {OrderId}", orderId);
                         result.Errors.Add(new BatchOperationErrorDTO
                         {
-                            Id           = orderId.ToString(),
+                            Id = orderId.ToString(),
                             ErrorMessage = ex.Message
                         });
                     }
@@ -1159,7 +1159,7 @@ namespace Services.Implementations
                 _logger.LogError(ex, "Lỗi hệ thống khi batch chuyển Processing");
                 result.Errors.Add(new BatchOperationErrorDTO
                 {
-                    Id           = "Hệ thống",
+                    Id = "Hệ thống",
                     ErrorMessage = "Lỗi hệ thống: " + ex.Message
                 });
             }
@@ -1260,7 +1260,7 @@ namespace Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error calculating shipping fee for method {ShippingMethodId}, using default", shippingMethodId);
-                
+
                 // Fallback logic
                 var defaultFee = 25000m;
 
@@ -1391,7 +1391,7 @@ namespace Services.Implementations
                 CustomerNotes = order.CustomerNotes,
                 EstimatedDeliveryDate = order.EstimatedDeliveryDate,
                 TrackingNumber = order.TrackingNumber,
-                CancellationReason = order.CancellationReason, 
+                CancellationReason = order.CancellationReason,
                 AssignedStaffId = order.AssignedStaffId,
                 CouponId = order.CouponId,
                 ShippingMethodId = order.ShippingMethodId,
@@ -1453,7 +1453,7 @@ namespace Services.Implementations
                 var validationResult = await ValidateCartForOrderAsync(userId, request.SessionId);
                 if (!validationResult.IsValid)
                 {
-                    _logger.LogWarning("Cart validation failed for user {UserId}: {Errors}", 
+                    _logger.LogWarning("Cart validation failed for user {UserId}: {Errors}",
                         userId, string.Join("; ", validationResult.Errors));
                     return null;
                 }
@@ -1492,10 +1492,10 @@ namespace Services.Implementations
 
                 // Calculate totals
                 var subtotal = cartItems.Sum(ci => ci.TotalPrice);
-                
+
                 // Apply shipping
                 var shippingFee = await CalculateShippingFeeAsync(request.ShippingMethodId, subtotal);
-                
+
                 // Apply discount and tax
                 var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(request.CouponId, subtotal);
 
@@ -1524,7 +1524,7 @@ namespace Services.Implementations
 
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Order {OrderId} created successfully for user {UserId}", 
+                _logger.LogInformation("Order {OrderId} created successfully for user {UserId}",
                     createdOrder.Id, userId);
 
                 // Convert to DTO
@@ -1552,7 +1552,7 @@ namespace Services.Implementations
 
                 // Get cart validation from cart service
                 var cartValidation = await _cartItemService.ValidateCartForCheckoutDetailedAsync(userId, sessionId);
-                
+
                 if (!cartValidation.IsSuccess)
                 {
                     result.Errors.Add(cartValidation.Message);
@@ -1585,17 +1585,17 @@ namespace Services.Implementations
                 result.ShippingFee = await CalculateShippingFeeAsync(null, subtotal);
                 var (discountAmount, taxAmount) = await CalculateDiscountAndTaxAsync(null, subtotal);
                 result.DiscountAmount = discountAmount;
-                result.EstimatedTotal = subtotal + result.ShippingFee  - result.DiscountAmount;
+                result.EstimatedTotal = subtotal + result.ShippingFee - result.DiscountAmount;
 
                 return result;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error validating cart for order");
-                return new OrderValidationResult 
-                { 
-                    IsValid = false, 
-                    Errors = { "Lỗi khi validate giỏ hàng" } 
+                return new OrderValidationResult
+                {
+                    IsValid = false,
+                    Errors = { "Lỗi khi validate giỏ hàng" }
                 };
             }
         }
@@ -1656,7 +1656,7 @@ namespace Services.Implementations
                     order.TotalAmount = total;
                     order.UpdatedAt = DateTime.UtcNow;
                     await UpdateAsync(order);
-                    
+
                     _logger.LogInformation("Order total recalculated for {OrderId}: {Total}", orderId, total);
                 }
 
@@ -1872,7 +1872,7 @@ namespace Services.Implementations
                 var paidCount = paymentCounts.GetValueOrDefault(PaymentStatus.Completed, 0);
                 var unpaidCount = paymentCounts.GetValueOrDefault(PaymentStatus.Unpaid, 0);
                 var refundedCount = paymentCounts.GetValueOrDefault(PaymentStatus.Refunded, 0);
-                var totalPaymentOrders = paidCount + unpaidCount  + refundedCount;
+                var totalPaymentOrders = paidCount + unpaidCount + refundedCount;
 
                 var analyticsDto = new DashboardAnalyticsDto
                 {
@@ -2251,6 +2251,7 @@ namespace Services.Implementations
         DateCancelled = order.UpdatedAt,
         AdminReviewNotes = order.ReviewNotes,
         PaymentStatus = order.PaymentStatus,
+        ImageUrls = order.CancellationImageUrls?.Split(';').ToList() ?? new List<string>(),
         Items = order.OrderItems.Select(oi => new CancelledOrderItemDto
         {
             // Sử dụng toán tử ?. để tránh lỗi nếu ProductVariant hoặc Product bị null
