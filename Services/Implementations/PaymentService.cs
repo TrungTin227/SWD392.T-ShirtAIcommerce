@@ -273,10 +273,8 @@ namespace Services.Implementations
             };
             return await _vnPayService.QueryPaymentAsync(request);
         }
-
-        public async Task<PaymentCallbackResult> HandleVnPayCallbackAsync(VnPayCallbackRequest callback)
+        public async Task<bool> HandleVnPayCallbackAsync(VnPayCallbackRequest callback)
         {
-            var result = new PaymentCallbackResult { Success = false };
             try
             {
                 var request = _httpContextAccessor.HttpContext!.Request;
@@ -286,21 +284,17 @@ namespace Services.Implementations
                 {
                     _logger.LogError("VNPAY signature validation failed. SecureHash={Hash}",
                         request.Query["vnp_SecureHash"].ToString());
-                    result.Message = "Invalid VNPAY signature.";
-                    return result;
+                    return false;
                 }
 
                 // 2. Parse paymentId từ vnp_TxnRef
                 var txnRef = callback.vnp_TxnRef;
-                Guid paymentId;
                 if (string.IsNullOrWhiteSpace(txnRef) || !txnRef.Contains("_") ||
-                    !Guid.TryParse(txnRef.Split('_')[1], out paymentId))
+                    !Guid.TryParse(txnRef.Split('_')[1], out var paymentId))
                 {
                     _logger.LogError("Invalid vnp_TxnRef: {TxnRef}", txnRef);
-                    result.Message = "Invalid transaction reference.";
-                    return result;
+                    return false;
                 }
-                result.PaymentId = paymentId;
 
                 // 3. Xác định trạng thái payment
                 var respCode = request.Query["vnp_ResponseCode"].ToString();
@@ -309,65 +303,150 @@ namespace Services.Implementations
                              ? PaymentStatus.Paid
                              : PaymentStatus.Failed;
 
-                result.VnPayResponseCode = respCode;
-                result.VnPayTransactionStatus = transStatus;
-
                 // 4. Lấy Payment & Order liên quan
                 var payment = await _paymentRepository.GetByIdAsync(paymentId);
                 if (payment == null)
                 {
                     _logger.LogWarning("Payment record not found: PaymentId={PaymentId}", paymentId);
-                    result.Message = "Payment record not found.";
-                    return result;
+                    return false;
                 }
-                result.OrderId = payment.OrderId; // Lấy OrderId từ payment entity
-                result.Amount = payment.Amount;   // Lấy Amount từ payment entity (đã là tiền đúng)
 
                 var order = await _orderRepository.GetByIdAsync(payment.OrderId);
                 if (order == null)
                 {
                     _logger.LogWarning("Order not found for PaymentId={PaymentId}", paymentId);
-                    // Có thể vẫn coi là thành công từ góc độ VNPAY nhưng có vấn đề về dữ liệu order
-                    result.Message = "Related order not found.";
-                    // Không return ở đây nếu vẫn muốn cập nhật payment
+                    return false;
                 }
 
                 // 5. Cập nhật trạng thái payment
                 if (payment.Status != status)
                 {
                     payment.Status = status;
-                    payment.TransactionId = callback.vnp_TransactionNo; // vnp_TransactionNo là mã GD của VNPAY
+                    payment.TransactionId = callback.vnp_TransactionNo;
                     await _paymentRepository.UpdateAsync(payment);
                     await _paymentRepository.SaveChangesAsync();
                 }
 
                 // 6. Cập nhật trạng thái đơn hàng
-                if (order != null && order.PaymentStatus != status)
+                if (order.PaymentStatus != status)
                 {
                     order.PaymentStatus = status;
 
+                    // Chỉ thay đổi OrderStatus khi thanh toán thành công
                     if (status == PaymentStatus.Paid)
                     {
-                        order.Status = OrderStatus.Pending; // Hoặc Paid, tùy vào logic của bạn
+                        order.Status = OrderStatus.Pending; // Vẫn giữ Pending sau khi thanh toán thành công
                     }
-                    // else { order.Status = OrderStatus.Failed; } // Tùy chọn: nếu thanh toán thất bại
+                    // Nếu thanh toán thất bại, có thể giữ nguyên OrderStatus hoặc đặt thành Failed
+                    // Tùy vào business logic của bạn
 
                     await _orderRepository.UpdateAsync(order);
                     await _orderRepository.SaveChangesAsync();
                 }
 
-                _logger.LogInformation("VNPAY callback handled. PaymentId={PaymentId}, OrderId={OrderId}, Status={Status}", paymentId, payment.OrderId, status);
-                result.Success = (status == PaymentStatus.Paid); // Đặt success dựa trên trạng thái thanh toán cuối cùng
-                result.Message = "VNPAY callback handled successfully.";
-                return result;
+                _logger.LogInformation("VNPAY callback handled. PaymentId={PaymentId}, Status={Status}", paymentId, status);
+                return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error handling VNPAY callback: {@Callback}", callback);
-                result.Message = $"Error processing callback: {ex.Message}";
-                return result;
+                return false;
             }
         }
+        //public async Task<PaymentCallbackResult> HandleVnPayCallbackAsync(VnPayCallbackRequest callback)
+        //{
+        //    var result = new PaymentCallbackResult { Success = false };
+        //    try
+        //    {
+        //        var request = _httpContextAccessor.HttpContext!.Request;
+
+        //        // 1. Validate signature
+        //        if (!ValidateCallbackFromQuery(request))
+        //        {
+        //            _logger.LogError("VNPAY signature validation failed. SecureHash={Hash}",
+        //                request.Query["vnp_SecureHash"].ToString());
+        //            result.Message = "Invalid VNPAY signature.";
+        //            return result;
+        //        }
+
+        //        // 2. Parse paymentId từ vnp_TxnRef
+        //        var txnRef = callback.vnp_TxnRef;
+        //        Guid paymentId;
+        //        if (string.IsNullOrWhiteSpace(txnRef) || !txnRef.Contains("_") ||
+        //            !Guid.TryParse(txnRef.Split('_')[1], out paymentId))
+        //        {
+        //            _logger.LogError("Invalid vnp_TxnRef: {TxnRef}", txnRef);
+        //            result.Message = "Invalid transaction reference.";
+        //            return result;
+        //        }
+        //        result.PaymentId = paymentId;
+
+        //        // 3. Xác định trạng thái payment
+        //        var respCode = request.Query["vnp_ResponseCode"].ToString();
+        //        var transStatus = request.Query["vnp_TransactionStatus"].ToString();
+        //        var status = (respCode == "00" && transStatus == "00")
+        //                     ? PaymentStatus.Paid
+        //                     : PaymentStatus.Failed;
+
+        //        result.VnPayResponseCode = respCode;
+        //        result.VnPayTransactionStatus = transStatus;
+
+        //        // 4. Lấy Payment & Order liên quan
+        //        var payment = await _paymentRepository.GetByIdAsync(paymentId);
+        //        if (payment == null)
+        //        {
+        //            _logger.LogWarning("Payment record not found: PaymentId={PaymentId}", paymentId);
+        //            result.Message = "Payment record not found.";
+        //            return result;
+        //        }
+        //        result.OrderId = payment.OrderId; // Lấy OrderId từ payment entity
+        //        result.Amount = payment.Amount;   // Lấy Amount từ payment entity (đã là tiền đúng)
+
+        //        var order = await _orderRepository.GetByIdAsync(payment.OrderId);
+        //        if (order == null)
+        //        {
+        //            _logger.LogWarning("Order not found for PaymentId={PaymentId}", paymentId);
+        //            // Có thể vẫn coi là thành công từ góc độ VNPAY nhưng có vấn đề về dữ liệu order
+        //            result.Message = "Related order not found.";
+        //            // Không return ở đây nếu vẫn muốn cập nhật payment
+        //        }
+
+        //        // 5. Cập nhật trạng thái payment
+        //        if (payment.Status != status)
+        //        {
+        //            payment.Status = status;
+        //            payment.TransactionId = callback.vnp_TransactionNo; // vnp_TransactionNo là mã GD của VNPAY
+        //            await _paymentRepository.UpdateAsync(payment);
+        //            await _paymentRepository.SaveChangesAsync();
+        //        }
+
+        //        // 6. Cập nhật trạng thái đơn hàng
+        //        if (order != null && order.PaymentStatus != status)
+        //        {
+        //            order.PaymentStatus = status;
+
+        //            if (status == PaymentStatus.Paid)
+        //            {
+        //                order.Status = OrderStatus.Pending; // Hoặc Paid, tùy vào logic của bạn
+        //            }
+        //            // else { order.Status = OrderStatus.Failed; } // Tùy chọn: nếu thanh toán thất bại
+
+        //            await _orderRepository.UpdateAsync(order);
+        //            await _orderRepository.SaveChangesAsync();
+        //        }
+
+        //        _logger.LogInformation("VNPAY callback handled. PaymentId={PaymentId}, OrderId={OrderId}, Status={Status}", paymentId, payment.OrderId, status);
+        //        result.Success = (status == PaymentStatus.Paid); // Đặt success dựa trên trạng thái thanh toán cuối cùng
+        //        result.Message = "VNPAY callback handled successfully.";
+        //        return result;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error handling VNPAY callback: {@Callback}", callback);
+        //        result.Message = $"Error processing callback: {ex.Message}";
+        //        return result;
+        //    }
+        //}
         /// <summary>
         /// Validate VNPAY signature directly from QueryString parameters
         /// </summary>
