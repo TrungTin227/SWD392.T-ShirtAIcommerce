@@ -38,5 +38,6 @@ namespace DTOs.Orders
         public string? ShippingMethodName { get; set; }
         public List<OrderItemDto> OrderItems { get; set; } = new();
         public decimal FinalTotal => TotalAmount ;
+        public DateTime? DeliveredAt { get; set; } 
     }
 }

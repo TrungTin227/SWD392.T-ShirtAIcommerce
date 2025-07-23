@@ -1006,6 +1006,7 @@ namespace Services.Implementations
                 Errors = new List<BatchOperationErrorDTO>()
             };
 
+            // Sử dụng transaction để đảm bảo tính toàn vẹn dữ liệu
             using var transaction = await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -1014,45 +1015,65 @@ namespace Services.Implementations
                     try
                     {
                         var order = await _orderRepository.GetByIdAsync(orderId);
+
+                        // Kiểm tra xem đơn hàng có hợp lệ không
                         if (order == null || order.IsDeleted || order.UserId != userId)
                         {
                             result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Đơn hàng không hợp lệ hoặc không thuộc về người dùng" });
                             continue;
                         }
 
+                        // Chỉ cho phép xác nhận khi đơn hàng đang ở trạng thái "Đang giao"
                         if (order.Status != OrderStatus.Shipping)
                         {
-                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Chỉ có thể xác nhận đơn đang giao" });
+                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Chỉ có thể xác nhận đơn hàng đang ở trạng thái 'Đang giao'" });
                             continue;
                         }
 
-                        var success = await _orderRepository.UpdateOrderStatusAsync(orderId, OrderStatus.Delivered, userId);
-                        if (success)
-                            result.SuccessIds.Add(orderId.ToString());
-                        else
-                            result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Không thể cập nhật trạng thái" });
+                        // === THAY ĐỔI CHÍNH Ở ĐÂY ===
+                        // 1. Cập nhật trạng thái đơn hàng
+                        order.Status = OrderStatus.Delivered;
+
+                        // 2. Ghi lại thời điểm xác nhận đã nhận hàng
+                        order.DeliveredAt = DateTime.UtcNow; // Sử dụng UtcNow để tránh lỗi múi giờ
+
+                        // 3. Đánh dấu đối tượng order đã thay đổi (quan trọng!)
+                        //    (Dòng này có thể không cần thiết nếu DbContext của bạn tự động theo dõi,
+                        //     nhưng thêm vào sẽ đảm bảo entity được đánh dấu là Modified)
+                        _orderRepository.UpdateAsync(order);
+
+                        // Thêm vào danh sách thành công, việc lưu sẽ được thực hiện ở cuối
+                        result.SuccessIds.Add(orderId.ToString());
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Lỗi xác nhận Delivered cho đơn hàng {OrderId}", orderId);
-                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = ex.Message });
+                        // Ghi log lỗi cho từng đơn hàng cụ thể
+                        _logger.LogError(ex, "Lỗi khi xác nhận 'Đã giao' cho đơn hàng {OrderId}", orderId);
+                        result.Errors.Add(new BatchOperationErrorDTO { Id = orderId.ToString(), ErrorMessage = "Lỗi xử lý: " + ex.Message });
                     }
                 }
 
-                await _unitOfWork.SaveChangesAsync();
+                // Chỉ lưu các thay đổi vào DB nếu có ít nhất một đơn hàng thành công
+                if (result.SuccessIds.Any())
+                {
+                    await _unitOfWork.SaveChangesAsync();
+                }
+
                 await transaction.CommitAsync();
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Lỗi hệ thống khi xác nhận Delivered hàng loạt");
+                _logger.LogError(ex, "Lỗi hệ thống khi xác nhận 'Đã giao' hàng loạt");
+                // Thêm một lỗi chung để thông báo cho người dùng về sự cố hệ thống
                 result.Errors.Add(new BatchOperationErrorDTO
                 {
                     Id = "Hệ thống",
-                    ErrorMessage = "Lỗi hệ thống: " + ex.Message
+                    ErrorMessage = "Lỗi hệ thống nghiêm trọng đã xảy ra. Vui lòng thử lại sau. " + ex.Message
                 });
             }
 
+            // Cập nhật lại số lượng thành công/thất bại và thông báo
             result.SuccessCount = result.SuccessIds.Count;
             result.FailureCount = result.Errors.Count;
             result.Message = result.IsCompleteSuccess
@@ -1380,6 +1401,7 @@ namespace Services.Implementations
                 ShippingMethodName = order.ShippingMethod != null
                     ? order.ShippingMethod.Name.ToString()
                     : string.Empty,
+                DeliveredAt = order.DeliveredAt ?? DateTime.MinValue,
                 OrderItems = order.OrderItems?.Select(ConvertToOrderItemDto).ToList() ?? new List<OrderItemDto>()
             };
         }

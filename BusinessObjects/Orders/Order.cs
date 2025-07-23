@@ -67,6 +67,7 @@ namespace BusinessObjects.Orders
         public string? CustomerNotes { get; set; }
 
         public DateTime? EstimatedDeliveryDate { get; set; }
+        public DateTime? DeliveredAt { get; set; }
 
         [MaxLength(100)]
         public string? TrackingNumber { get; set; }
