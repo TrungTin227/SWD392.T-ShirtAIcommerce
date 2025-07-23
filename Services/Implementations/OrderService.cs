@@ -260,6 +260,7 @@ namespace Services.Implementations
                     CreatedAt        = _currentTime.GetVietnamTime(),
                     CreatedBy        = userId.Value
                 };
+                order.PaymentMethod = request.PaymentMethod;
                 await _orderRepository.AddAsync(order);
 
                 // 7. Lưu OrderItems
@@ -297,8 +298,8 @@ namespace Services.Implementations
                 var paymentReq = new PaymentCreateRequest
                 {
                     OrderId       = order.Id,
-                    PaymentMethod = request.PaymentMethod,
-                    Description   = request.PaymentDescription
+                    PaymentMethod = request.PaymentMethod, 
+                    Description = request.PaymentDescription
                 };
 
                 PaymentResponse payment;
@@ -1367,6 +1368,7 @@ namespace Services.Implementations
         private OrderDTO ConvertToOrderDTO(Order order)
         {
             if (order == null) return null;
+            string? orderImage = order.OrderItems?.FirstOrDefault()?.ProductVariant?.ImageUrl;
 
             return new OrderDTO
             {
@@ -1379,6 +1381,7 @@ namespace Services.Implementations
                 DiscountAmount = order.DiscountAmount,
                 RefundAmount = order.RefundAmount,
                 Status = order.Status,
+                Image = orderImage,
                 PaymentStatus = order.PaymentStatus,
                 PaymentMethod = order.PaymentMethod,
                 ShippingAddress = order.ShippingAddress,
@@ -2232,31 +2235,35 @@ namespace Services.Implementations
             // 2. Chuyển đổi (Map) thủ công từ List<Order> sang List<CancelledOrderDto>
             // Đây là phần thay thế cho AutoMapper
             var cancelledOrdersDtoList = cancelledOrders
-                .Select(order => new CancelledOrderDto
-                {
-                    OrderId = order.Id,
-                    OrderNumber = order.OrderNumber,
+    .Select(order => new CancelledOrderDto
+    {
+        OrderId = order.Id,
+        OrderNumber = order.OrderNumber,
+        ReceiverName = order.ReceiverName,
+        ReceiverPhone = order.ReceiverPhone,
+        ShippingAddress = order.ShippingAddress,
+        SubtotalAmount = order.SubtotalAmount,
+        ShippingFee = order.ShippingFee,
+        DiscountAmount = order.DiscountAmount,
+        TotalAmount = order.TotalAmount,
+        CancellationReason = order.CancellationReason,
+        DateCancelled = order.UpdatedAt,
+        AdminReviewNotes = order.ReviewNotes,
+        PaymentStatus = order.PaymentStatus,
+        Items = order.OrderItems.Select(oi => new CancelledOrderItemDto
+        {
+            // Sử dụng toán tử ?. để tránh lỗi nếu ProductVariant hoặc Product bị null
+            ProductName = oi.ProductVariant?.Product?.Name ?? "Sản phẩm không xác định",
+            Quantity = oi.Quantity,
+            UnitPrice = oi.UnitPrice,
 
-                    ReceiverName = order.ReceiverName,
-                    ReceiverPhone = order.ReceiverPhone,
-                    ShippingAddress = order.ShippingAddress,
-                    SubtotalAmount = order.SubtotalAmount, 
-                    ShippingFee = order.ShippingFee,
-                    DiscountAmount = order.DiscountAmount,
-                    TotalAmount = order.TotalAmount,
-                    CancellationReason = order.CancellationReason,
-                    DateCancelled = order.UpdatedAt, 
-                    AdminReviewNotes = order.ReviewNotes,
-                    PaymentStatus = order.PaymentStatus,
-                    Items = order.OrderItems.Select(oi => new CancelledOrderItemDto
-                    {
-                        // Sử dụng toán tử ?. để tránh lỗi nếu ProductVariant hoặc Product bị null
-                        ProductName = oi.ProductVariant?.Product?.Name ?? "Sản phẩm không xác định",
-                        Quantity = oi.Quantity,
-                        UnitPrice = oi.UnitPrice,
-                        ImageUrl = oi.ProductVariant?.ImageUrl
-                    }).ToList()
-                }).ToList();
+            VariantName = (oi.ProductVariant != null)
+                            ? $"{oi.ProductVariant.Color} - {oi.ProductVariant.Size}"
+                            : "Không có biến thể",
+            // Lấy URL hình ảnh từ ProductVariant
+            VariantImageUrl = oi.ProductVariant?.ImageUrl
+        }).ToList()
+    }).ToList();
 
             // 3. Tạo một PagedList<CancelledOrderDto> mới
             // Truyền vào danh sách DTO đã map và các thông tin phân trang từ danh sách gốc.

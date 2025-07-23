@@ -1,4 +1,5 @@
 ﻿using BusinessObjects.Common;
+using BusinessObjects.Products;
 using DTOs.OrderItem;
 
 namespace DTOs.Orders
@@ -6,6 +7,7 @@ namespace DTOs.Orders
     public class OrderDTO
     {
         public Guid Id { get; set; }
+        public string? Image { get; set; }
         public string OrderNumber { get; set; } = string.Empty;
         public Guid UserId { get; set; }
         public decimal SubtotalAmount { get; set; }
