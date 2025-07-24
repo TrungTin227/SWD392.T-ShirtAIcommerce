@@ -491,7 +491,10 @@ namespace Repositories.Migrations
                     Status = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     PaidAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                    Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    PayerName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    PayerPhone = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    PayerAddress = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
                 },
                 constraints: table =>
                 {
