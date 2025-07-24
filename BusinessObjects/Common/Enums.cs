@@ -4,6 +4,11 @@
 namespace BusinessObjects.Common
 {
     public enum Gender { Male, Female, Other }
+    public enum PaymentPhase
+    {
+        Deposit = 1,
+        Final = 2
+    }
 
     // Enum cho ProductStatus (đã có sẵn)
     public enum ProductStatus

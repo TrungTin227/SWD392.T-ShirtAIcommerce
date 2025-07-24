@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BusinessObjects.Common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,6 +18,9 @@ namespace DTOs.CustomOrder
         public DateTime CreatedAt { get; set; }
         public DateTime? PaidAt { get; set; }
         public string? Notes { get; set; }
+        public string? PayerName { get; set; }
+        public string? PayerPhone { get; set; }
+        public string? PayerAddress { get; set; }
 
         // Nếu dùng VNPAY
         public string? PaymentUrl { get; set; }

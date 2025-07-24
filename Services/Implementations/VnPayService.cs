@@ -55,7 +55,7 @@ namespace Services.Implementations
                 Message = "Create payment URL success"
             };
         }
-
+        //Payments
         public async Task<VnPayQueryResponse> QueryPaymentAsync(VnPayQueryRequest req)
         {
             var lib = new VnPayLibrary();
@@ -92,6 +92,36 @@ namespace Services.Implementations
                 vnp_TransactionStatus = dict.GetValueOrDefault("vnp_TransactionStatus", ""),
                 vnp_SecureHash = dict.GetValueOrDefault("vnp_SecureHash", "")
             };
+        }
+        // HÀM MỚI: truyền returnUrl tùy ý (CustomDesign / v.v.)
+        public Task<VnPayCreatePaymentResponse> CreatePaymentUrlAsync(
+            VnPayCreatePaymentRequest req,
+            string returnUrl)
+        {
+            var lib = new VnPayLibrary();
+            lib.AddRequestData("vnp_Version", _cfg.Version);
+            lib.AddRequestData("vnp_Command", "pay");
+            lib.AddRequestData("vnp_TmnCode", _cfg.TmnCode);
+            lib.AddRequestData("vnp_Amount", (req.vnp_Amount * 100).ToString());
+            lib.AddRequestData("vnp_CurrCode", _cfg.CurrCode);
+            lib.AddRequestData("vnp_TxnRef", req.vnp_TxnRef);
+            lib.AddRequestData("vnp_OrderInfo", req.vnp_OrderInfo);
+            lib.AddRequestData("vnp_OrderType", req.vnp_OrderType);
+            lib.AddRequestData("vnp_Locale", req.vnp_Locale);
+            lib.AddRequestData("vnp_ReturnUrl", returnUrl);
+            lib.AddRequestData("vnp_IpAddr", req.vnp_IpAddr);
+            lib.AddRequestData("vnp_CreateDate", req.vnp_CreateDate);
+            if (!string.IsNullOrEmpty(req.vnp_BankCode))
+                lib.AddRequestData("vnp_BankCode", req.vnp_BankCode);
+
+            var url = lib.CreateRequestUrl(_cfg.BaseUrl, _cfg.HashSecret);
+
+            return Task.FromResult(new VnPayCreatePaymentResponse
+            {
+                Success = true,
+                PaymentUrl = url,
+                Message = "Create payment URL success"
+            });
         }
 
         public bool ValidateCallback(VnPayCallbackRequest cb)

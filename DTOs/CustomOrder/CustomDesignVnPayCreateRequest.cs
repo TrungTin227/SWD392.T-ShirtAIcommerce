@@ -18,6 +18,7 @@ namespace DTOs.CustomOrder
             public string vnp_IpAddr { get; set; } = "";
             public string vnp_CreateDate { get; set; } = "";
             public string? vnp_BankCode { get; set; }
+            public string? vnp_ReturnUrl { get; set; }
         }
     }
 
