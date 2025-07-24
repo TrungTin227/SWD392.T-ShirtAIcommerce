@@ -1390,6 +1390,7 @@ namespace Services.Implementations
                 PaymentMethod = mainPayment?.PaymentMethod ?? default(PaymentMethod),
                 CancellationRequestStatus = order.CancellationStatus,
                 ShippingAddress = order.ShippingAddress,
+                Email = order.User.Email,
                 ReceiverName = order.ReceiverName,
                 ReceiverPhone = order.ReceiverPhone,
                 CustomerNotes = order.CustomerNotes,
@@ -2168,6 +2169,8 @@ namespace Services.Implementations
 
                 if (request.Status == CancellationRequestStatus.Approved)
                 {
+                    order.CancellationStatus = CancellationRequestStatus.Approved;
+
                     _logger.LogInformation("Đơn hàng {OrderId} được Admin/Staff {StaffId} duyệt hủy.", orderId, staffId);
 
                     // Thực thi logic hủy thực sự (hoàn kho, coupon)
